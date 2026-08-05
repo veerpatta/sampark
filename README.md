@@ -104,6 +104,35 @@ src/
 
 ---
 
+## Infrastructure
+
+| Piece | Where | Notes |
+|---|---|---|
+| Repo | `github.com/veerpatta/sampark` | **Public.** No secret may ever be committed. |
+| Hosting | Vercel · `veerpattas-projects/sampark` | Auto-deploys `main` to production |
+| Database | Neon · `aws-ap-southeast-1` (Singapore) | Nearest available region — Neon has no Mumbai |
+
+Vercel environment variables (Production / Preview / Development):
+
+| Variable | Prod | Preview | Dev |
+|---|---|---|---|
+| `DATABASE_URL` | ✅ | ✅ | ✅ |
+| `DATABASE_URL_UNPOOLED` | ✅ | — | ✅ |
+| `AUTH_SECRET` | ✅ | ✅ | local only |
+| `AUTH_URL` | ✅ | — | local only |
+| `APP_TIMEZONE` | ✅ | ✅ | ✅ |
+| `ACADEMIC_YEAR` | ✅ | ✅ | ✅ |
+
+`DATABASE_URL_UNPOOLED` is deliberately absent from Preview. It is the direct
+owner-role connection used only by `drizzle-kit` for migrations, and migrations
+never run from a preview deployment — a preview build has no business holding a
+credential with DDL rights.
+
+`AUTH_URL` is unset for Preview because preview hostnames change per deployment;
+Auth.js infers the host there.
+
+---
+
 ## Build status
 
 | Phase | Scope | Status |

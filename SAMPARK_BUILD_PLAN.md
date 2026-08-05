@@ -48,7 +48,7 @@ Sampark is a **collection and reconciliation layer** that sits beside PSP. PSP s
 | Layer | Choice | Notes |
 |---|---|---|
 | Framework | **Next.js 15**, App Router, TypeScript | Server routes and UI in one deployable |
-| Database | **Neon Postgres** (Mumbai / ap-south-1) | Serverless, generous free tier, DB branching |
+| Database | **Neon Postgres** (Singapore / aws-ap-southeast-1) | Serverless, generous free tier, DB branching |
 | DB access | `@neondatabase/serverless` + **Drizzle ORM** | Type-safe, migrations in the repo |
 | Styling | **Tailwind CSS v4** + custom token layer | Tokens carried over from the prototype |
 | Admin auth | **Auth.js v5**, Credentials provider | 3–5 users; no third-party dependency, no cost |
@@ -451,12 +451,22 @@ Each phase ends with something demonstrable. Do not start the next phase until t
 
 - Create the GitHub repo `sampark`, private
 - `npx create-next-app@latest --typescript --tailwind --app`
-- Create the Neon project in **ap-south-1 (Mumbai)**
+- Create the Neon project in **aws-ap-southeast-1 (Singapore)**
 - Create two Neon branches: `main` (production) and `dev`
 - Connect the repo to Vercel, add env vars, confirm a deploy goes green
 - Point `data.veerpatta.in` at the Vercel deployment
 
 **Done when:** a blank page is live on the real domain.
+
+> **Correction (Aug 2026): Neon has no Mumbai region.** This plan originally
+> specified `ap-south-1`. Neon's supported AWS regions are us-east-1, us-east-2,
+> us-west-2, eu-central-1, eu-west-2, **ap-southeast-1 (Singapore)**,
+> ap-southeast-2 and sa-east-1. Singapore is the nearest to Rajasthan and is what
+> we use. A Neon project's region cannot be changed after creation, so if Neon
+> ever adds Mumbai the move means creating a new project and migrating with
+> `pg_dump`/`pg_restore`. Worth revisiting only if latency actually hurts —
+> Singapore adds roughly 30–50 ms per round trip versus a hypothetical Mumbai.
+> There is a standing community request for `aws-ap-south-1`.
 
 ### Phase 1 — Schema and master data (1 day)
 
