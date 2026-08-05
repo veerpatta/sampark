@@ -1,0 +1,69 @@
+/**
+ * Design tokens, carried over from the prototype.
+ *
+ * Two surfaces, one token set:
+ *   - the teacher surface (/r/*) is thumb-first, high contrast, large targets
+ *   - the admin console is dense and desktop-first
+ *
+ * Touch targets on the teacher surface are never smaller than --tap-min. A
+ * teacher is tapping this on a cheap phone, one-handed, possibly outdoors.
+ */
+
+@theme {
+  /* --- brand --- */
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-900: #1e3a8a;
+
+  /* --- semantic: the three teacher actions --- */
+  /* सही है — confirm */
+  --color-confirm-bg: #ecfdf5;
+  --color-confirm-fg: #047857;
+  --color-confirm-border: #6ee7b7;
+  /* बदलें — correct */
+  --color-correct-bg: #fffbeb;
+  --color-correct-fg: #b45309;
+  --color-correct-border: #fcd34d;
+  /* नहीं है — not in class */
+  --color-absent-bg: #f8fafc;
+  --color-absent-fg: #64748b;
+  --color-absent-border: #cbd5e1;
+
+  /* --- state --- */
+  --color-danger: #dc2626;
+  --color-warning: #d97706;
+  --color-success: #059669;
+  --color-pending: #7c3aed;
+
+  /* --- surfaces --- */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-border: #e2e8f0;
+  --color-ink: #0f172a;
+  --color-ink-muted: #64748b;
+
+  /* --- type --- */
+  --font-sans: var(--font-anek-latin), system-ui, sans-serif;
+  --font-devanagari: var(--font-anek-devanagari), var(--font-anek-latin), sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* --- ergonomics --- */
+  --tap-min: 48px;
+  --radius-card: 12px;
+}
+
+/* Hindi text gets the Devanagari cut of Anek. */
+:lang(hi) {
+  font-family: var(--font-devanagari);
+}
+
+/* The teacher surface never zooms on input focus (iOS zooms below 16px). */
+.teacher-surface input,
+.teacher-surface select,
+.teacher-surface button {
+  font-size: max(16px, 1rem);
+  min-height: var(--tap-min);
+}
