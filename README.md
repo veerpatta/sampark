@@ -13,7 +13,8 @@ numbers is 40 taps and maybe 3 corrections — five minutes. Typing 40 mobile
 numbers is a forty-minute job nobody does.
 
 The full specification lives in **[SAMPARK_BUILD_PLAN.md](./SAMPARK_BUILD_PLAN.md)**.
-Read it before changing anything here.
+Read it before changing anything here. If you are handing this to an AI coding
+agent, start from **[PROMPTS.md](./PROMPTS.md)**.
 
 ---
 

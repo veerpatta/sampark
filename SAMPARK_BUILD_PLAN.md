@@ -641,6 +641,12 @@ Adding any of these before v1 ships will sink it.
 
 ## 14. Codex / Claude Code prompts
 
+> **Superseded (Aug 2026) — see [PROMPTS.md](./PROMPTS.md).** The prompts below
+> were written before the Phase 0 scaffold existed and describe work that is now
+> done (`drizzle/schema.ts`, the field registry seed, the `/r/[token]` route and
+> its headers). Following them verbatim would produce duplicate work. They are
+> kept here because they still capture the intent of each phase accurately.
+
 One prompt per phase. Run them in order and review the diff before merging.
 
 **Phase 1**
