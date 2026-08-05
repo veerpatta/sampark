@@ -20,7 +20,6 @@ export type RequestMessageInput = {
   title: string;
   dueDate: Date | string;
   url: string;
-  pin?: string | null;
 };
 
 function formatDue(due: Date | string): string {
@@ -39,10 +38,6 @@ export function buildRequestMessage(input: RequestMessageInput): string {
     ``,
     `अंतिम तिथि: ${formatDue(input.dueDate)}`,
   ];
-
-  if (input.pin) {
-    lines.push(`लिंक खोलने के लिए PIN: आपके मोबाइल नंबर के आखिरी 4 अंक`);
-  }
 
   lines.push(``, `— वीर पत्ता विद्यालय कार्यालय`);
   return lines.join("\n");

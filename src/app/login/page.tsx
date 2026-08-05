@@ -1,12 +1,18 @@
+import { redirect } from "next/navigation";
+import { currentUser } from "@/lib/auth/session";
+import { LoginForm } from "./LoginForm";
+
 export const metadata = { title: "Sign in — Sampark" };
 
 /**
- * Admin sign-in. Teachers never see this page and never have an account.
- *
- * TODO (Phase 1): wire to Auth.js v5 Credentials provider — bcrypt against
- * users.password_hash, 8-hour JWT session, secure httpOnly cookie.
+ * Admin sign-in. Teachers never see this page and never have an account —
+ * principle 1. Accounts are created with `npm run db:create-user`, never
+ * through a public sign-up.
  */
-export default function LoginPage() {
+export default async function LoginPage() {
+  const session = await currentUser();
+  if (session) redirect("/");
+
   return (
     <div
       lang="en"
@@ -17,9 +23,7 @@ export default function LoginPage() {
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           VPPS Data Desk — office sign in
         </p>
-        <p className="mt-6 font-mono text-xs uppercase tracking-wider text-[var(--color-pending)]">
-          Phase 1 · not built yet
-        </p>
+        <LoginForm />
       </div>
     </div>
   );

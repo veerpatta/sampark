@@ -170,7 +170,15 @@ export const requests = pgTable(
     fieldKeys: text("field_keys").array().notNull(),
     period: text("period"), // required when collecting marks
     dueDate: date("due_date").notNull(),
-    pin: text("pin"), // optional 4-digit gate
+    /**
+     * The optional 4-digit PIN from plan section 5 was removed on request. A
+     * link is now a pure bearer token: whoever holds it can open that one
+     * class. The plan's threat model already accepted forwarding as
+     * proportionate — the same teacher carries a paper register with the same
+     * data — and the mitigations that remain are the short expiry, the 3-day
+     * grace cut-off, close/reopen, and the fact that no link reaches more than
+     * one class. Worth revisiting before an Aadhaar collection round.
+     */
     status: text("status").notNull().default("open"), // open | submitted | closed | expired
     createdBy: text("created_by")
       .notNull()
@@ -231,12 +239,45 @@ export const submissions = pgTable(
       .notNull()
       .defaultNow(),
     clientHash: text("client_hash"), // coarse device fingerprint, anti-abuse only
+    /**
+     * One value per submit batch, generated on the phone. A dropped connection
+     * on a bad signal means the teacher taps send again, and without this that
+     * second attempt writes the whole batch twice. NULL for anything written
+     * before Phase 5, which is why the unique index below tolerates it.
+     */
+    idempotencyKey: text("idempotency_key"),
   },
   (t) => [
     index("submissions_request_review_idx").on(t.requestId, t.reviewStatus),
     index("submissions_student_field_idx").on(t.studentId, t.fieldKey),
+    // Makes a replayed batch a no-op rather than a duplicate. NULLs are
+    // distinct in a Postgres unique index, so pre-Phase-5 rows are unaffected.
+    uniqueIndex("submissions_idempotency_idx").on(
+      t.idempotencyKey,
+      t.studentId,
+      t.fieldKey,
+    ),
   ],
 );
+
+/* ============ RATE LIMITING ============ */
+
+/**
+ * Counters for the teacher-facing surface, from plan section 5: 30 requests per
+ * minute per token, 100 per hour per IP.
+ *
+ * In Postgres rather than in memory because Vercel runs many instances and each
+ * one would otherwise keep its own private count — a limit of 30 across ten
+ * instances is really a limit of 300. Upstash would also work; this avoids a
+ * dependency the plan does not require and a second service to keep alive.
+ *
+ * One upsert per request, on a table with a handful of rows. Cheap.
+ */
+export const rateLimits = pgTable("rate_limits", {
+  bucket: text("bucket").primaryKey(), // 'token:xyz' | 'ip:1.2.3.4'
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+  count: integer("count").notNull().default(0),
+});
 
 /* ============ CHANGE LOG (the audit trail) ============ */
 
@@ -273,3 +314,4 @@ export type Request = typeof requests.$inferSelect;
 export type RequestStudent = typeof requestStudents.$inferSelect;
 export type Submission = typeof submissions.$inferSelect;
 export type ChangeLogEntry = typeof changeLog.$inferSelect;
+export type RateLimit = typeof rateLimits.$inferSelect;

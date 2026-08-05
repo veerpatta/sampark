@@ -9,11 +9,16 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:grants": "tsx scripts/db-grants.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx drizzle/seed/index.ts"
+    "db:seed": "tsx drizzle/seed/index.ts",
+    "db:create-user": "tsx scripts/create-user.ts",
+    "icons": "tsx scripts/make-icons.ts",
+    "db:migrate:branch": "tsx scripts/migrate-branch.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1",

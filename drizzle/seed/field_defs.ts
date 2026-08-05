@@ -154,35 +154,7 @@ export const FIELD_DEFS: NewFieldDef[] = [
 ];
 
 /**
- * Saved field sets. A template is a name plus a list of field keys — the
- * request builder offers these before the custom picker.
+ * The saved field sets that used to live here now live in src/lib/templates.ts,
+ * because the request builder needs them at runtime and a seed file is not a
+ * runtime dependency.
  */
-export const TEMPLATES: { name: string; nameHi: string; fieldKeys: string[] }[] =
-  [
-    {
-      name: "Mobile number update",
-      nameHi: "मोबाइल नंबर अपडेट",
-      fieldKeys: ["phone", "alt_phone"],
-    },
-    {
-      name: "Parent names",
-      nameHi: "माता-पिता के नाम",
-      fieldKeys: ["father_name", "mother_name"],
-    },
-    { name: "Aadhaar drive", nameHi: "आधार", fieldKeys: ["aadhaar", "dob"] },
-    {
-      name: "Jan Aadhaar / DBT",
-      nameHi: "जन आधार / DBT",
-      fieldKeys: ["jan_aadhaar", "category"],
-    },
-    {
-      name: "Transport",
-      nameHi: "परिवहन",
-      fieldKeys: ["bus_route", "village"],
-    },
-    {
-      name: "FA marks (Science)",
-      nameHi: "FA अंक (विज्ञान)",
-      fieldKeys: ["fa_maths", "fa_physics", "fa_chemistry", "fa_biology"],
-    },
-  ];
