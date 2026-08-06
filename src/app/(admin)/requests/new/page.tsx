@@ -9,7 +9,15 @@ import { RequestBuilder } from "./RequestBuilder";
 export const metadata = { title: "New request — Sampark" };
 export const dynamic = "force-dynamic";
 
-export default async function NewRequestPage() {
+export default async function NewRequestPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ class?: string; template?: string }>;
+}) {
+  // QuickSend hands over here when it will not guess — two teachers on the
+  // class, no number saved, or a template that needs a period typed in. The
+  // choices she already made come with her rather than being asked again.
+  const handoff = await searchParams;
   const [counts, teachers, fields] = await Promise.all([
     countByClass(),
     db
@@ -64,6 +72,8 @@ export default async function NewRequestPage() {
         }))}
         templates={TEMPLATES}
         defaultPeriod={`${process.env.ACADEMIC_YEAR ?? "2026-27"}/FA1`}
+        initialClass={handoff.class ?? ""}
+        initialTemplate={handoff.template ?? ""}
       />
     </div>
   );

@@ -1,15 +1,24 @@
 import Link from "next/link";
-import { sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { listRequests } from "@/lib/requests";
+import { countByClass } from "@/lib/students";
+import { CLASS_LABELS } from "@/lib/classes";
+import { TEMPLATES } from "@/lib/templates";
+import { QuickSend } from "@/components/admin/QuickSend";
+import { StatusBoard } from "@/components/admin/StatusBoard";
 
 export const dynamic = "force-dynamic";
 
-/** Open requests, overdue requests, the pending-review count, and where to go next. */
+/**
+ * What the office needs standing in a corridor: send a link, and see who has
+ * not sent one back. The counts come after both, because they are context
+ * rather than work.
+ */
 export default async function DashboardPage() {
   const today = new Date().toISOString().slice(0, 10);
 
-  const [requests, [students]] = await Promise.all([
+  const [requests, [students], counts, teachers] = await Promise.all([
     listRequests(),
     db
       .select({
@@ -17,6 +26,12 @@ export default async function DashboardPage() {
         missingPhone: sql<number>`count(*) filter (where phone is null or phone = '')::int`,
       })
       .from(schema.students),
+    countByClass(),
+    db
+      .select()
+      .from(schema.teachers)
+      .where(eq(schema.teachers.active, true))
+      .orderBy(asc(schema.teachers.name)),
   ]);
 
   const open = requests.filter((request) => request.status === "open");
@@ -34,6 +49,23 @@ export default async function DashboardPage() {
           Shri Veer Patta Senior Secondary School, Amet
         </p>
       </header>
+
+      {/* The two things worth doing from a phone, above the numbers. */}
+      <QuickSend
+        classes={CLASS_LABELS.map((label) => ({
+          label,
+          students: counts.get(label) ?? 0,
+        }))}
+        teachers={teachers.map((teacher) => ({
+          id: teacher.id,
+          name: teacher.name,
+          classes: teacher.classes,
+          phone: teacher.phone,
+        }))}
+        templates={TEMPLATES}
+      />
+
+      <StatusBoard requests={requests} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Students on record" value={students?.total ?? 0} href="/students" />

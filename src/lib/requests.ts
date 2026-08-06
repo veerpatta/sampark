@@ -294,6 +294,9 @@ export type RequestBoardRow = {
   teacher: string;
   dueDate: string;
   status: string;
+  /** For the one-tap reminder on the dashboard, without a second page load. */
+  token: string;
+  teacherPhone: string;
   rosterSize: number;
   studentsAnswered: number;
   changesPending: number;
@@ -309,6 +312,10 @@ export async function listRequests(): Promise<RequestBoardRow[]> {
       teacher: schema.teachers.name,
       dueDate: schema.requests.dueDate,
       status: schema.requests.status,
+      token: schema.requests.token,
+      // contact_phone when the office overrode it for this request, her saved
+      // number otherwise. One extra projection on a join that already exists.
+      teacherPhone: sql<string>`coalesce(nullif(${schema.requests.contactPhone}, ''), ${schema.teachers.phone})`,
       createdAt: schema.requests.createdAt,
     })
     .from(schema.requests)
@@ -367,6 +374,8 @@ export async function listRequests(): Promise<RequestBoardRow[]> {
     teacher: row.teacher,
     dueDate: row.dueDate,
     status: row.status,
+    token: row.token,
+    teacherPhone: row.teacherPhone,
     rosterSize: sizes.get(row.id) ?? 0,
     studentsAnswered: answers.get(row.id) ?? 0,
     changesPending: changes.get(row.id) ?? 0,

@@ -40,23 +40,54 @@ export function RequestBuilder({
   fields,
   templates,
   defaultPeriod,
+  initialClass = "",
+  initialTemplate = "",
 }: {
   classes: ClassOption[];
   teachers: TeacherOption[];
   fields: FieldOption[];
   templates: Template[];
   defaultPeriod: string;
+  /** Pre-applied when the dashboard's quick send handed over. */
+  initialClass?: string;
+  initialTemplate?: string;
 }) {
   const router = useRouter();
 
-  const [classLabel, setClassLabel] = useState("");
-  const [fieldKeys, setFieldKeys] = useState<string[]>([]);
-  const [title, setTitle] = useState("");
-  const [teacherId, setTeacherId] = useState("");
-  const [phone, setPhone] = useState("");
+  // Applied once, at first render, from the quick-send handoff. Lazy
+  // initialisers rather than an effect: an effect would fight her the moment
+  // she changed her mind about either one.
+  const handedOverTemplate =
+    templates.find((option) => option.name === initialTemplate) ?? null;
+
+  const [classLabel, setClassLabel] = useState(initialClass);
+  const [fieldKeys, setFieldKeys] = useState<string[]>(() =>
+    handedOverTemplate
+      ? handedOverTemplate.fieldKeys.filter((key) =>
+          fields.some((field) => field.key === key),
+        )
+      : [],
+  );
+  const [title, setTitle] = useState(handedOverTemplate?.name ?? "");
+  const [teacherId, setTeacherId] = useState(() => {
+    // Same rule as the class picker: exactly one owner is selected silently,
+    // and anything else stays blank rather than being guessed.
+    const choice = chooseTeacherForClass(teachers, initialClass);
+    return choice.kind === "one" ? choice.teacherId : "";
+  });
+  const [phone, setPhone] = useState(() => {
+    const choice = chooseTeacherForClass(teachers, initialClass);
+    if (choice.kind !== "one") return "";
+    return normalisePhone(
+      teachers.find((option) => option.id === choice.teacherId)?.phone,
+    );
+  });
   /** Once she types a number herself, changing the teacher must not clobber it. */
   const [phoneEdited, setPhoneEdited] = useState(false);
-  const [teacherNote, setTeacherNote] = useState<string | null>(null);
+  const [teacherNote, setTeacherNote] = useState<string | null>(() => {
+    const choice = chooseTeacherForClass(teachers, initialClass);
+    return choice.kind === "one" ? null : initialClass ? choice.message : null;
+  });
   const [dueDate, setDueDate] = useState(defaultDueDate());
   const [period, setPeriod] = useState(defaultPeriod);
   const [error, setError] = useState<string | null>(null);

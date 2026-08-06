@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canManageSettings, currentUser } from "@/lib/auth/session";
+import { AdminNav } from "@/components/admin/AdminNav";
 import { logoutAction } from "../login/actions";
 
 /**
@@ -14,10 +15,10 @@ import { logoutAction } from "../login/actions";
  * data calls requireUser() from lib/auth/session.ts for itself.
  */
 const NAV = [
-  { href: "/", label: "Dashboard" },
-  { href: "/requests", label: "Requests" },
-  { href: "/review", label: "Review" },
-  { href: "/students", label: "Students" },
+  { href: "/", label: "Home", icon: "◉" },
+  { href: "/requests", label: "Requests", icon: "✉" },
+  { href: "/review", label: "Review", icon: "✓" },
+  { href: "/students", label: "Students", icon: "☰" },
 ];
 
 export default async function AdminLayout({
@@ -32,29 +33,27 @@ export default async function AdminLayout({
   if (!user) redirect("/login");
 
   const nav = canManageSettings(user.role)
-    ? [...NAV, { href: "/settings/teachers", label: "Settings" }]
+    ? [
+        ...NAV,
+        {
+          href: "/settings/teachers",
+          match: "/settings",
+          label: "Settings",
+          icon: "⚙",
+        },
+      ]
     : NAV;
 
   return (
     <div lang="en" className="min-h-screen bg-[var(--color-surface-muted)]">
       <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
-        <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-4">
+        <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-4 md:px-6">
           <Link href="/" className="font-semibold tracking-tight">
             Sampark
           </Link>
-          <nav className="flex gap-5 text-sm text-[var(--color-ink-muted)]">
-            {nav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="hover:text-[var(--color-ink)]"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          <AdminNav items={nav} />
           <div className="ml-auto flex items-center gap-3 text-sm">
-            <span className="text-[var(--color-ink-muted)]">
+            <span className="hidden text-[var(--color-ink-muted)] sm:inline">
               {user.name}
               <span className="ml-1.5 rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 font-mono text-xs">
                 {user.role}
@@ -71,7 +70,11 @@ export default async function AdminLayout({
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      {/* pb-24 clears the fixed bottom bar on a phone; nothing to clear on a
+          desktop, where the nav is back in the header. */}
+      <main className="mx-auto max-w-6xl px-4 py-6 pb-24 md:px-6 md:py-8 md:pb-8">
+        {children}
+      </main>
     </div>
   );
 }

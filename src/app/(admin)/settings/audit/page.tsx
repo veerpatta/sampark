@@ -2,6 +2,7 @@ import Link from "next/link";
 import { desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { currentUser } from "@/lib/auth/session";
+import { DataTable, type Column } from "@/components/admin/DataTable";
 import { redirect } from "next/navigation";
 
 export const metadata = { title: "Audit log — Sampark" };
@@ -67,6 +68,84 @@ export default async function AuditPage({
   const total = count?.total ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // The change itself is the card's title on a phone — it is the only column
+  // anyone actually reads a log for.
+  const columns: Column<(typeof entries)[number]>[] = [
+    {
+      key: "when",
+      header: "When",
+      cell: (row) => formatWhen(row.entry.decidedAt),
+      cellClassName: "whitespace-nowrap text-xs text-[var(--color-ink-muted)]",
+    },
+    {
+      key: "student",
+      header: "Student",
+      role: "secondary",
+      cell: (row) => (
+        <>
+          <Link
+            href={`/settings/audit?student=${encodeURIComponent(row.entry.studentId)}`}
+            className="font-medium hover:underline"
+          >
+            {row.studentName ?? row.entry.studentId}
+          </Link>
+          <div className="font-mono text-xs text-[var(--color-ink-muted)]">
+            {row.classLabel ? `${row.classLabel} · ` : ""}
+            {row.entry.studentId}
+          </div>
+        </>
+      ),
+    },
+    {
+      key: "field",
+      header: "Field",
+      cell: (row) => row.fieldLabel ?? row.entry.fieldKey,
+      cellClassName: "text-[var(--color-ink-muted)]",
+    },
+    {
+      key: "change",
+      header: "Change",
+      role: "primary",
+      cell: (row) => (
+        <span className="font-mono text-xs">
+          <span className="line-through opacity-60">
+            {row.entry.fromValue ?? "empty"}
+          </span>
+          <span className="mx-2" aria-hidden>
+            &rarr;
+          </span>
+          <span className="font-medium">{row.entry.toValue ?? "empty"}</span>
+          {row.entry.note ? (
+            <span className="mt-0.5 block font-sans text-xs text-[var(--color-ink-muted)]">
+              {row.entry.note}
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      key: "decision",
+      header: "Decision",
+      cell: (row) => (
+        <span
+          className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+            row.entry.decision === "approved"
+              ? "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
+              : "bg-[var(--color-absent-bg)] text-[var(--color-absent-fg)]"
+          }`}
+        >
+          {row.entry.decision}
+        </span>
+      ),
+    },
+    {
+      key: "by",
+      header: "By",
+      cell: (row) => row.decidedByName,
+      cellClassName: "text-[var(--color-ink-muted)]",
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <header>
@@ -92,83 +171,12 @@ export default async function AuditPage({
         </p>
       </header>
 
-      <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
-        {entries.length === 0 ? (
-          <p className="p-6 text-sm text-[var(--color-ink-muted)]">
-            Nothing has been approved or rejected yet.
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
-              <tr>
-                <th className="px-4 py-3">When</th>
-                <th className="px-4 py-3">Student</th>
-                <th className="px-4 py-3">Field</th>
-                <th className="px-4 py-3">Change</th>
-                <th className="px-4 py-3">Decision</th>
-                <th className="px-4 py-3">By</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((row) => (
-                <tr
-                  key={row.entry.id}
-                  className="border-b border-[var(--color-border)] last:border-0"
-                >
-                  <td className="px-4 py-2 whitespace-nowrap text-xs text-[var(--color-ink-muted)]">
-                    {formatWhen(row.entry.decidedAt)}
-                  </td>
-                  <td className="px-4 py-2">
-                    <Link
-                      href={`/settings/audit?student=${encodeURIComponent(row.entry.studentId)}`}
-                      className="font-medium hover:underline"
-                    >
-                      {row.studentName ?? row.entry.studentId}
-                    </Link>
-                    <div className="font-mono text-xs text-[var(--color-ink-muted)]">
-                      {row.classLabel ? `${row.classLabel} · ` : ""}
-                      {row.entry.studentId}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2 text-[var(--color-ink-muted)]">
-                    {row.fieldLabel ?? row.entry.fieldKey}
-                  </td>
-                  <td className="px-4 py-2 font-mono text-xs">
-                    <span className="line-through opacity-60">
-                      {row.entry.fromValue ?? "empty"}
-                    </span>
-                    <span className="mx-2" aria-hidden>
-                      →
-                    </span>
-                    <span className="font-medium">
-                      {row.entry.toValue ?? "empty"}
-                    </span>
-                    {row.entry.note ? (
-                      <div className="mt-0.5 font-sans text-xs text-[var(--color-ink-muted)]">
-                        {row.entry.note}
-                      </div>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                        row.entry.decision === "approved"
-                          ? "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
-                          : "bg-[var(--color-absent-bg)] text-[var(--color-absent-fg)]"
-                      }`}
-                    >
-                      {row.entry.decision}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-[var(--color-ink-muted)]">
-                    {row.decidedByName}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      <DataTable
+        columns={columns}
+        rows={entries}
+        rowKey={(row) => String(row.entry.id)}
+        empty="Nothing has been approved or rejected yet."
+      />
 
       {student ? (
         <Link

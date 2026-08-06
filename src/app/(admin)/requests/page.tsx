@@ -1,20 +1,105 @@
 import Link from "next/link";
 import { listRequests } from "@/lib/requests";
+import { DataTable, type Column } from "@/components/admin/DataTable";
 
 export const metadata = { title: "Requests — Sampark" };
 export const dynamic = "force-dynamic";
 
+type Row = Awaited<ReturnType<typeof listRequests>>[number];
+
 /**
- * The status board.
+ * Every request, and how far each has got.
  *
- * This screen is the enforcement mechanism (plan section 10): "8 of 11 classes
- * submitted" shared in the staff group does more than ten reminder messages.
- * The answered and pending columns stay at zero until Phase 3 writes
- * submissions, so they are left off rather than shown as a real-looking zero.
+ * A table at md and up, a stack of cards below it — a seven-column table on a
+ * 390px phone puts the two columns that matter (answered, to review) off the
+ * right edge. See components/admin/DataTable.
  */
 export default async function RequestsPage() {
   const requests = await listRequests();
   const today = new Date().toISOString().slice(0, 10);
+
+  const columns: Column<Row>[] = [
+    {
+      key: "class",
+      header: "Class",
+      role: "secondary",
+      cell: (request) => request.classLabel,
+      cellClassName: "font-medium",
+    },
+    {
+      key: "title",
+      header: "Request",
+      role: "primary",
+      cell: (request) => (
+        <Link
+          href={`/requests/${request.id}`}
+          className="font-medium text-[var(--color-brand-600)] hover:underline md:inline"
+        >
+          {request.title}
+        </Link>
+      ),
+    },
+    {
+      key: "teacher",
+      header: "Teacher",
+      cell: (request) => request.teacher,
+      cellClassName: "text-[var(--color-ink-muted)]",
+    },
+    {
+      key: "answered",
+      header: "Answered",
+      cell: (request) => (
+        <span
+          className={`font-mono text-xs ${
+            request.studentsAnswered >= request.rosterSize && request.rosterSize > 0
+              ? "font-medium text-[var(--color-success)]"
+              : ""
+          }`}
+        >
+          {request.studentsAnswered} / {request.rosterSize}
+        </span>
+      ),
+    },
+    {
+      key: "review",
+      header: "To review",
+      cell: (request) =>
+        request.changesPending > 0 ? (
+          <Link
+            href={`/review?request=${request.id}`}
+            className="rounded bg-[var(--color-correct-bg)] px-2 py-0.5 font-mono text-xs font-medium text-[var(--color-correct-fg)] hover:underline"
+          >
+            {request.changesPending}
+          </Link>
+        ) : (
+          <span className="font-mono text-xs text-[var(--color-ink-muted)]">—</span>
+        ),
+    },
+    {
+      key: "due",
+      header: "Due",
+      cell: (request) => (
+        <span
+          className={
+            request.dueDate < today && request.status === "open"
+              ? "font-medium text-[var(--color-danger)]"
+              : ""
+          }
+        >
+          {request.dueDate}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (request) => (
+        <span className="rounded bg-[var(--color-surface-muted)] px-2 py-0.5 font-mono text-xs">
+          {request.status}
+        </span>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -27,96 +112,18 @@ export default async function RequestsPage() {
         </div>
         <Link
           href="/requests/new"
-          className="rounded-lg bg-[var(--color-brand-600)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-brand-700)]"
+          className="flex min-h-[var(--tap-min)] items-center rounded-lg bg-[var(--color-brand-600)] px-4 text-sm font-medium text-white hover:bg-[var(--color-brand-700)]"
         >
           New request
         </Link>
       </header>
 
-      <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
-        {requests.length === 0 ? (
-          <p className="p-6 text-sm text-[var(--color-ink-muted)]">
-            No requests yet. Create one and you get a link to send on WhatsApp.
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
-              <tr>
-                <th className="px-4 py-3">Class</th>
-                <th className="px-4 py-3">Request</th>
-                <th className="px-4 py-3">Teacher</th>
-                <th className="px-4 py-3">Answered</th>
-                <th className="px-4 py-3">To review</th>
-                <th className="px-4 py-3">Due</th>
-                <th className="px-4 py-3">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.map((request) => (
-                <tr
-                  key={request.id}
-                  className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-surface-muted)]"
-                >
-                  <td className="px-4 py-2 font-medium">{request.classLabel}</td>
-                  <td className="px-4 py-2">
-                    <Link
-                      href={`/requests/${request.id}`}
-                      className="font-medium text-[var(--color-brand-600)] hover:underline"
-                    >
-                      {request.title}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2 text-[var(--color-ink-muted)]">
-                    {request.teacher}
-                  </td>
-                  <td className="px-4 py-2 font-mono text-xs">
-                    <span
-                      className={
-                        request.studentsAnswered >= request.rosterSize &&
-                        request.rosterSize > 0
-                          ? "font-medium text-[var(--color-success)]"
-                          : ""
-                      }
-                    >
-                      {request.studentsAnswered} / {request.rosterSize}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    {request.changesPending > 0 ? (
-                      <Link
-                        href={`/review?request=${request.id}`}
-                        className="rounded bg-[var(--color-correct-bg)] px-2 py-0.5 font-mono text-xs font-medium text-[var(--color-correct-fg)] hover:underline"
-                      >
-                        {request.changesPending}
-                      </Link>
-                    ) : (
-                      <span className="font-mono text-xs text-[var(--color-ink-muted)]">
-                        —
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={
-                        request.dueDate < today && request.status === "open"
-                          ? "font-medium text-[var(--color-danger)]"
-                          : ""
-                      }
-                    >
-                      {request.dueDate}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <span className="rounded bg-[var(--color-surface-muted)] px-2 py-0.5 font-mono text-xs">
-                      {request.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      <DataTable
+        columns={columns}
+        rows={requests}
+        rowKey={(request) => request.id}
+        empty="No requests yet. Create one and you get a link to send on WhatsApp."
+      />
 
       {requests.length > 0 ? (
         <p className="text-xs text-[var(--color-ink-muted)]">

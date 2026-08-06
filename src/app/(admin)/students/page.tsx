@@ -2,6 +2,7 @@ import Link from "next/link";
 import { canApproveIntoMaster, currentUser } from "@/lib/auth/session";
 import { listClassLabels, listStudents } from "@/lib/students";
 import { titleCaseName } from "@/lib/classes";
+import { DataTable, type Column } from "@/components/admin/DataTable";
 
 export const metadata = { title: "Students — Sampark" };
 export const dynamic = "force-dynamic";
@@ -37,6 +38,66 @@ export default async function StudentsPage({
   ]);
 
   const canImport = session ? canApproveIntoMaster(session.role) : false;
+
+  // Name is the card's title, class its subtitle; the identifiers become
+  // labelled pairs below rather than columns off the right edge of a phone.
+  const columns: Column<(typeof students)[number]>[] = [
+    {
+      key: "class",
+      header: "Class",
+      role: "secondary",
+      cell: (student) =>
+        `${student.classLabel}${student.section ? ` ${student.section}` : ""}`,
+      cellClassName: "whitespace-nowrap",
+    },
+    {
+      key: "roll",
+      header: "Roll",
+      cell: (student) => student.rollNo ?? "—",
+      cellClassName: "font-mono text-xs",
+    },
+    {
+      key: "name",
+      header: "Name",
+      role: "primary",
+      cell: (student) => (
+        <Link
+          href={`/students/${encodeURIComponent(student.id)}`}
+          className="hover:text-[var(--color-brand-600)] hover:underline"
+        >
+          {titleCaseName(student.name)}
+        </Link>
+      ),
+      cellClassName: "font-medium",
+    },
+    {
+      key: "father",
+      header: "Father",
+      cell: (student) => student.fatherName ?? "—",
+      cellClassName: "text-[var(--color-ink-muted)]",
+    },
+    {
+      key: "phone",
+      header: "Mobile",
+      cell: (student) =>
+        student.phone ?? (
+          <span className="text-[var(--color-warning)]">missing</span>
+        ),
+      cellClassName: "font-mono text-xs",
+    },
+    {
+      key: "id",
+      header: "Student ID",
+      cell: (student) => student.id,
+      cellClassName: "font-mono text-xs text-[var(--color-ink-muted)]",
+    },
+    {
+      key: "sr",
+      header: "SR",
+      cell: (student) => student.srNo ?? "—",
+      cellClassName: "font-mono text-xs text-[var(--color-ink-muted)]",
+    },
+  ];
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
@@ -118,65 +179,16 @@ export default async function StudentsPage({
         ) : null}
       </form>
 
-      <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
-        {students.length === 0 ? (
-          <EmptyState hasFilter={Boolean(search || classLabel)} canImport={canImport} />
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
-              <tr>
-                <th className="px-4 py-3">Class</th>
-                <th className="px-4 py-3">Roll</th>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Father</th>
-                <th className="px-4 py-3">Mobile</th>
-                <th className="px-4 py-3">Student ID</th>
-                <th className="px-4 py-3">SR</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((student) => (
-                <tr
-                  key={student.id}
-                  className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-surface-muted)]"
-                >
-                  <td className="px-4 py-2 whitespace-nowrap">
-                    {student.classLabel}
-                    {student.section ? ` ${student.section}` : ""}
-                  </td>
-                  <td className="px-4 py-2 font-mono text-xs">
-                    {student.rollNo ?? "—"}
-                  </td>
-                  <td className="px-4 py-2 font-medium">
-                    <Link
-                      href={`/students/${encodeURIComponent(student.id)}`}
-                      className="hover:text-[var(--color-brand-600)] hover:underline"
-                    >
-                      {titleCaseName(student.name)}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2 text-[var(--color-ink-muted)]">
-                    {student.fatherName ?? "—"}
-                  </td>
-                  <td className="px-4 py-2 font-mono text-xs">
-                    {student.phone ?? (
-                      <span className="text-[var(--color-warning)]">
-                        missing
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 font-mono text-xs text-[var(--color-ink-muted)]">
-                    {student.id}
-                  </td>
-                  <td className="px-4 py-2 font-mono text-xs text-[var(--color-ink-muted)]">
-                    {student.srNo ?? "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      {students.length === 0 ? (
+        <EmptyState hasFilter={Boolean(search || classLabel)} canImport={canImport} />
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={students}
+          rowKey={(student) => student.id}
+          href={(student) => `/students/${encodeURIComponent(student.id)}`}
+        />
+      )}
 
       {lastPage > 1 ? (
         <nav className="flex items-center gap-4 text-sm">
