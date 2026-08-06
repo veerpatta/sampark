@@ -4,7 +4,11 @@ import { db, schema } from "../src/lib/db";
 import { CLASS_LABELS, isClassLabel } from "../src/lib/classes";
 
 /**
- * One-off: move teacher class assignments onto the canonical labels.
+ * One-off, RUN AND COMPLETED 2026-08-06 against the dev database. Kept because
+ * production has not had it yet, and because a repair nobody can find is a
+ * repair nobody can repeat.
+ *
+ * Move teacher class assignments onto the canonical labels.
  *
  * Teachers were entered before the real export arrived, under the convention
  * this codebase assumed at the time — '6', '11 Sci', '12 Com'. The fee app is
