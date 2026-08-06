@@ -80,8 +80,16 @@ export default async function TeacherRequestPage({
   );
 }
 
+/**
+ * Hindi month, Latin day.
+ *
+ * hi-IN already defaults to Latin numerals — checked on the deployed Node —
+ * but that is a CLDR default, not a promise, and it is the due date. Pinning
+ * the numbering system means the one date on this screen cannot quietly become
+ * ११ अगस्त because an ICU table moved.
+ */
 function formatHindiDate(date: string): string {
-  return new Intl.DateTimeFormat("hi-IN", {
+  return new Intl.DateTimeFormat("hi-IN-u-nu-latn", {
     day: "numeric",
     month: "long",
     timeZone: "Asia/Kolkata",

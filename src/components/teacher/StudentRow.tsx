@@ -4,7 +4,6 @@ import { useState } from "react";
 import { validateField } from "@/lib/fields";
 import { titleCaseName } from "@/lib/classes";
 import { houseOf } from "@/lib/houses";
-import { toHindiDigits } from "./digits";
 import type { RowState, TeacherField, TeacherRosterRow } from "./types";
 
 /**
@@ -367,7 +366,7 @@ function FieldInput({
         <span>{field.labelHi}</span>
         {isNumeric && field.exactLen && value.length > 0 ? (
           <span className="font-mono text-xs">
-            {toHindiDigits(value.length)} / {toHindiDigits(field.exactLen)}
+            {value.length} / {field.exactLen}
           </span>
         ) : null}
       </span>

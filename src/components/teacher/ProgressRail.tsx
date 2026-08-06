@@ -1,14 +1,13 @@
 "use client";
 
-import { toHindiDigits } from "./digits";
 
 /**
  * The sticky bar at the bottom of the teacher surface.
  *
  * It answers the only two questions she has while working: how much is LEFT,
- * and how do I send it. It counts down rather than up — "अभी ६ बाकी हैं" tells
+ * and how do I send it. It counts down rather than up — "अभी 6 बाकी हैं" tells
  * her when she can stop, which is what she actually wants to know;
- * "४० / ४६ हो गए" makes her do the subtraction herself.
+ * "40 / 46 हो गए" makes her do the subtraction herself.
  *
  * It sits at the BOTTOM because that is where a thumb already is on a phone
  * held one-handed.
@@ -49,12 +48,12 @@ export function ProgressRail({
           </span>
         ) : (
           <span className="font-medium">
-            अभी {toHindiDigits(remaining)} बाकी हैं
+            अभी {remaining} बाकी हैं
           </span>
         )}
         {sent > 0 ? (
           <span className="text-[var(--color-ink-muted)]">
-            {toHindiDigits(sent)} विद्यालय पहुँच गए
+            {sent} विद्यालय पहुँच गए
           </span>
         ) : null}
       </div>
@@ -74,7 +73,7 @@ export function ProgressRail({
 
       {pending > 0 ? (
         <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
-          {toHindiDigits(pending)} फ़ोन में सुरक्षित, अभी भेजे नहीं गए
+          {pending} फ़ोन में सुरक्षित, अभी भेजे नहीं गए
         </p>
       ) : null}
 
@@ -89,8 +88,8 @@ export function ProgressRail({
           : pending === 0
             ? "सब भेज दिया गया"
             : online
-              ? `विद्यालय को भेजें (${toHindiDigits(pending)})`
-              : `इंटरनेट आते ही भेजें (${toHindiDigits(pending)})`}
+              ? `विद्यालय को भेजें (${pending})`
+              : `इंटरनेट आते ही भेजें (${pending})`}
       </button>
     </div>
   );

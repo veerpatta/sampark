@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StudentRow } from "./StudentRow";
 import { ProgressRail } from "./ProgressRail";
-import { toHindiDigits } from "./digits";
 import {
   clearDraft,
   loadDraft,
@@ -335,7 +334,7 @@ export function RequestForm({
       {blanks.length > 0 ? (
         <section className="mt-5">
           <h2 className="px-1 text-base font-semibold text-[var(--color-warning-fg)]">
-            {toHindiDigits(blanks.length)} बच्चों की जानकारी नहीं है — ये सबसे
+            {blanks.length} बच्चों की जानकारी नहीं है — ये सबसे
             ज़रूरी हैं
           </h2>
           <ol className="mt-2 space-y-3">{blanks.map(renderRow)}</ol>
@@ -346,7 +345,7 @@ export function RequestForm({
       {known.length > 0 ? (
         <section className="mt-7">
           <h2 className="px-1 text-base font-semibold">
-            {toHindiDigits(known.length)} बच्चों की जानकारी पहले से है — देखकर
+            {known.length} बच्चों की जानकारी पहले से है — देखकर
             बता दें कि सही है
           </h2>
 
@@ -356,14 +355,14 @@ export function RequestForm({
               onClick={confirmAllKnown}
               className="mt-2 min-h-12 w-full rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)]"
             >
-              सब सही हैं ({toHindiDigits(untouchedKnown.length)})
+              सब सही हैं ({untouchedKnown.length})
             </button>
           ) : null}
 
           {undo ? (
             <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
               <span className="text-[var(--color-ink-muted)]">
-                {toHindiDigits(Object.keys(undo).length)} पर सही का निशान लगाया
+                {Object.keys(undo).length} पर सही का निशान लगाया
               </span>
               <button
                 type="button"
