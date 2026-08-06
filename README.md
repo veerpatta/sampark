@@ -105,6 +105,31 @@ has no DDL rights and cannot UPDATE or DELETE the append-only tables — the onl
 writable column on either of them is `submissions.review_status`. See section 4.2
 of the build plan for the exact grants.
 
+#### Refreshing the master record from the fee app
+
+The fee app exports a fourteen-sheet context bundle. `scripts/import-fees-bundle.ts`
+reads its `Students` sheet as the `fees` source, so precedence decides what it
+may touch — it will not undo an approved teacher correction, and PSP keeps the
+identity fields it owns.
+
+```bash
+npx tsx scripts/import-fees-bundle.ts private/students-2026-27.xlsx                      # dry run
+npx tsx scripts/import-fees-bundle.ts private/students-2026-27.xlsx --apply
+npx tsx scripts/import-fees-bundle.ts private/students-2026-27.xlsx --apply --remove-missing
+```
+
+Rows match on **SR number**. The bundle's `Student ID` column is the fee app's
+own UUID and is deliberately not mapped — it collides with nothing in
+`students.id`, so mapping it across (which the `/students/import` auto-mapper
+will suggest, because of the header spelling) turns a refresh into 531 duplicate
+children. Prefer this script over the upload screen for a whole bundle.
+
+`--remove-missing` **deletes** students who are no longer in the bundle, along
+with their roster entries and submissions. It needs `DATABASE_URL_UNPOOLED`,
+because `submissions` and `change_log` are append-only for the app role — that
+credential requirement is the guard rail, not an obstacle to route around. Every
+deleted row is dumped to `private/archive/` first.
+
 Teachers and admin users are **never** seeded from a file. The repo is public and
 both carry personal data, so teachers are entered at `/settings/teachers` and
 accounts are created interactively with `npm run db:create-user`.
@@ -133,6 +158,7 @@ drizzle/
 scripts/
   db-grants.ts          creates app_rw, applies grants.sql
   migrate-branch.ts     migrations for a non-default Neon branch
+  import-fees-bundle.ts master refresh from a fee-app context bundle
   create-user.ts        interactive admin account creation
   make-icons.ts         PWA icons, rasterised from icon.svg
   backup.ps1            verified weekly pg_dump
