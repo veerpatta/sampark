@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StudentRow } from "./StudentRow";
 import { ProgressRail } from "./ProgressRail";
+import { ReviewSummary } from "./ReviewSummary";
+import { summarise } from "./summary";
 import {
   clearDraft,
   loadDraft,
@@ -41,7 +43,17 @@ import {
  *   sent to school  — the server has it
  * Collapsing those into one tick would be a lie on a bad signal, and the whole
  * point of showing it is that she can put the phone down and trust it.
+ *
+ * SEND IS BEHIND A REVIEW SCREEN. `stage` is "list" or "review", and the send
+ * button exists only in the second one, so she cannot submit without having
+ * seen what she is submitting. It is a stage rather than a route on purpose:
+ * everything the summary needs is already in this component's state, and a
+ * second route would mean another no-store round trip on a bad signal, a
+ * remount on every "jump back and fix", and the online listener below either
+ * duplicated or dropped exactly when she is standing still and signal returns.
  */
+
+type Stage = "list" | "review";
 export function RequestForm({
   token,
   fields,
@@ -82,6 +94,14 @@ export function RequestForm({
   const [restored, setRestored] = useState(false);
   /** Set for ten seconds after a bulk confirm, so it can be taken back. */
   const [undo, setUndo] = useState<Record<string, RowState> | null>(null);
+  /**
+   * Not persisted to the draft. On reload she lands on the list with her
+   * answers restored; dropping her into a review screen she did not ask for is
+   * worse than one extra tap.
+   */
+  const [stage, setStage] = useState<Stage>("list");
+  /** Set when she jumps back from review, so the row can be scrolled to. */
+  const [focusId, setFocusId] = useState<string | null>(null);
 
   // Held across a failed send so the retry is the SAME batch, not a second one.
   const batchKey = useRef<string | null>(null);
@@ -197,6 +217,49 @@ export function RequestForm({
     setUndo(null);
   }
 
+  const summary = useMemo(
+    () => summarise(roster, fields, rows),
+    [roster, fields, rows],
+  );
+
+  /**
+   * Android's back button should leave the review screen, not the whole form.
+   *
+   * This is the one thing a separate route would have given for free, so it is
+   * replicated by hand: push a history entry on the way in, pop back to the
+   * list when the browser goes back.
+   */
+  function openReview() {
+    setError(null);
+    setStage("review");
+    window.history.pushState({ sampark: "review" }, "");
+  }
+
+  const closeReview = useCallback(() => setStage("list"), []);
+
+  useEffect(() => {
+    if (stage !== "review") return;
+    function onPop() {
+      setStage("list");
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [stage]);
+
+  /** Jump back from the summary to one row, opened and in view. */
+  function fix(studentId: string) {
+    setStage("list");
+    setFocusId(studentId);
+    update(studentId, { status: "editing" });
+  }
+
+  useEffect(() => {
+    if (stage !== "list" || !focusId) return;
+    const element = document.getElementById(`student-${focusId}`);
+    element?.scrollIntoView({ block: "center", behavior: "smooth" });
+    setFocusId(null);
+  }, [stage, focusId]);
+
   const submit = useCallback(
     async (auto = false) => {
       const pending = roster.filter(
@@ -205,6 +268,17 @@ export function RequestForm({
           !sentIds.has(student.studentId),
       );
       if (pending.length === 0 || busy) return;
+
+      // THE REVIEW GATE.
+      //
+      // An automatic retry may only replay a batch she has ALREADY reviewed and
+      // sent. A live batch key means exactly that: it is minted below when a
+      // send starts and cleared on success, so a non-null key is a send that
+      // left this screen and did not land. Without this check, coming back
+      // online would post everything answered-but-unsent straight past the
+      // review screen, and the promise that she has seen what she sends would
+      // be false.
+      if (auto && batchKey.current === null) return;
 
       setBusy(true);
       if (!auto) setError(null);
@@ -259,7 +333,12 @@ export function RequestForm({
         if (justSent.size === roster.length) {
           clearDraft(token);
           router.push(`/r/${token}/done`);
+          return;
         }
+
+        // Some landed but the roster is not finished — the remaining work is
+        // back on the list, so that is where she goes.
+        setStage("list");
       } catch {
         // No signal. The draft is already on the phone and the batch key is
         // kept, so the retry below replays the same batch rather than a new one.
@@ -313,6 +392,21 @@ export function RequestForm({
       }
     />
   );
+
+  if (stage === "review") {
+    return (
+      <ReviewSummary
+        summary={summary}
+        total={roster.length}
+        busy={busy}
+        online={online}
+        error={error}
+        onFix={fix}
+        onBack={closeReview}
+        onSend={() => void submit(false)}
+      />
+    );
+  }
 
   return (
     <>
@@ -394,7 +488,7 @@ export function RequestForm({
         sent={sentIds.size}
         busy={busy}
         online={online}
-        onSubmit={() => void submit(false)}
+        onReview={openReview}
       />
     </>
   );

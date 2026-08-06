@@ -56,8 +56,9 @@ export default async function TeacherRequestPage({
       <p className="mt-3 rounded-[var(--radius-card)] border border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-3 text-sm text-[var(--color-confirm-fg)]">
         जिन बच्चों की जानकारी नहीं है, वे सबसे ऊपर हैं — पहले वही भरें। बाकी
         सबकी जानकारी पहले से है; ठीक हो तो एक बार में{" "}
-        <strong>सब सही हैं</strong> दबा दें। अंत में नीचे <strong>भेजें</strong>{" "}
-        दबाना न भूलें।
+        <strong>सब सही हैं</strong> दबा दें। अंत में नीचे{" "}
+        <strong>देखें और भेजें</strong> दबाएँ — भेजने से पहले आपको पूरी सूची एक
+        बार दिख जाएगी।
       </p>
 
       <RequestForm

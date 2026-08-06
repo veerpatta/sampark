@@ -64,7 +64,9 @@ export function StudentRow({
 
   return (
     <li
-      className={`rounded-[var(--radius-card)] border-2 p-4 ${
+      // The anchor the review screen scrolls back to when she taps a change.
+      id={`student-${student.studentId}`}
+      className={`scroll-mt-24 rounded-[var(--radius-card)] border-2 p-4 ${
         {
           todo: "border-[var(--color-border)] bg-[var(--color-surface)]",
           editing: "border-[var(--color-correct-border)] bg-[var(--color-surface)]",

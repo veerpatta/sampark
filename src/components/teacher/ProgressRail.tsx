@@ -23,7 +23,7 @@ export function ProgressRail({
   sent,
   busy,
   online,
-  onSubmit,
+  onReview,
 }: {
   /** Students with no answer yet. */
   remaining: number;
@@ -34,7 +34,8 @@ export function ProgressRail({
   sent: number;
   busy: boolean;
   online: boolean;
-  onSubmit: () => void;
+  /** Opens the summary. This bar no longer sends — see ReviewSummary. */
+  onReview: () => void;
 }) {
   const done = total - remaining;
   const percent = total === 0 ? 0 : Math.round((done / total) * 100);
@@ -77,20 +78,32 @@ export function ProgressRail({
         </p>
       ) : null}
 
+      {/* This does not send any more. It opens the summary, and the summary
+          sends — so she cannot submit forty-six rows without having read what
+          she is submitting. The label says so plainly rather than pretending
+          the extra screen is not there. */}
       <button
         type="button"
-        onClick={onSubmit}
+        onClick={onReview}
         disabled={busy || pending === 0}
         className="mt-2 min-h-12 w-full rounded-lg bg-[var(--color-brand-600)] px-4 font-semibold text-white disabled:opacity-40"
       >
         {busy
           ? "भेजा जा रहा है…"
-          : pending === 0
-            ? "सब भेज दिया गया"
-            : online
-              ? `विद्यालय को भेजें (${pending})`
-              : `इंटरनेट आते ही भेजें (${pending})`}
+          : pending > 0
+            ? `देखें और भेजें (${pending})`
+            : sent > 0
+              ? "सब भेज दिया गया"
+              : // Nothing answered yet. This used to say "सब भेज दिया गया" —
+                // everything has been sent — to a teacher who had not yet
+                // touched a single row.
+                "पहले जवाब दें"}
       </button>
+      {pending > 0 && !online ? (
+        <p className="mt-1 text-center text-xs text-[var(--color-ink-muted)]">
+          इंटरनेट नहीं है — देख लें, भेजना अपने आप हो जाएगा।
+        </p>
+      ) : null}
     </div>
   );
 }
