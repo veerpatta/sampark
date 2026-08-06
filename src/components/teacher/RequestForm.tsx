@@ -54,6 +54,10 @@ import {
  */
 
 type Stage = "list" | "review";
+
+/** Rows revealed at a time. Ten is a batch she can see the end of. */
+const BATCH = 10;
+
 export function RequestForm({
   token,
   fields,
@@ -102,6 +106,12 @@ export function RequestForm({
   const [stage, setStage] = useState<Stage>("list");
   /** Set when she jumps back from review, so the row can be scrolled to. */
   const [focusId, setFocusId] = useState<string | null>(null);
+  /**
+   * How many rows of each group are on screen. Forty-six cards in one scroll is
+   * a wall with no end in sight; ten is a batch a person can finish.
+   */
+  const [shownBlanks, setShownBlanks] = useState(BATCH);
+  const [shownKnown, setShownKnown] = useState(BATCH);
 
   // Held across a failed send so the retry is the SAME batch, not a second one.
   const batchKey = useRef<string | null>(null);
@@ -248,10 +258,44 @@ export function RequestForm({
 
   /** Jump back from the summary to one row, opened and in view. */
   function fix(studentId: string) {
+    // The row may be past the batch currently revealed, in which case there is
+    // nothing to scroll to. Reveal down to it first.
+    const inBlanks = blanks.findIndex((s) => s.studentId === studentId);
+    if (inBlanks >= 0) {
+      setShownBlanks((current) => Math.max(current, inBlanks + 1));
+    } else {
+      const inKnown = known.findIndex((s) => s.studentId === studentId);
+      if (inKnown >= 0) setShownKnown((current) => Math.max(current, inKnown + 1));
+    }
+
     setStage("list");
     setFocusId(studentId);
     update(studentId, { status: "editing" });
   }
+
+  /**
+   * Reveal the next batch as soon as the current one is finished.
+   *
+   * She gets the "I finished a batch" beat without having to ask for more, and
+   * the button below stays for when she wants to skip ahead. Appending rather
+   * than paging: her answers are keyed by student id either way, but hiding
+   * rows she has already done would make the group heading's count read as a
+   * lie, and it would lose her scroll position every ten rows.
+   */
+  useEffect(() => {
+    const batchDone = (group: TeacherRosterRow[], shown: number) =>
+      shown < group.length &&
+      group
+        .slice(0, shown)
+        .every((student) => ANSWERED.includes(rows[student.studentId]!.status));
+
+    if (batchDone(blanks, shownBlanks)) {
+      setShownBlanks((current) => Math.min(current + BATCH, blanks.length));
+    }
+    if (batchDone(known, shownKnown)) {
+      setShownKnown((current) => Math.min(current + BATCH, known.length));
+    }
+  }, [rows, blanks, known, shownBlanks, shownKnown]);
 
   useEffect(() => {
     if (stage !== "list" || !focusId) return;
@@ -431,7 +475,18 @@ export function RequestForm({
             {blanks.length} बच्चों की जानकारी नहीं है — ये सबसे
             ज़रूरी हैं
           </h2>
-          <ol className="mt-2 space-y-3">{blanks.map(renderRow)}</ol>
+          <ol className="mt-2 space-y-3">
+            {blanks.slice(0, shownBlanks).map(renderRow)}
+          </ol>
+          <MoreButton
+            shown={shownBlanks}
+            total={blanks.length}
+            onMore={() =>
+              setShownBlanks((current) =>
+                Math.min(current + BATCH, blanks.length),
+              )
+            }
+          />
         </section>
       ) : null}
 
@@ -468,7 +523,16 @@ export function RequestForm({
             </div>
           ) : null}
 
-          <ol className="mt-3 space-y-3">{known.map(renderRow)}</ol>
+          <ol className="mt-3 space-y-3">
+            {known.slice(0, shownKnown).map(renderRow)}
+          </ol>
+          <MoreButton
+            shown={shownKnown}
+            total={known.length}
+            onMore={() =>
+              setShownKnown((current) => Math.min(current + BATCH, known.length))
+            }
+          />
         </section>
       ) : null}
 
@@ -491,5 +555,35 @@ export function RequestForm({
         onReview={openReview}
       />
     </>
+  );
+}
+
+/**
+ * "Next 10 (14 left)".
+ *
+ * Says how many remain rather than just offering more, because the number is
+ * the thing that tells her whether to keep going or put the phone down. Absent
+ * once everything in the group is on screen — a disabled button at the end of a
+ * list is a dead end she has to read.
+ */
+function MoreButton({
+  shown,
+  total,
+  onMore,
+}: {
+  shown: number;
+  total: number;
+  onMore: () => void;
+}) {
+  if (shown >= total) return null;
+  const left = total - shown;
+  return (
+    <button
+      type="button"
+      onClick={onMore}
+      className="mt-3 min-h-12 w-full rounded-lg border-2 border-dashed border-[var(--color-border)] px-4 font-medium text-[var(--color-ink-muted)]"
+    >
+      अगले {Math.min(BATCH, left)} दिखाएँ — {left} और बाकी
+    </button>
   );
 }

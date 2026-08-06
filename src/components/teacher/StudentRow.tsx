@@ -4,6 +4,7 @@ import { useState } from "react";
 import { validateField } from "@/lib/fields";
 import { titleCaseName } from "@/lib/classes";
 import { houseOf } from "@/lib/houses";
+import { normalisePhone, PHONE_LENGTH } from "@/lib/phone";
 import type { RowState, TeacherField, TeacherRosterRow } from "./types";
 
 /**
@@ -174,12 +175,24 @@ export function StudentRow({
       {/* --------------------------------------------------------- the inputs */}
       {editing ? (
         <div className="mt-3 space-y-3">
-          {fields.map((field) => (
+          {fields.map((field, index) => (
             <FieldInput
               key={field.key}
               field={field}
               value={state.values[field.key] ?? student.values[field.key] ?? ""}
               onChange={(value) => onChange(field.key, value)}
+              last={index === fields.length - 1}
+              // Auto-advance needs to know where to go next, and the row is the
+              // only thing that knows the order.
+              onFilled={() => {
+                const inputs = document.querySelectorAll<HTMLInputElement>(
+                  `#student-${CSS.escape(student.studentId)} input`,
+                );
+                const next = inputs[index + 1];
+                // Never jump onto a field she has already filled — she did not
+                // ask to revisit it, and moving the caret there loses her place.
+                if (next && next.value === "") next.focus();
+              }}
             />
           ))}
         </div>
@@ -207,12 +220,16 @@ export function StudentRow({
             </>
           ) : null}
 
+          {/* Sticks to the bottom of the viewport while she is typing, so it
+              is never the thing hiding behind the keyboard. Combined with
+              interactiveWidget: "resizes-content" in the root layout, which is
+              what makes sticky mean anything once a keyboard is open. */}
           {editing ? (
             <button
               type="button"
               onClick={onDone}
               disabled={invalid}
-              className="min-h-12 flex-1 rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)] disabled:opacity-40"
+              className="sticky bottom-2 z-10 min-h-12 flex-1 rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)] shadow-sm disabled:opacity-40"
             >
               हो गया
             </button>
@@ -329,10 +346,16 @@ function FieldInput({
   field,
   value,
   onChange,
+  last,
+  onFilled,
 }: {
   field: TeacherField;
   value: string;
   onChange: (value: string) => void;
+  /** Last field in the row, so the keyboard offers Done rather than Next. */
+  last: boolean;
+  /** A fixed-length field just reached its length by growing. */
+  onFilled: () => void;
 }) {
   const [touched, setTouched] = useState(false);
   const isNumeric = numeric(field);
@@ -374,10 +397,24 @@ function FieldInput({
       </span>
       <input
         value={value}
-        onChange={(event) => onChange(clean(field, event.target.value))}
+        onChange={(event) => {
+          const next = clean(field, event.target.value);
+          onChange(next);
+          // Move on only when the field GREW into a complete value. Doing it on
+          // any change would yank the caret away the moment she backspaces to
+          // correct the last digit, which is exactly when she needs to stay.
+          if (
+            field.exactLen !== null &&
+            next.length === field.exactLen &&
+            next.length > value.length
+          ) {
+            onFilled();
+          }
+        }}
         onBlur={() => setTouched(true)}
         type={field.inputType === "date" ? "date" : "text"}
         inputMode={isNumeric ? "numeric" : "text"}
+        enterKeyHint={last ? "done" : "next"}
         autoComplete="off"
         autoCorrect="off"
         autoCapitalize={isNumeric ? "off" : "words"}
@@ -405,17 +442,18 @@ function FieldInput({
  * Strip what cannot belong, silently.
  *
  * A parent's number arrives on WhatsApp as +91 98765 43210 as often as not, and
- * pasting it should just work. The same normalisation the importer already does
- * to the fee app's export.
+ * pasting it should just work. Do not error on something you can simply fix.
+ *
+ * A ten-digit numeric field IS a phone number here, so it goes through the same
+ * lib/phone.ts the request builder and the server use — one definition of what
+ * a number is, rather than this one drifting from theirs. Other numeric fields
+ * (Aadhaar at twelve digits, marks) just lose their non-digits.
  */
 function clean(field: TeacherField, raw: string): string {
   if (!numeric(field)) return raw;
+  if (field.exactLen === PHONE_LENGTH) return normalisePhone(raw);
 
-  let digits = raw.replace(/\D/g, "");
-  if (field.exactLen === 10) {
-    if (digits.length > 10 && digits.startsWith("91")) digits = digits.slice(2);
-    if (digits.length > 10 && digits.startsWith("0")) digits = digits.slice(1);
-  }
+  const digits = raw.replace(/\D/g, "");
   return field.exactLen ? digits.slice(0, field.exactLen) : digits;
 }
 

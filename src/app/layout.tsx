@@ -42,6 +42,13 @@ export const viewport: Viewport = {
   initialScale: 1,
   // Teachers pinch-zoom to read. Do not take that away.
   maximumScale: 5,
+  /**
+   * Shrink the page when the on-screen keyboard opens instead of letting the
+   * keyboard sit on top of it. Without this, `position: sticky` bottom bars are
+   * pinned to a viewport the keyboard is covering, so "हो गया" and "देखें और
+   * भेजें" end up underneath it at exactly the moment she wants them.
+   */
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
