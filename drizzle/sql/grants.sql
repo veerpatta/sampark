@@ -27,7 +27,7 @@ GRANT USAGE ON SCHEMA public TO app_rw;
 
 -- ---------------------------------------------------------------- read/write
 GRANT SELECT, INSERT, UPDATE, DELETE ON
-  students, requests, request_students, student_records,
+  students, requests, request_students, request_batches, student_records,
   teachers, users, field_defs, rate_limits,
   value_sources
 TO app_rw;
@@ -62,7 +62,10 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_rw;
 CREATE OR REPLACE VIEW request_progress AS
 SELECT r.id,
        r.title,
-       r.class_label,
+       -- class_label is NULL for a link scoped to a house or a bus route, whose
+       -- roster spans classes. Fall back to the audience label so this view
+       -- always names the group the link was actually for.
+       coalesce(r.class_label, r.audience_label) AS class_label,
        t.name AS teacher,
        r.due_date,
        r.status,

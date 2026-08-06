@@ -23,7 +23,7 @@ export default async function RequestsPage() {
       key: "class",
       header: "Class",
       role: "secondary",
-      cell: (request) => request.classLabel,
+      cell: (request) => request.audienceLabel,
       cellClassName: "font-medium",
     },
     {
@@ -110,12 +110,20 @@ export default async function RequestsPage() {
             {requests.length} request{requests.length === 1 ? "" : "s"}
           </p>
         </div>
-        <Link
-          href="/requests/new"
-          className="flex min-h-[var(--tap-min)] items-center rounded-lg bg-[var(--color-brand-600)] px-4 text-sm font-medium text-white hover:bg-[var(--color-brand-700)]"
-        >
-          New request
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href="/requests/bulk"
+            className="flex min-h-[var(--tap-min)] items-center rounded-lg border border-[var(--color-brand-600)] px-4 text-sm font-medium text-[var(--color-brand-700)]"
+          >
+            Send to many
+          </Link>
+          <Link
+            href="/requests/new"
+            className="flex min-h-[var(--tap-min)] items-center rounded-lg bg-[var(--color-brand-600)] px-4 text-sm font-medium text-white hover:bg-[var(--color-brand-700)]"
+          >
+            New request
+          </Link>
+        </div>
       </header>
 
       <DataTable

@@ -89,34 +89,26 @@ export function ProgressRail({
 
       {pending > 0 ? (
         <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
-          {pending} फ़ोन में सुरक्षित, अभी भेजे नहीं गए
+          {busy
+            ? "भेजा जा रहा है…"
+            : `${pending} फ़ोन में सुरक्षित, अपने आप जा रहे हैं`}
         </p>
       ) : null}
 
-      {/* This does not send any more. It opens the summary, and the summary
-          sends — so she cannot submit forty-six rows without having read what
-          she is submitting. The label says so plainly rather than pretending
-          the extra screen is not there. */}
+      {/* Opens the receipt. It does not send and no longer needs to — answers
+          go by themselves — so this is for looking, and the label says only
+          that. It is enabled as soon as there is anything to look at. */}
       <button
         type="button"
         onClick={onReview}
-        disabled={busy || pending === 0}
+        disabled={done === 0}
         className="mt-2 min-h-12 w-full rounded-lg bg-[var(--color-brand-600)] px-4 font-semibold text-white disabled:opacity-40"
       >
-        {busy
-          ? "भेजा जा रहा है…"
-          : pending > 0
-            ? `देखें और भेजें (${pending})`
-            : sent > 0
-              ? "सब भेज दिया गया"
-              : // Nothing answered yet. This used to say "सब भेज दिया गया" —
-                // everything has been sent — to a teacher who had not yet
-                // touched a single row.
-                "पहले जवाब दें"}
+        {done === 0 ? "पहले जवाब दें" : `देखें (${done})`}
       </button>
       {pending > 0 && !online ? (
         <p className="mt-1 text-center text-xs text-[var(--color-ink-muted)]">
-          इंटरनेट नहीं है — देख लें, भेजना अपने आप हो जाएगा।
+          इंटरनेट नहीं है — काम करती रहें, जुड़ते ही अपने आप चला जाएगा।
         </p>
       ) : null}
     </div>

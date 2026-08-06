@@ -68,7 +68,7 @@ export async function GET(
   return NextResponse.json({
     request: {
       title: resolved.title,
-      classLabel: resolved.classLabel,
+      audienceLabel: resolved.audienceLabel,
       period: resolved.period,
       dueDate: resolved.dueDate,
       teacherName: resolved.teacherName,

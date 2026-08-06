@@ -90,48 +90,65 @@ export function ReviewQueue({
   const groups = groupByRequest(showStale ? [...live, ...stale] : live);
 
   return (
-    <div className="space-y-8">
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card px-4 py-3">
-        <span className="text-sm font-medium">
-          {selected.size} of {live.length} selected
-        </span>
-        <button
-          type="button"
-          onClick={() =>
-            setSelected(
-              selected.size === live.length
-                ? new Set()
-                : new Set(live.map((item) => item.id)),
-            )
-          }
-          className="text-sm text-[var(--color-brand-600)] hover:underline"
-        >
-          {selected.size === live.length ? "Clear all" : "Select all"}
-        </button>
+    <div className="space-y-8 pb-40 md:pb-0">
+      {/*
+        The bar goes to the BOTTOM on a phone and stays at the top on a desktop.
+        Same reasoning as the teacher's progress rail: this is the screen the
+        office uses most, one hand, and the approve button belongs where the
+        thumb already is. At md and up there is a mouse and a top bar reads as a
+        toolbar, which is what it is there.
+      */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] md:sticky md:top-0 md:inset-x-auto md:rounded-[var(--radius-card)] md:border md:p-3 md:shadow-card">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3">
+          <span className="text-sm font-medium">
+            {selected.size} of {live.length} selected
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              setSelected(
+                selected.size === live.length
+                  ? new Set()
+                  : new Set(live.map((item) => item.id)),
+              )
+            }
+            className="text-sm text-[var(--color-brand-600)] hover:underline"
+          >
+            {selected.size === live.length ? "Clear all" : "Select all"}
+          </button>
 
-        <div className="ml-auto flex items-center gap-2">
-          <input
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder="Note (optional)"
-            className="w-48 rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
-          />
-          <button
-            type="button"
-            onClick={() => submit("rejected")}
-            disabled={!canApprove || selected.size === 0 || pending}
-            className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-danger)] disabled:opacity-40"
-          >
-            Reject
-          </button>
-          <button
-            type="button"
-            onClick={() => submit("approved")}
-            disabled={!canApprove || selected.size === 0 || pending}
-            className="rounded-lg bg-[var(--color-success)] px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-          >
-            {pending ? "Working…" : `Approve ${selected.size}`}
-          </button>
+          {/* Behind a disclosure below md: a text input inside a sticky thumb
+              bar eats the whole bar at 390px, and a note is the rare case. */}
+          <details className="w-full md:ml-auto md:w-auto">
+            <summary className="cursor-pointer list-none py-1 text-label text-[var(--color-ink-muted)] md:hidden">
+              {note ? `Note: ${note}` : "Add a note"}
+            </summary>
+            <input
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="Note (optional)"
+              className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 text-sm md:mt-0 md:w-48 md:min-h-0 md:py-2"
+            />
+          </details>
+
+          <div className="flex w-full gap-2 md:w-auto">
+            <button
+              type="button"
+              onClick={() => submit("rejected")}
+              disabled={!canApprove || selected.size === 0 || pending}
+              className="min-h-[var(--tap-min)] flex-1 rounded-lg border border-[var(--color-border)] px-4 text-sm font-medium text-[var(--color-danger)] transition-transform active:scale-[0.98] disabled:opacity-40 md:min-h-0 md:flex-none md:py-2"
+            >
+              Reject{selected.size > 0 ? ` ${selected.size}` : ""}
+            </button>
+            <button
+              type="button"
+              onClick={() => submit("approved")}
+              disabled={!canApprove || selected.size === 0 || pending}
+              className="min-h-[var(--tap-min)] flex-1 rounded-lg bg-[var(--color-success)] px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-40 md:min-h-0 md:flex-none md:py-2"
+            >
+              {pending ? "Working…" : `Approve ${selected.size}`}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -159,76 +176,90 @@ export function ReviewQueue({
           <header className="flex flex-wrap items-baseline gap-2 border-b border-[var(--color-border)] px-4 py-3">
             <h2 className="font-medium">{group.requestTitle}</h2>
             <span className="text-sm text-[var(--color-ink-muted)]">
-              {group.classLabel} · {group.teacherName} ·{" "}
+              {group.audienceLabel} · {group.teacherName} ·{" "}
               {group.items.length} item{group.items.length === 1 ? "" : "s"}
             </span>
           </header>
 
-          <table className="w-full text-sm">
-            <tbody>
-              {group.items.map((item) => (
-                <tr
-                  key={item.id}
-                  className={`border-b border-[var(--color-border)] last:border-0 ${
-                    item.superseded ? "opacity-50" : ""
+          <ul className="divide-y divide-[var(--color-border)]">
+            {group.items.map((item) => (
+              <li key={item.id}>
+                {/*
+                  The whole row is the tap target, not a 16px checkbox in a
+                  corner. On a phone that is the difference between a screen you
+                  can work through one-handed and one you have to aim at. The
+                  checkbox stays for the pointer and for the keyboard, and its
+                  own click is stopped so it does not toggle twice.
+                */}
+                <label
+                  className={`flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-sm ${
+                    item.superseded
+                      ? "opacity-50"
+                      : selected.has(item.id)
+                        ? "bg-[var(--color-brand-50)]"
+                        : ""
                   }`}
                 >
-                  <td className="w-10 px-4 py-2">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(item.id)}
-                      onChange={() => toggle(item.id)}
-                      disabled={item.superseded}
-                      className="h-4 w-4"
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <div className="font-medium">
-                      {titleCaseName(item.studentName)}
-                    </div>
-                    <div className="font-mono text-xs text-[var(--color-ink-muted)]">
-                      {item.studentId}
-                    </div>
-                  </td>
-                  <td className="px-2 py-2 text-[var(--color-ink-muted)]">
-                    {item.fieldLabel}
-                  </td>
-                  <td className="px-2 py-2">
-                    {item.action === "not_present" ? (
-                      <span className="rounded bg-[var(--color-absent-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-absent-fg)]">
-                        teacher says not in this class
+                  <input
+                    type="checkbox"
+                    checked={selected.has(item.id)}
+                    onChange={() => toggle(item.id)}
+                    disabled={item.superseded}
+                    className="mt-1 h-5 w-5 shrink-0"
+                  />
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="text-name font-medium">
+                        {titleCaseName(item.studentName)}
                       </span>
-                    ) : (
-                      <span className="font-mono text-xs">
-                        <span className="line-through opacity-60">
-                          {item.oldValue ?? "empty"}
-                        </span>
-                        <span className="mx-2" aria-hidden>
-                          →
-                        </span>
-                        <span className="font-medium not-italic">
-                          {item.newValue ?? "empty"}
-                        </span>
+                      <span className="text-meta text-[var(--color-ink-muted)]">
+                        {item.fieldLabel}
                       </span>
-                    )}
+                    </div>
+
+                    <div className="mt-1">
+                      {item.action === "not_present" ? (
+                        <span className="rounded bg-[var(--color-absent-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-absent-fg)]">
+                          teacher says not in this class
+                        </span>
+                      ) : (
+                        <span className="font-mono text-xs">
+                          <span className="line-through opacity-60">
+                            {item.oldValue ?? "empty"}
+                          </span>
+                          <span className="mx-2" aria-hidden>
+                            →
+                          </span>
+                          <span className="font-medium not-italic">
+                            {item.newValue ?? "empty"}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+
                     {/* Neutral. Siblings share a parent's phone — this is
                         context for the office, never a warning and never a
                         reason not to approve. */}
                     {item.alsoOn > 0 ? (
-                      <div className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+                      <p className="mt-0.5 text-meta text-[var(--color-ink-muted)]">
                         also on {item.alsoOn} other{" "}
                         {item.alsoOn === 1 ? "student" : "students"} — usually
                         siblings
-                      </div>
+                      </p>
                     ) : null}
-                  </td>
-                  <td className="px-4 py-2 text-right text-xs text-[var(--color-ink-muted)]">
-                    {item.superseded ? "superseded" : formatWhen(item.submittedAt)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+                    <p className="mt-0.5 font-mono text-meta text-[var(--color-ink-muted)]">
+                      {item.studentId} ·{" "}
+                      {item.superseded
+                        ? "superseded"
+                        : formatWhen(item.submittedAt)}
+                    </p>
+                  </div>
+                </label>
+              </li>
+            ))}
+          </ul>
         </section>
       ))}
 
@@ -256,7 +287,7 @@ export function ReviewQueue({
 type Group = {
   requestId: string;
   requestTitle: string;
-  classLabel: string;
+  audienceLabel: string;
   teacherName: string;
   items: ReviewItem[];
 };
@@ -271,7 +302,7 @@ function groupByRequest(items: ReviewItem[]): Group[] {
       groups.set(item.requestId, {
         requestId: item.requestId,
         requestTitle: item.requestTitle,
-        classLabel: item.classLabel,
+        audienceLabel: item.audienceLabel,
         teacherName: item.teacherName,
         items: [item],
       });

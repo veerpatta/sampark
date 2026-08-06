@@ -46,6 +46,15 @@ export default async function StudentImportPage() {
         </p>
       </header>
 
+      {/* An honest line rather than a rebuild. This screen is a file picker
+          followed by a per-row diff over five hundred students; there is no
+          version of it that is pleasant on a 390px phone, and pretending
+          otherwise would waste someone's afternoon before they found out. */}
+      <p className="rounded-[var(--radius-card)] border border-[var(--color-warning)] bg-amber-50 px-4 py-3 text-sm text-[var(--color-warning-fg)] md:hidden">
+        Importing means checking a few hundred rows before you confirm them.
+        Use a computer for this one.
+      </p>
+
       <ImportWizard columns={columns} />
     </div>
   );

@@ -30,8 +30,16 @@ export type TeacherRosterRow = {
   route: string | null;
   /** One of the four houses. Rendered as a coloured chip. */
   house: string | null;
+  /** Which class — a house or route link carries children from several. */
+  classLabel: string | null;
   fatherName: string | null;
   values: Record<string, string | null>;
+  /**
+   * A number already on record for a sibling, when this child has none.
+   * Offered as one tap and never prefilled — see snapshots.ts, where it is
+   * worked out and frozen.
+   */
+  siblingPhone: { name: string; phone: string } | null;
 };
 
 /**

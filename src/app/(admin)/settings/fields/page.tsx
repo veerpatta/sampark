@@ -19,10 +19,17 @@ export default async function FieldSettingsPage() {
   const session = await currentUser();
   if (!session || !canManageSettings(session.role)) redirect("/");
 
-  const fields = await db
+  const all = await db
     .select()
     .from(schema.fieldDefs)
     .orderBy(asc(schema.fieldDefs.sortOrder), asc(schema.fieldDefs.key));
+
+  // One-off questions the office added while building a request are separated
+  // out. They accumulate — one per uniform order, one per trip — and thirty of
+  // them interleaved would bury the sixteen fields that actually write to the
+  // student record, which is what this screen is for.
+  const fields = all.filter((field) => field.recordKind !== "adhoc");
+  const questions = all.filter((field) => field.recordKind === "adhoc");
 
   const columns = [...STUDENT_COLUMN_BY_DB_NAME.keys()].sort();
 
@@ -75,7 +82,7 @@ export default async function FieldSettingsPage() {
           <Select
             name="inputType"
             label="Input type"
-            options={["text", "tel", "date", "number", "select"]}
+            options={["text", "tel", "date", "number", "select", "boolean"]}
           />
           <Select
             name="targetColumn"
@@ -110,7 +117,9 @@ export default async function FieldSettingsPage() {
         </form>
       </section>
 
-      <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
+      {/* Seven columns of reference, read a few times a year at a desk. It
+          scrolls sideways on a phone rather than being rebuilt as cards. */}
+      <section className="overflow-x-auto rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
         <table className="w-full text-sm">
           <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
             <tr>
@@ -187,6 +196,56 @@ export default async function FieldSettingsPage() {
         and stored records all reference the key, and an inactive field simply
         stops being offered on new requests while its history stays readable.
       </p>
+
+      {questions.length > 0 ? (
+        <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4 md:p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
+            One-off questions
+          </h2>
+          <p className="mt-1 max-w-prose text-sm text-[var(--color-ink-muted)]">
+            Added from the request builder by anyone who can send a request.
+            These never write to a student record — answers are stored against
+            the request that asked them — which is why they do not need an owner
+            to create.
+          </p>
+          <ul className="mt-3 divide-y divide-[var(--color-border)]">
+            {questions.map((field) => (
+              <li
+                key={field.key}
+                className={`flex items-center gap-3 py-2 ${
+                  field.active ? "" : "opacity-50"
+                }`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm">
+                    {field.labelEn}
+                    <span lang="hi" className="ml-2 text-[var(--color-ink-muted)]">
+                      {field.labelHi}
+                    </span>
+                  </p>
+                  <p className="font-mono text-xs text-[var(--color-ink-muted)]">
+                    {field.key} · {field.inputType}
+                  </p>
+                </div>
+                <form action={setFieldActive}>
+                  <input type="hidden" name="key" value={field.key} />
+                  <input
+                    type="hidden"
+                    name="active"
+                    value={field.active ? "false" : "true"}
+                  />
+                  <button
+                    type="submit"
+                    className="text-xs text-[var(--color-ink-muted)] hover:underline"
+                  >
+                    {field.active ? "Switch off" : "Switch on"}
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }

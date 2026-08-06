@@ -7,6 +7,7 @@ import { houseOf } from "@/lib/houses";
 import { normalisePhone, PHONE_LENGTH } from "@/lib/phone";
 import { HouseChip } from "@/components/HouseChip";
 import { tick } from "./haptics";
+import { rowReady, rowTouched } from "./autosave";
 
 import type { RowState, TeacherField, TeacherRosterRow } from "./types";
 
@@ -36,12 +37,16 @@ export function StudentRow({
   onEdit,
   onAbsent,
   onChange,
-  onDone,
+  onLeave,
+  onFilledLast,
   onReopen,
+  suggestions,
 }: {
   student: TeacherRosterRow;
   fields: TeacherField[];
   state: RowState;
+  /** Carry-down values from the row above, keyed by field. */
+  suggestions: Record<string, string | null>;
   /** The school holds nothing for this student — inputs open immediately. */
   blank: boolean;
   sent: boolean;
@@ -49,7 +54,10 @@ export function StudentRow({
   onEdit: () => void;
   onAbsent: () => void;
   onChange: (fieldKey: string, value: string) => void;
-  onDone: () => void;
+  /** Focus left the row entirely — commit now rather than waiting out the timer. */
+  onLeave: () => void;
+  /** The last field reached a complete value. Nothing more to wait for. */
+  onFilledLast: () => void;
   onReopen: () => void;
 }) {
   // Every answer gets one tick. Wrapped here rather than at each call site so
@@ -67,16 +75,21 @@ export function StudentRow({
     state.status === "edited" ||
     state.status === "absent";
 
-  const invalid = fields.some((field) => {
-    const value = state.values[field.key];
-    if (value === undefined || value === "") return false;
-    return !validateField(field, value).ok;
-  });
+  const touched = rowTouched(state);
+  const ready = rowReady(fields, state);
 
   return (
     <li
       // The anchor the review screen scrolls back to when she taps a change.
       id={`student-${student.studentId}`}
+      // Leaving the row is her saying she is finished with it, so it commits
+      // without waiting out the timer. relatedTarget tells us whether focus
+      // went somewhere else inside this same row, which is not leaving.
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          onLeave();
+        }
+      }}
       // The state colour crossfades over 200ms rather than snapping, which is
       // how the row says "yes, that registered". A plain CSS transition and not
       // Motion on purpose: Motion cannot tween a var(), and the reduced-motion
@@ -104,10 +117,21 @@ export function StudentRow({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {sent ? (
-            <span className="rounded bg-[var(--color-surface)] px-1.5 py-0.5 text-xs text-[var(--color-confirm-fg)]">
-              भेज दिया
-            </span>
+          {/* Two facts, never collapsed into one tick.
+              With nothing to press, there is no moment that means "handed
+              over", so the row has to carry it: grey while it is only on the
+              phone, green once the school actually has it. On a bad signal the
+              difference is the whole truth. */}
+          {answered ? (
+            sent ? (
+              <span className="rounded bg-[var(--color-confirm-bg)] px-1.5 py-0.5 text-xs font-medium text-[var(--color-confirm-fg)]">
+                ✓ विद्यालय पहुँच गया
+              </span>
+            ) : (
+              <span className="rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-xs text-[var(--color-ink-muted)]">
+                फ़ोन में सुरक्षित
+              </span>
+            )
           ) : null}
           {state.status === "confirmed" ? (
             <span className="text-2xl text-[var(--color-confirm-fg)]" aria-label="सही है">
@@ -199,6 +223,16 @@ export function StudentRow({
               last={index === fields.length - 1}
               // Auto-advance needs to know where to go next, and the row is the
               // only thing that knows the order.
+              suggestion={suggestions[field.key] ?? null}
+              // Only on a phone field the school holds nothing for. A child who
+              // already has a number is not asking a question.
+              sibling={
+                field.exactLen === PHONE_LENGTH &&
+                !student.values[field.key] &&
+                student.siblingPhone
+                  ? student.siblingPhone
+                  : null
+              }
               onFilled={() => {
                 const inputs = document.querySelectorAll<HTMLInputElement>(
                   `#student-${CSS.escape(student.studentId)} input`,
@@ -206,10 +240,25 @@ export function StudentRow({
                 const next = inputs[index + 1];
                 // Never jump onto a field she has already filled — she did not
                 // ask to revisit it, and moving the caret there loses her place.
-                if (next && next.value === "") next.focus();
+                if (next && next.value === "") {
+                  next.focus();
+                  return;
+                }
+                // Nothing left to fill in this row, so there is nothing to wait
+                // for either. Commit it now rather than after the timer.
+                onFilledLast();
               }}
             />
           ))}
+
+          {/* A row that will not commit has to say so. Otherwise the only
+              signal that a half-typed number was never counted is its absence
+              from a total she has no reason to be adding up. */}
+          {!ready && touched ? (
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              अभी पूरा नहीं हुआ
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -233,21 +282,6 @@ export function StudentRow({
                 बदलें
               </button>
             </>
-          ) : null}
-
-          {/* Sticks to the bottom of the viewport while she is typing, so it
-              is never the thing hiding behind the keyboard. Combined with
-              interactiveWidget: "resizes-content" in the root layout, which is
-              what makes sticky mean anything once a keyboard is open. */}
-          {editing ? (
-            <button
-              type="button"
-              onClick={answer(onDone)}
-              disabled={invalid}
-              className="sticky bottom-2 z-10 min-h-12 flex-1 rounded-lg transition-transform active:scale-[0.98] border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)] shadow-sm disabled:opacity-40"
-            >
-              हो गया
-            </button>
           ) : null}
 
           {answered ? (
@@ -331,6 +365,36 @@ function Recognition({
 }
 
 /**
+ * A one-tap value she can take or ignore.
+ *
+ * Always a suggestion, never a prefill. A prefilled value that happens to be
+ * wrong gets confirmed by a tired thumb and the office cannot tell the
+ * difference afterwards; a value she had to reach for was chosen.
+ */
+function SuggestChip({
+  label,
+  value,
+  onUse,
+}: {
+  label: string;
+  value: string;
+  onUse: (value: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        tick();
+        onUse(value);
+      }}
+      className="mt-2 min-h-12 w-full rounded-lg border-2 border-dashed border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-3 text-sm font-medium text-[var(--color-correct-fg)] transition-transform active:scale-[0.98]"
+    >
+      {label} — लगाएँ
+    </button>
+  );
+}
+
+/**
  * One field's input.
  *
  * Three things matter here, all of them about not making her give up:
@@ -350,6 +414,8 @@ function FieldInput({
   onChange,
   last,
   onFilled,
+  suggestion,
+  sibling,
 }: {
   field: TeacherField;
   value: string;
@@ -358,6 +424,10 @@ function FieldInput({
   last: boolean;
   /** A fixed-length field just reached its length by growing. */
   onFilled: () => void;
+  /** What the row above answered for this field, when carrying down is safe. */
+  suggestion: string | null;
+  /** A sibling's number, on a blank phone field only. */
+  sibling: { name: string; phone: string } | null;
 }) {
   const [touched, setTouched] = useState(false);
   const isNumeric = numeric(field);
@@ -365,7 +435,86 @@ function FieldInput({
   const full = field.exactLen !== null && value.length >= field.exactLen;
   const bad = value !== "" && !check.ok && (touched || full);
 
+  // Two buttons, not a checkbox. A checkbox has one visible state and its
+  // unticked state is indistinguishable from "nobody has looked at this" — the
+  // exact ambiguity the whole review path exists to avoid.
+  if (field.inputType === "boolean") {
+    return (
+      <div>
+        <span className="text-label text-[var(--color-ink-muted)]">
+          {field.labelHi}
+        </span>
+        <div className="mt-1 flex gap-2">
+          {[
+            { value: "yes", label: "हाँ" },
+            { value: "no", label: "नहीं" },
+          ].map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                tick();
+                onChange(option.value);
+              }}
+              className={`min-h-12 flex-1 rounded-lg border-2 px-4 font-semibold transition-transform active:scale-[0.98] ${
+                value === option.value
+                  ? "border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
+                  : "border-[var(--color-border)]"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (field.inputType === "select") {
+    const options = optionsOf(field);
+
+    // A native select is right for four houses and hostile for twenty-nine bus
+    // routes — on Android that is a full-screen wheel she has to scroll through
+    // for every child. Above a dozen options, type-to-filter with a datalist is
+    // faster and the whitelist still decides what counts as an answer.
+    if (options.length > 12) {
+      return (
+        <label className="block">
+          <span className="text-label text-[var(--color-ink-muted)]">
+            {field.labelHi}
+          </span>
+          <input
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onBlur={() => setTouched(true)}
+            list={`options-${field.key}`}
+            enterKeyHint={last ? "done" : "next"}
+            autoComplete="off"
+            autoCapitalize="words"
+            placeholder="टाइप करके ढूँढें"
+            className={`mt-1 min-h-12 w-full rounded-lg border-2 px-3 text-base ${
+              bad
+                ? "border-[var(--color-danger)]"
+                : "border-[var(--color-border)]"
+            }`}
+          />
+          <datalist id={`options-${field.key}`}>
+            {options.map((option) => (
+              <option key={option} value={option} />
+            ))}
+          </datalist>
+          {suggestion && !value ? (
+            <SuggestChip label={`पिछले जैसा: ${suggestion}`} onUse={onChange} value={suggestion} />
+          ) : null}
+          {bad ? (
+            <span role="alert" className="mt-1 block text-sm text-[var(--color-danger)]">
+              सूची में से चुनें
+            </span>
+          ) : null}
+        </label>
+      );
+    }
+
     return (
       <label className="block">
         <span className="text-label text-[var(--color-ink-muted)]">
@@ -377,12 +526,15 @@ function FieldInput({
           className="mt-1 min-h-12 w-full rounded-lg border-2 border-[var(--color-border)] px-3 text-base"
         >
           <option value="">— चुनें —</option>
-          {optionsOf(field).map((option) => (
+          {options.map((option) => (
             <option key={option} value={option}>
               {option}
             </option>
           ))}
         </select>
+        {suggestion && !value ? (
+          <SuggestChip label={`पिछले जैसा: ${suggestion}`} onUse={onChange} value={suggestion} />
+        ) : null}
       </label>
     );
   }
@@ -428,6 +580,18 @@ function FieldInput({
           bad ? "border-[var(--color-danger)]" : "border-[var(--color-border)]"
         } ${isNumeric ? "font-mono" : ""}`}
       />
+      {/* Siblings share a parent's mobile — 134 numbers in this school already
+          do. Offered as a tap on a blank field, never prefilled: she is the one
+          who knows whether these two children really are brother and sister,
+          and the answer still goes through the office review queue. */}
+      {sibling && !value ? (
+        <SuggestChip
+          label={`${sibling.name} का नंबर: ${sibling.phone}`}
+          value={sibling.phone}
+          onUse={onChange}
+        />
+      ) : null}
+
       {bad ? (
         <span
           role="alert"

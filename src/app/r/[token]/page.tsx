@@ -37,7 +37,7 @@ export default async function TeacherRequestPage({
       <header className="sticky top-0 z-10 -mx-4 bg-[var(--color-brand-900)] px-4 py-3 text-white">
         <div className="mx-auto max-w-md">
           <div className="flex items-baseline justify-between gap-3">
-            <h1 className="text-lg font-semibold">{request.classLabel}</h1>
+            <h1 className="text-lg font-semibold">{request.audienceLabel}</h1>
             <p className="shrink-0 text-xs opacity-80">
               {formatHindiDate(request.dueDate)} तक
             </p>
@@ -53,12 +53,17 @@ export default async function TeacherRequestPage({
         {request.teacherName} जी — {request.title}
       </p>
 
+      {/* Says what actually happens now. The old copy promised a review screen
+          before anything left the phone, and that promise is no longer kept —
+          answers go by themselves. Saying so plainly is the trade: she is told
+          she can still fix anything, and the office review queue is unchanged
+          behind it, so nothing reaches a student record unapproved either way. */}
       <p className="mt-3 rounded-[var(--radius-card)] border border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-3 text-sm text-[var(--color-confirm-fg)]">
         जिन बच्चों की जानकारी नहीं है, वे सबसे ऊपर हैं — पहले वही भरें। बाकी
         सबकी जानकारी पहले से है; ठीक हो तो एक बार में{" "}
-        <strong>सब सही हैं</strong> दबा दें। अंत में नीचे{" "}
-        <strong>देखें और भेजें</strong> दबाएँ — भेजने से पहले आपको पूरी सूची एक
-        बार दिख जाएगी।
+        <strong>सब सही हैं</strong> दबा दें। जो आप भरती जाएँगी वह{" "}
+        <strong>अपने आप विद्यालय पहुँचता रहेगा</strong> — कुछ भी गलत हो जाए तो
+        बाद में ठीक कर सकती हैं।
       </p>
 
       <RequestForm

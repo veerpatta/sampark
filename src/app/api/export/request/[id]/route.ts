@@ -64,11 +64,11 @@ export async function GET(
   ];
 
   const file = await buildWorkbook(
-    [{ name: request.classLabel, rows }],
+    [{ name: request.audienceLabel, rows }],
     columns,
   );
 
-  const name = `sampark-${request.title}-${request.classLabel}-${request.dueDate}`
+  const name = `sampark-${request.title}-${request.audienceLabel}-${request.dueDate}`
     .replace(/[^a-zA-Z0-9-]+/g, "-")
     .replace(/-+/g, "-")
     .slice(0, 80);

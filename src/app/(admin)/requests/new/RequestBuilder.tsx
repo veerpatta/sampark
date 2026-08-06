@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Template } from "@/lib/templates";
 import { hasPhone, isCompletePhone, normalisePhone, samePhone } from "@/lib/phone";
 import { chooseTeacherForClass, partitionByClass } from "@/lib/teachers";
+import { AddQuestion } from "@/components/admin/AddQuestion";
 
 type FieldOption = {
   key: string;
@@ -289,6 +290,14 @@ export function RequestBuilder({
             </label>
           ))}
         </fieldset>
+
+        <AddQuestion
+          onAdded={(key) =>
+            setFieldKeys((current) =>
+              current.includes(key) ? current : [...current, key],
+            )
+          }
+        />
 
         {needsPeriod ? (
           <label className="mt-4 block max-w-xs">

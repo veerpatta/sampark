@@ -41,7 +41,9 @@ function student(
     name,
     route: null,
     house: null,
+    classLabel: null,
     fatherName: null,
+    siblingPhone: null,
     values,
   };
 }

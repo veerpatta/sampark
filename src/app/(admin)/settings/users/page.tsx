@@ -132,7 +132,10 @@ export default async function UsersPage() {
         </form>
       </section>
 
-      <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
+      {/* Not converted to cards, deliberately: four columns, a handful of rows,
+          owner-only, and opened at a desk. Letting it scroll sideways on a
+          phone is the honest amount of work this screen is worth. */}
+      <section className="overflow-x-auto rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
         <table className="w-full text-sm">
           <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
             <tr>

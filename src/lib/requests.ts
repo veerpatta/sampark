@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import { generateToken } from "./auth/token";
@@ -8,7 +9,8 @@ import {
   unknownClassLabelMessage,
 } from "./classes";
 import { listClassRoster } from "./students";
-import { readStudentColumn } from "./student-columns";
+import { buildSnapshots, recordKey, type RosterSnapshot } from "./snapshots";
+import type { ScopeKind } from "./ownership";
 import { hasPhone, isCompletePhone, normalisePhone, samePhone } from "./phone";
 import type { FieldDef, Student } from "../../drizzle/schema";
 
@@ -24,33 +26,11 @@ import type { FieldDef, Student } from "../../drizzle/schema";
  */
 
 /**
- * Exactly what one student's row on the teacher's phone was prefilled with.
- *
- * RECOGNITION IS THE PRODUCT. When a request asks Class 8 for father's names,
- * the teacher gets 46 children she knows by face and by nickname and does not
- * know as a row in a spreadsheet. Every scrap of identifying data we hold makes
- * it faster for her to be SURE which child she is answering for, and being sure
- * is the whole thing. So the snapshot carries context beyond the fields being
- * asked about:
- *
- *   srNo    the one stable identifier, checkable against a paper register
- *   house   a coloured chip; the field a child answers instantly
- *   route   real context in a village school, present for about half
- *   father  known for all 504 since PSP landed
- *
- * Frozen at send time like everything else here, so the context she saw is the
- * context review reasons about. And it is per-class by construction: the token
- * scopes one class and showing more per row does not change that.
+ * The snapshot type and its builder live in lib/snapshots.ts — pure, so a
+ * bulk send can build nineteen classes' worth from one audience read. Re-exported
+ * because callers have always imported it from here.
  */
-export type RosterSnapshot = {
-  name: string;
-  srNo: string | null;
-  route: string | null;
-  house: string | null;
-  fatherName: string | null;
-  /** Keyed by field_defs.key. null means "we hold nothing for this field". */
-  values: Record<string, string | null>;
-};
+export type { RosterSnapshot };
 
 export type CreateRequestInput = {
   title: string;
@@ -68,6 +48,38 @@ export type CreateRequestInput = {
   contactPhone?: string | null;
 };
 
+/**
+ * Everything one request needs that a fan-out has already loaded.
+ *
+ * A bulk send resolves the audience, the field registry and the prior
+ * period-scoped records ONCE, then creates nineteen requests from them. Letting
+ * each request re-read those would turn one query into nineteen, three times
+ * over, on a path that already makes a hundred round trips.
+ */
+export type RequestDeps = {
+  roster: Student[];
+  fields: FieldDef[];
+  priorRecords: Map<string, string | null>;
+  token: string;
+  /** Pre-generated so an ad-hoc field can derive its period from it. */
+  requestId: string;
+};
+
+export type ScopedRequestInput = {
+  title: string;
+  /** NULL for a house or route link, whose roster spans classes. */
+  classLabel: string | null;
+  audienceKind: ScopeKind;
+  audienceLabel: string;
+  batchId?: string | null;
+  teacherId: string;
+  fieldKeys: string[];
+  period: string | null;
+  dueDate: string;
+  createdBy: string;
+  contactPhone?: string | null;
+};
+
 export class RequestValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -75,85 +87,31 @@ export class RequestValidationError extends Error {
   }
 }
 
+/**
+ * Create one request for one class. The single-request front door.
+ *
+ * Loads everything itself and hands off to createOneRequest, which is what a
+ * bulk send drives directly with a roster and a field list it has already read.
+ */
 export async function createRequest(input: CreateRequestInput): Promise<{
   id: string;
   token: string;
   rosterSize: number;
 }> {
-  const title = input.title.trim();
   const classLabel = normaliseClassLabel(input.classLabel);
-  const fieldKeys = [...new Set(input.fieldKeys.map((key) => key.trim()).filter(Boolean))];
-
-  if (!title) throw new RequestValidationError("Give the request a title.");
   if (!classLabel) throw new RequestValidationError("Pick a class.");
   // A label off the list would match no student and freeze an empty roster
   // without raising anything. Refuse before a token is even generated.
   if (!isClassLabel(classLabel)) {
     throw new RequestValidationError(unknownClassLabelMessage(classLabel));
   }
-  if (fieldKeys.length === 0) {
-    throw new RequestValidationError("Pick at least one field to ask about.");
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dueDate)) {
-    throw new RequestValidationError("Pick a due date.");
-  }
 
-  const [teacher] = await db
-    .select()
-    .from(schema.teachers)
-    .where(eq(schema.teachers.id, input.teacherId))
-    .limit(1);
-
-  if (!teacher) throw new RequestValidationError("That teacher does not exist.");
-  if (!teacher.active) {
-    throw new RequestValidationError(`${teacher.name} is marked inactive.`);
-  }
-
-  // Whatever number this link is going to has to exist before we mint a token
-  // for it. A request nobody can be sent is a roster frozen for nothing.
-  const typed = normalisePhone(input.contactPhone);
-  if (typed && !isCompletePhone(typed)) {
-    throw new RequestValidationError(
-      "A mobile number is 10 digits. Leave it blank to use her saved one.",
-    );
-  }
-  if (!typed && !hasPhone(teacher.phone)) {
-    throw new RequestValidationError(
-      `No number is saved for ${teacher.name}. Type one for this request.`,
-    );
-  }
-  // Null means "use her saved number". Only a genuine override is stored, so
-  // the column reads as a decision rather than as form noise.
-  const contactPhone =
-    typed && !samePhone(typed, teacher.phone) ? typed : null;
-
-  const fields = await db
-    .select()
-    .from(schema.fieldDefs)
-    .where(inArray(schema.fieldDefs.key, fieldKeys));
-
-  const missing = fieldKeys.filter(
-    (key) => !fields.some((field) => field.key === key),
-  );
-  if (missing.length > 0) {
-    throw new RequestValidationError(`Unknown field: ${missing.join(", ")}`);
-  }
-  const inactive = fields.filter((field) => !field.active);
-  if (inactive.length > 0) {
-    throw new RequestValidationError(
-      `${inactive.map((field) => field.labelEn).join(", ")} is switched off in the field registry.`,
-    );
-  }
-
-  // A collect-mode field lands in student_records, which is keyed by period.
-  // Without one there is nowhere for the answer to go.
-  const period = input.period?.trim() || null;
-  const needsPeriod = fields.some((field) => field.targetColumn === null);
-  if (needsPeriod && !period) {
-    throw new RequestValidationError(
-      "Collecting marks needs a period, for example 2026-27/FA1.",
-    );
-  }
+  // Minted before the period is resolved, because an ad-hoc question files its
+  // answers under the request that asked it.
+  const requestId = randomUUID();
+  const fieldKeys = normaliseFieldKeys(input.fieldKeys);
+  const fields = await resolveFields(fieldKeys);
+  const period = resolvePeriod(fields, input.period, requestId);
 
   const roster = await listClassRoster(classLabel);
   if (roster.length === 0) {
@@ -162,18 +120,76 @@ export async function createRequest(input: CreateRequestInput): Promise<{
     );
   }
 
-  const snapshots = await buildSnapshots(roster, fields, period);
-  const token = await uniqueToken();
+  const [token] = await uniqueTokens(1);
+
+  return createOneRequest(
+    {
+      title: input.title,
+      classLabel,
+      audienceKind: "class",
+      audienceLabel: classLabel,
+      teacherId: input.teacherId,
+      fieldKeys,
+      period,
+      dueDate: input.dueDate,
+      createdBy: input.createdBy,
+      contactPhone: input.contactPhone,
+    },
+    {
+      roster,
+      fields,
+      priorRecords: await loadPriorRecords(roster, fields, period),
+      token: token!,
+      requestId,
+    },
+  );
+}
+
+/**
+ * Create one request from work already done.
+ *
+ * The roster it freezes is `deps.roster` exactly — a house-wide audience is cut
+ * into per-teacher rosters by the caller, so this never re-queries and never
+ * second-guesses who is in scope.
+ */
+export async function createOneRequest(
+  input: ScopedRequestInput,
+  deps: RequestDeps,
+): Promise<{ id: string; token: string; rosterSize: number }> {
+  const title = input.title.trim();
+  if (!title) throw new RequestValidationError("Give the request a title.");
+  if (input.fieldKeys.length === 0) {
+    throw new RequestValidationError("Pick at least one field to ask about.");
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dueDate)) {
+    throw new RequestValidationError("Pick a due date.");
+  }
+  if (deps.roster.length === 0) {
+    throw new RequestValidationError(
+      `No active students in ${input.audienceLabel}.`,
+    );
+  }
+
+  const { teacher, contactPhone } = await resolveRecipient(
+    input.teacherId,
+    input.contactPhone,
+  );
+
+  const snapshots = buildSnapshots(deps.roster, deps.fields, deps.priorRecords);
 
   const [request] = await db
     .insert(schema.requests)
     .values({
-      token,
+      id: deps.requestId,
+      token: deps.token,
       title,
-      classLabel,
+      classLabel: input.classLabel,
+      audienceKind: input.audienceKind,
+      audienceLabel: input.audienceLabel,
+      batchId: input.batchId ?? null,
       teacherId: teacher.id,
-      fieldKeys,
-      period,
+      fieldKeys: input.fieldKeys,
+      period: input.period,
       dueDate: input.dueDate,
       contactPhone,
       createdBy: input.createdBy,
@@ -186,7 +202,7 @@ export async function createRequest(input: CreateRequestInput): Promise<{
   // failed to write would open to an empty list on the teacher's phone, so if
   // this throws we delete the request rather than leave that behind.
   try {
-    const rows = roster.map((student) => ({
+    const rows = deps.roster.map((student) => ({
       requestId: request.id,
       studentId: student.id,
       rollNo: student.rollNo,
@@ -201,88 +217,214 @@ export async function createRequest(input: CreateRequestInput): Promise<{
     throw error;
   }
 
-  return { id: request.id, token, rosterSize: roster.length };
+  return { id: request.id, token: deps.token, rosterSize: deps.roster.length };
+}
+
+/* --------------------------------------------------------- shared validation */
+
+export function normaliseFieldKeys(keys: string[]): string[] {
+  return [...new Set(keys.map((key) => key.trim()).filter(Boolean))];
+}
+
+/** The teacher this link is for, and the number it will actually be sent to. */
+async function resolveRecipient(
+  teacherId: string,
+  contactPhoneInput: string | null | undefined,
+) {
+  const [teacher] = await db
+    .select()
+    .from(schema.teachers)
+    .where(eq(schema.teachers.id, teacherId))
+    .limit(1);
+
+  if (!teacher) throw new RequestValidationError("That teacher does not exist.");
+  if (!teacher.active) {
+    throw new RequestValidationError(`${teacher.name} is marked inactive.`);
+  }
+
+  // Whatever number this link is going to has to exist before we mint a token
+  // for it. A request nobody can be sent is a roster frozen for nothing.
+  const typed = normalisePhone(contactPhoneInput);
+  if (typed && !isCompletePhone(typed)) {
+    throw new RequestValidationError(
+      "A mobile number is 10 digits. Leave it blank to use her saved one.",
+    );
+  }
+  if (!typed && !hasPhone(teacher.phone)) {
+    throw new RequestValidationError(
+      `No number is saved for ${teacher.name}. Type one for this request.`,
+    );
+  }
+
+  // Null means "use her saved number". Only a genuine override is stored, so
+  // the column reads as a decision rather than as form noise.
+  return {
+    teacher,
+    contactPhone: typed && !samePhone(typed, teacher.phone) ? typed : null,
+  };
+}
+
+/** The field registry rows for these keys, refusing unknown or switched-off ones. */
+export async function resolveFields(fieldKeys: string[]): Promise<FieldDef[]> {
+  if (fieldKeys.length === 0) {
+    throw new RequestValidationError("Pick at least one field to ask about.");
+  }
+
+  const fields = await db
+    .select()
+    .from(schema.fieldDefs)
+    .where(inArray(schema.fieldDefs.key, fieldKeys));
+
+  const missing = fieldKeys.filter(
+    (key) => !fields.some((field) => field.key === key),
+  );
+  if (missing.length > 0) {
+    throw new RequestValidationError(`Unknown field: ${missing.join(", ")}`);
+  }
+
+  const inactive = fields.filter((field) => !field.active);
+  if (inactive.length > 0) {
+    throw new RequestValidationError(
+      `${inactive.map((field) => field.labelEn).join(", ")} is switched off in the field registry.`,
+    );
+  }
+
+  return fields;
+}
+
+/** A one-off question added while building a request. See ADHOC_KIND below. */
+export const ADHOC_KIND = "adhoc";
+
+export const isAdhocField = (field: FieldDef) =>
+  field.targetColumn === null && field.recordKind === ADHOC_KIND;
+
+/**
+ * Where a period-scoped answer is filed.
+ *
+ * A field with no target column lands in student_records, which is keyed by
+ * period — that is how marks work, and "2026-27/FA1" is a real thing the office
+ * knows. But an ad-hoc question like "T-shirt size" has no period, and asking
+ * her to invent one is a trap: whatever she types becomes the key those answers
+ * live under forever.
+ *
+ * So an ad-hoc question files itself under the ASK that raised it — the request
+ * for a single send, the batch for a bulk one, so nineteen classes answering one
+ * question land in one period rather than nineteen. Unique by construction,
+ * nothing to have to think about, and student_records.request_id already exists
+ * so the student page can render "T-shirt size: M — asked in Uniform sizes,
+ * 12 Aug" without parsing anything.
+ *
+ * `scopeId` is absent when previewing, where the value is never written and only
+ * the compatibility check below matters.
+ */
+export function resolvePeriod(
+  fields: FieldDef[],
+  input: string | null | undefined,
+  scopeId?: string,
+): string | null {
+  const period = input?.trim() || null;
+  const periodScoped = fields.filter((field) => field.targetColumn === null);
+  const adhoc = periodScoped.filter(isAdhocField);
+
+  // One `period` column cannot be both "2026-27/FA1" and this request at once,
+  // and silently filing marks under a request id would hide them from every
+  // later period lookup.
+  if (adhoc.length > 0 && adhoc.length < periodScoped.length) {
+    throw new RequestValidationError(
+      "Marks and a one-off question cannot go in the same request — marks are stored against a period and a question against the request. Send them separately.",
+    );
+  }
+
+  if (adhoc.length > 0) {
+    return scopeId ? `ask/${scopeId}` : null;
+  }
+
+  if (periodScoped.length > 0 && !period) {
+    throw new RequestValidationError(
+      "Collecting marks needs a period, for example 2026-27/FA1.",
+    );
+  }
+  return period;
 }
 
 /**
- * Freeze the current value of every requested field for every student.
+ * What the school already holds for the period-scoped fields in this request.
  *
- * Master fields read from the students row. Fields with no target column are
- * period-scoped and read from student_records — re-sending an FA request for a
- * period already partly filled should show the teacher what is already there
- * rather than a blank column.
+ * Re-sending an FA request for a period already partly filled should show the
+ * teacher what is there rather than a blank column. Read once per send, for the
+ * whole audience, and shared across every request the fan-out creates.
  */
-async function buildSnapshots(
+export async function loadPriorRecords(
   roster: Student[],
   fields: FieldDef[],
   period: string | null,
-): Promise<Map<string, RosterSnapshot>> {
+): Promise<Map<string, string | null>> {
   const recordFields = fields.filter((field) => field.targetColumn === null);
   const priorRecords = new Map<string, string | null>();
 
-  if (recordFields.length > 0 && period) {
-    const rows = await db
-      .select()
-      .from(schema.studentRecords)
-      .where(
-        and(
-          eq(schema.studentRecords.period, period),
-          inArray(
-            schema.studentRecords.fieldKey,
-            recordFields.map((field) => field.key),
-          ),
-          inArray(
-            schema.studentRecords.studentId,
-            roster.map((student) => student.id),
-          ),
+  if (recordFields.length === 0 || !period || roster.length === 0) {
+    return priorRecords;
+  }
+
+  const rows = await db
+    .select()
+    .from(schema.studentRecords)
+    .where(
+      and(
+        eq(schema.studentRecords.period, period),
+        inArray(
+          schema.studentRecords.fieldKey,
+          recordFields.map((field) => field.key),
         ),
-      );
-    for (const row of rows) {
-      priorRecords.set(`${row.studentId}:${row.fieldKey}`, row.value);
-    }
+        inArray(
+          schema.studentRecords.studentId,
+          roster.map((student) => student.id),
+        ),
+      ),
+    );
+
+  for (const row of rows) {
+    priorRecords.set(recordKey(row.studentId, row.fieldKey), row.value);
   }
 
-  const snapshots = new Map<string, RosterSnapshot>();
-
-  for (const student of roster) {
-    const values: Record<string, string | null> = {};
-
-    for (const field of fields) {
-      // readStudentColumn, not a raw lookup: target_column is a database name
-      // and a Drizzle row is keyed by property name. See student-columns.ts.
-      values[field.key] = field.targetColumn
-        ? readStudentColumn(student, field.targetColumn)
-        : (priorRecords.get(`${student.id}:${field.key}`) ?? null);
-    }
-
-    snapshots.set(student.id, {
-      name: student.name,
-      srNo: student.srNo,
-      route: student.busRoute,
-      house: student.house,
-      fatherName: student.fatherName,
-      values,
-    });
-  }
-
-  return snapshots;
+  return priorRecords;
 }
 
 /**
+ * N tokens that no request already holds.
+ *
  * 96 bits of entropy makes a collision a non-event, but a duplicate token would
- * be a silent cross-class data leak, so check rather than assume.
+ * be a silent cross-group data leak, so check rather than assume. Checked in one
+ * query for the whole batch: the previous version cost a round trip per request,
+ * which a nineteen-way fan-out pays nineteen times before it inserts anything.
+ *
+ * The unique index on requests.token remains the real guarantee — this only
+ * keeps the insert from being the thing that discovers the clash.
  */
-async function uniqueToken(): Promise<string> {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const token = generateToken();
-    const [clash] = await db
+export async function uniqueTokens(count: number): Promise<string[]> {
+  const chosen = new Set<string>();
+
+  for (let attempt = 0; attempt < 5 && chosen.size < count; attempt += 1) {
+    const candidates = new Set<string>();
+    while (candidates.size < count - chosen.size) {
+      candidates.add(generateToken());
+    }
+
+    const taken = await db
       .select({ token: schema.requests.token })
       .from(schema.requests)
-      .where(eq(schema.requests.token, token))
-      .limit(1);
-    if (!clash) return token;
+      .where(inArray(schema.requests.token, [...candidates]));
+
+    const clashes = new Set(taken.map((row) => row.token));
+    for (const candidate of candidates) {
+      if (!clashes.has(candidate)) chosen.add(candidate);
+    }
   }
-  throw new Error("Could not generate a unique token.");
+
+  if (chosen.size < count) {
+    throw new Error("Could not generate unique tokens.");
+  }
+  return [...chosen];
 }
 
 /* ------------------------------------------------------------------ boards */
@@ -290,7 +432,9 @@ async function uniqueToken(): Promise<string> {
 export type RequestBoardRow = {
   id: string;
   title: string;
-  classLabel: string;
+  /** The group this link was for: a class, a house or a bus route. */
+  audienceLabel: string;
+  audienceKind: string;
   teacher: string;
   dueDate: string;
   status: string;
@@ -308,7 +452,8 @@ export async function listRequests(): Promise<RequestBoardRow[]> {
     .select({
       id: schema.requests.id,
       title: schema.requests.title,
-      classLabel: schema.requests.classLabel,
+      audienceLabel: schema.requests.audienceLabel,
+      audienceKind: schema.requests.audienceKind,
       teacher: schema.teachers.name,
       dueDate: schema.requests.dueDate,
       status: schema.requests.status,
@@ -370,7 +515,8 @@ export async function listRequests(): Promise<RequestBoardRow[]> {
   return rows.map((row) => ({
     id: row.id,
     title: row.title,
-    classLabel: row.classLabel,
+    audienceLabel: row.audienceLabel,
+    audienceKind: row.audienceKind,
     teacher: row.teacher,
     dueDate: row.dueDate,
     status: row.status,

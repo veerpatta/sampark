@@ -29,6 +29,20 @@
       "when": 1786005124977,
       "tag": "0003_optimal_magneto",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786012324420,
+      "tag": "0004_closed_swarm",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786012720271,
+      "tag": "0005_mean_betty_brant",
+      "breakpoints": true
     }
   ]
 }

@@ -219,7 +219,8 @@ export type ReviewItem = {
   id: string;
   requestId: string;
   requestTitle: string;
-  classLabel: string;
+  /** The group the link was for: a class, a house or a bus route. */
+  audienceLabel: string;
   teacherName: string;
   studentId: string;
   studentName: string;
@@ -264,7 +265,7 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
     .select({
       submission: schema.submissions,
       requestTitle: schema.requests.title,
-      classLabel: schema.requests.classLabel,
+      audienceLabel: schema.requests.audienceLabel,
       teacherName: schema.teachers.name,
       studentName: schema.students.name,
       rollNo: schema.students.rollNo,
@@ -277,19 +278,31 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
     .innerJoin(schema.fieldDefs, eq(schema.fieldDefs.key, schema.submissions.fieldKey))
     .where(where)
     .orderBy(
-      asc(schema.requests.classLabel),
+      asc(schema.requests.audienceLabel),
       asc(schema.students.rollNo),
       desc(schema.submissions.submittedAt),
     );
 
-  const newest = new Map<string, Date>();
-  for (const row of rows) {
-    const key = groupKey(row.submission);
-    const seen = newest.get(key);
-    if (!seen || row.submission.submittedAt > seen) {
-      newest.set(key, row.submission.submittedAt);
-    }
-  }
+  if (rows.length === 0) return [];
+
+  // Every submission for these students, not only the pending ones. See
+  // newestByKey — reading pending rows alone made a retracted correction look
+  // live, because the confirmation that retracts it is written as 'auto'.
+  const times = await db
+    .select({
+      requestId: schema.submissions.requestId,
+      studentId: schema.submissions.studentId,
+      fieldKey: schema.submissions.fieldKey,
+      submittedAt: schema.submissions.submittedAt,
+    })
+    .from(schema.submissions)
+    .where(
+      inArray(schema.submissions.studentId, [
+        ...new Set(rows.map((row) => row.submission.studentId)),
+      ]),
+    );
+
+  const newest = newestByKey(times);
 
   const alsoOn = await countSharedPhones(rows.map((row) => row.submission));
 
@@ -297,7 +310,7 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
     id: row.submission.id,
     requestId: row.submission.requestId,
     requestTitle: row.requestTitle,
-    classLabel: row.classLabel,
+    audienceLabel: row.audienceLabel,
     teacherName: row.teacherName,
     studentId: row.submission.studentId,
     studentName: row.studentName,
@@ -308,15 +321,47 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
     oldValue: row.submission.oldValue,
     newValue: row.submission.newValue,
     submittedAt: row.submission.submittedAt,
-    superseded:
-      row.submission.submittedAt.getTime() !==
-      newest.get(groupKey(row.submission))!.getTime(),
+    superseded: isSuperseded(row.submission, newest),
     alsoOn: alsoOn.get(row.submission.id) ?? 0,
   }));
 }
 
 const groupKey = (s: { requestId: string; studentId: string; fieldKey: string }) =>
   `${s.requestId}|${s.studentId}|${s.fieldKey}`;
+
+type Timed = {
+  requestId: string;
+  studentId: string;
+  fieldKey: string;
+  submittedAt: Date;
+};
+
+/**
+ * The newest submission time per request, student and field.
+ *
+ * Feed this EVERY submission for the students in question, never just the
+ * pending ones. A confirmation is stored with review_status 'auto' (see
+ * `confirmation` above), so a teacher who corrects a number, sends it, then
+ * types the original back leaves two rows: a pending 'changed' and a newer
+ * 'auto' that cancels it. Computed over pending rows alone the correction is
+ * still the newest thing anyone can see, so it shows un-superseded, ticked by
+ * default, and approving it writes back a value she already took back.
+ */
+function newestByKey(rows: Timed[]): Map<string, Date> {
+  const newest = new Map<string, Date>();
+  for (const row of rows) {
+    const key = groupKey(row);
+    const seen = newest.get(key);
+    if (!seen || row.submittedAt > seen) newest.set(key, row.submittedAt);
+  }
+  return newest;
+}
+
+/** Strictly newer, so a tie is never treated as having been replaced. */
+function isSuperseded(row: Timed, newest: Map<string, Date>): boolean {
+  const latest = newest.get(groupKey(row));
+  return latest ? row.submittedAt.getTime() < latest.getTime() : false;
+}
 
 /**
  * For each proposed phone number, how many other active students already have
@@ -373,9 +418,13 @@ async function countSharedPhones(
 export type Decision = "approved" | "rejected";
 
 export type DecisionResult = {
-  /** How many submissions this call actually claimed. Zero on a re-click. */
+  /**
+   * How many submissions this call actually decided. Zero on a re-click, and
+   * short of what was ticked when some of it had already been replaced.
+   */
   applied: number;
   studentsTouched: number;
+  /** Rows resolved as replaced: those ticked but stale, plus older pending ones. */
   superseded: number;
 };
 
@@ -389,8 +438,9 @@ export type DecisionResult = {
  *
  * Order inside the transaction (plan section 6):
  *   1. claim the pending rows, guarded, and see which we actually got
- *   2. one change_log row per claimed submission — the audit trail
- *   3. write master data: students for fields with a target column,
+ *   2. drop any claimed row a later submission has already replaced
+ *   3. one change_log row per claimed submission — the audit trail
+ *   4. write master data: students for fields with a target column,
  *      student_records for period-scoped ones
  */
 export async function decideSubmissions(
@@ -423,35 +473,78 @@ export async function decideSubmissions(
       return { applied: 0, studentsTouched: 0, superseded: 0 };
     }
 
-    // 2. Audit trail, one row per claimed submission, before anything moves.
+    // 2. Drop anything a later submission has already replaced.
+    //
+    //    The queue hides superseded rows and unticks them, but a hidden
+    //    checkbox is not a guard — the ids arrive from a browser, and the row
+    //    may have been replaced between the page rendering and the tap. A stale
+    //    row must never reach master and must never supersede the row that
+    //    replaced it, so it is turned into a rejection here and dropped from
+    //    everything downstream.
+    const times = await tx
+      .select({
+        requestId: schema.submissions.requestId,
+        studentId: schema.submissions.studentId,
+        fieldKey: schema.submissions.fieldKey,
+        submittedAt: schema.submissions.submittedAt,
+      })
+      .from(schema.submissions)
+      .where(
+        inArray(schema.submissions.studentId, [
+          ...new Set(claimed.map((row) => row.studentId)),
+        ]),
+      );
+
+    const newest = newestByKey(times);
+    const staleIds = new Set(
+      claimed.filter((row) => isSuperseded(row, newest)).map((row) => row.id),
+    );
+    const effective = claimed.filter((row) => !staleIds.has(row.id));
+
+    if (staleIds.size > 0) {
+      await tx
+        .update(schema.submissions)
+        .set({ reviewStatus: "rejected" })
+        .where(inArray(schema.submissions.id, [...staleIds]));
+    }
+
+    // 3. Audit trail, one row per claimed submission, before anything moves.
     await tx.insert(schema.changeLog).values(
-      claimed.map((row) => ({
-        submissionId: row.id,
-        studentId: row.studentId,
-        fieldKey: row.fieldKey,
-        fromValue: row.oldValue,
-        toValue: decision === "approved" ? row.newValue : null,
-        decision,
-        decidedBy,
-        note: note ?? null,
-      })),
+      claimed.map((row) => {
+        const stale = staleIds.has(row.id);
+        return {
+          submissionId: row.id,
+          studentId: row.studentId,
+          fieldKey: row.fieldKey,
+          fromValue: row.oldValue,
+          toValue: !stale && decision === "approved" ? row.newValue : null,
+          decision: stale ? ("rejected" as const) : decision,
+          decidedBy,
+          note: stale
+            ? "Superseded by a later submission for the same field"
+            : (note ?? null),
+        };
+      }),
     );
 
     // Older pending rows for the same student and field are now moot. Resolve
-    // them here rather than leaving them to rot in the queue.
-    const superseded = await supersede(tx, claimed, decidedBy);
+    // them here rather than leaving them to rot in the queue. Only `effective`
+    // rows are passed: this rejects every other pending row sharing a key, so
+    // handing it a stale row would reject the very submission that replaced it.
+    const superseded = await supersede(tx, effective, decidedBy);
+    const resolved = superseded.length + staleIds.size;
 
     if (decision === "rejected") {
       return {
-        applied: claimed.length,
+        applied: effective.length,
         studentsTouched: 0,
-        superseded: superseded.length,
+        superseded: resolved,
       };
     }
 
-    // 3. Master data. not_present carries no value to write — it is a flag for
+    // 4. Master data. not_present carries no value to write — it is a flag for
     //    the office, not a field update. See the note in /review.
-    const applicable = claimed.filter((row) => row.action === "changed");
+    const applicable = effective.filter((row) => row.action === "changed");
     const touched = new Set<string>();
     /**
      * Every approved correction claims its field for `teacher`, permanently.
@@ -515,9 +608,9 @@ export async function decideSubmissions(
     }
 
     return {
-      applied: claimed.length,
+      applied: effective.length,
       studentsTouched: touched.size,
-      superseded: superseded.length,
+      superseded: resolved,
     };
   });
 }
@@ -530,6 +623,8 @@ type Claimed = typeof schema.submissions.$inferSelect;
  * older correction cannot be approved on top of a newer one later.
  */
 async function supersede(tx: Tx, claimed: Claimed[], decidedBy: string) {
+  if (claimed.length === 0) return [];
+
   const older = await tx
     .select()
     .from(schema.submissions)

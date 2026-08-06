@@ -208,11 +208,33 @@ export const studentRecords = pgTable(
 
 /* ============ PEOPLE ============ */
 
+/**
+ * Three kinds of ownership, all optional, all the same shape.
+ *
+ * `classes` is the original and still the common case: the class teacher is who
+ * a request goes to. `houses` and `routes` exist because a request can be scoped
+ * to a house or a bus route, and those cut across classes — a house-wise link
+ * carries children from every class, so it goes to the house master, not to
+ * nineteen class teachers.
+ *
+ * Arrays rather than a join table because ownership is a handful of strings per
+ * teacher, read on every send and edited a few times a year. See lib/ownership.ts
+ * for the rule that turns these into a recipient, which is deliberately allowed
+ * to answer "more than one" and "nobody" rather than guess.
+ */
 export const teachers = pgTable("teachers", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   phone: text("phone").notNull(),
   classes: text("classes")
+    .array()
+    .notNull()
+    .default(sql`'{}'`),
+  houses: text("houses")
+    .array()
+    .notNull()
+    .default(sql`'{}'`),
+  routes: text("routes")
     .array()
     .notNull()
     .default(sql`'{}'`),
@@ -242,13 +264,59 @@ export const users = pgTable("users", {
 
 /* ============ REQUESTS ============ */
 
+/**
+ * One bulk send: the question the office asked, once, of many groups.
+ *
+ * A request is one token, one frozen roster, one recipient — that shape is load
+ * bearing and is not being changed. "Ask every class for phone numbers" is
+ * therefore nineteen requests, and this row is what makes them one thing
+ * afterwards: a status board, a resumable send queue, and a record of what was
+ * actually asked rather than nineteen rows that merely look alike.
+ *
+ * `audience` is the office's selection as given, not the resolved roster. The
+ * roster is frozen per request in request_students and is the only truth about
+ * who was asked; this column answers "what did she tick", which is what a resume
+ * needs to finish the job.
+ */
+export const requestBatches = pgTable("request_batches", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  /** { classes: [], houses: [], routes: [], allActive: bool } */
+  audience: jsonb("audience").notNull(),
+  fieldKeys: text("field_keys").array().notNull(),
+  period: text("period"),
+  dueDate: date("due_date").notNull(),
+  recipientMode: text("recipient_mode").notNull(), // class_teacher | incharge
+  createdBy: text("created_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const requests = pgTable(
   "requests",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     token: text("token").notNull().unique(), // 16-char url-safe, crypto random
     title: text("title").notNull(),
-    classLabel: text("class_label").notNull(),
+    /**
+     * NULL for a link scoped to a house or a bus route, whose roster spans
+     * classes. Kept as a real class label rather than being made to hold "Rana
+     * Pratap": the column joins against students.class_label and is validated by
+     * isClassLabel, and a column whose name stops being true is a trap for every
+     * later reader. `audienceKind` and `audienceLabel` carry the general case.
+     */
+    classLabel: text("class_label"),
+    /** class | house | route */
+    audienceKind: text("audience_kind").notNull().default("class"),
+    /** How the group reads on screen and in the WhatsApp message. */
+    audienceLabel: text("audience_label").notNull(),
+    /** Set when this request was one of a bulk send. NULL for a one-off. */
+    batchId: uuid("batch_id").references(() => requestBatches.id, {
+      onDelete: "set null",
+    }),
     teacherId: text("teacher_id")
       .notNull()
       .references(() => teachers.id),
@@ -285,8 +353,31 @@ export const requests = pgTable(
     openedAt: timestamp("opened_at", { withTimezone: true }),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    /**
+     * When the office actually handed this link over on WhatsApp.
+     *
+     * Server state, not localStorage: a bulk send is worked through one
+     * recipient at a time and she may well finish it on a different device, or
+     * hand the phone to someone else. It is also a different fact from
+     * `opened_at` — "we sent it" versus "she read it" — which is why it is a
+     * separate column rather than a reuse of one that has never been written.
+     */
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    sentBy: text("sent_by").references(() => users.id),
   },
-  (t) => [uniqueIndex("requests_token_idx").on(t.token)],
+  (t) => [
+    uniqueIndex("requests_token_idx").on(t.token),
+    index("requests_batch_idx").on(t.batchId),
+    /**
+     * One link per group per batch. This is what makes Resume safe: a fan-out
+     * that failed halfway is finished by creating the scopes that are missing,
+     * and a double-tapped Resume racing itself hits this index instead of
+     * minting a second token for a group that already has one.
+     */
+    uniqueIndex("requests_batch_scope_idx")
+      .on(t.batchId, t.audienceKind, t.audienceLabel)
+      .where(sql`${t.batchId} is not null`),
+  ],
 );
 
 /* ============ ROSTER SNAPSHOT ============ */

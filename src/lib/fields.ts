@@ -104,6 +104,17 @@ export function validateField(
       return ok(parsed.toISOString().slice(0, 10));
     }
 
+    case "boolean": {
+      // Stored canonically as yes/no whatever she tapped, so an export is
+      // machine-readable and a later count does not have to know Hindi.
+      const yes = ["yes", "y", "true", "1", "हाँ", "हां", "हा"];
+      const no = ["no", "n", "false", "0", "नहीं", "नही"];
+      const lower = value.toLowerCase();
+      if (yes.includes(lower)) return ok("yes");
+      if (no.includes(lower)) return ok("no");
+      return fail(`${def.labelEn} must be yes or no`, `हाँ या नहीं चुनें`);
+    }
+
     case "select": {
       const allowed = Array.isArray(def.options)
         ? (def.options as unknown[]).map(String)

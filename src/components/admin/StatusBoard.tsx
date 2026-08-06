@@ -29,16 +29,16 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
   const toast = useToast();
   const today = new Date().toISOString().slice(0, 10);
 
-  // One row per class: the newest open request. Without a "round" entity that
-  // is the closest thing to "where is this collection up to".
-  const newestPerClass = new Map<string, RequestBoardRow>();
+  // One row per group: the newest open request for it. Keyed by kind as well as
+  // label, because a house and a class could in principle share a name and they
+  // are not the same collection.
+  const newestPerGroup = new Map<string, RequestBoardRow>();
   for (const request of requests) {
     if (request.status !== "open") continue;
-    if (!newestPerClass.has(request.classLabel)) {
-      newestPerClass.set(request.classLabel, request);
-    }
+    const key = `${request.audienceKind}|${request.audienceLabel}`;
+    if (!newestPerGroup.has(key)) newestPerGroup.set(key, request);
   }
-  const open = [...newestPerClass.values()];
+  const open = [...newestPerGroup.values()];
   if (open.length === 0) return null;
 
   const done = (request: RequestBoardRow) =>
@@ -59,7 +59,7 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
     const url = `${window.location.origin}/r/${request.token}`;
     const message = buildReminderMessage({
       teacherName: request.teacher,
-      classLabel: request.classLabel,
+      audience: { kind: request.audienceKind, label: request.audienceLabel },
       title: request.title,
       dueDate: request.dueDate,
       url,
@@ -77,7 +77,7 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
     <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4 md:p-6">
       <h2 className="text-xl font-semibold tracking-tight">
         {submitted.length} of {open.length}{" "}
-        {open.length === 1 ? "class has" : "classes have"} submitted
+        {open.length === 1 ? "group has" : "groups have"} submitted
       </h2>
 
       {waiting.length > 0 ? (
@@ -100,7 +100,7 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
                     href={`/requests/${request.id}`}
                     className="font-medium hover:text-[var(--color-brand-600)] hover:underline"
                   >
-                    {request.classLabel}
+                    {request.audienceLabel}
                   </Link>
                   <span className="ml-2 text-sm text-[var(--color-ink-muted)]">
                     {request.teacher}
@@ -141,7 +141,8 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
 
       {submitted.length > 0 ? (
         <p className="mt-3 border-t border-[var(--color-border)] pt-3 text-sm text-[var(--color-ink-muted)]">
-          Submitted: {submitted.map((request) => request.classLabel).join(", ")}
+          Submitted:{" "}
+          {submitted.map((request) => request.audienceLabel).join(", ")}
         </p>
       ) : null}
     </section>

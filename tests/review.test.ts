@@ -8,7 +8,11 @@ import {
   submissionsFor,
   TEST_CLASS,
 } from "./fixtures";
-import { decideSubmissions, recordSubmissions } from "../src/lib/submissions";
+import {
+  decideSubmissions,
+  listPendingReview,
+  recordSubmissions,
+} from "../src/lib/submissions";
 
 /**
  * The review transaction and the action-derivation that feeds it.
@@ -384,6 +388,127 @@ describe("the approval transaction", () => {
     const student = await studentById(first!.studentId);
     assert.equal(student!.phone, "9999999991");
     assert.equal(student!.fatherName, "Changed Father");
+  });
+});
+
+describe("a correction the teacher took back", () => {
+  test("a retraction supersedes the correction it cancels", async () => {
+    // She corrects a number, it sends, then she reopens the row and types the
+    // original back. The retraction lands as a CONFIRMATION, which is stored
+    // with review_status 'auto' and never enters the queue. Computed over
+    // pending rows alone the correction was still the newest thing visible, so
+    // it showed un-superseded and ticked, and approving it wrote back a value
+    // she had already taken back.
+    const scenario = await createScenario();
+    const [first] = scenario.resolved.roster;
+
+    await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: first!.studentId, values: { phone: "9222222222" } }],
+      null,
+    );
+    await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: first!.studentId, values: { phone: "9111111111" } }],
+      null,
+    );
+
+    const queue = await listPendingReview(scenario.requestId);
+    const correction = queue.find((row) => row.fieldKey === "phone")!;
+
+    assert.equal(
+      correction.superseded,
+      true,
+      "a later confirmation must mark the correction superseded",
+    );
+  });
+
+  test("approving a retracted correction is refused, not applied", async () => {
+    const scenario = await createScenario();
+    const [first] = scenario.resolved.roster;
+
+    await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: first!.studentId, values: { phone: "9222222222" } }],
+      null,
+    );
+    await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: first!.studentId, values: { phone: "9111111111" } }],
+      null,
+    );
+
+    const correction = (await submissionsFor(scenario.requestId)).find(
+      (row) => row.fieldKey === "phone" && row.reviewStatus === "pending",
+    )!;
+
+    // The ids arrive from a browser. A hidden checkbox is not a guard.
+    const result = await decideSubmissions(
+      [correction.id],
+      "approved",
+      scenario.userId,
+    );
+
+    assert.equal(result.applied, 0, "a stale row must not be applied");
+    assert.equal(result.superseded, 1);
+
+    const student = await studentById(first!.studentId);
+    assert.equal(
+      student!.phone,
+      "9111111111",
+      "master must still hold the value she settled on",
+    );
+
+    const after = (await submissionsFor(scenario.requestId)).find(
+      (row) => row.id === correction.id,
+    )!;
+    assert.equal(after.reviewStatus, "rejected");
+
+    const log = await changeLogFor([correction.id]);
+    assert.equal(log[0]!.decision, "rejected");
+    assert.equal(log[0]!.toValue, null);
+  });
+
+  test("approving an older row does not reject the newer one still waiting", async () => {
+    // supersede() rejects every other pending row sharing a field, regardless of
+    // age. Handed a stale row it would reject the very submission that replaced
+    // it — losing the teacher's latest answer to a mis-tap.
+    const scenario = await createScenario();
+    const [first] = scenario.resolved.roster;
+
+    await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: first!.studentId, values: { phone: "9888888881" } }],
+      null,
+    );
+    await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: first!.studentId, values: { phone: "9888888882" } }],
+      null,
+    );
+
+    const pending = (await submissionsFor(scenario.requestId))
+      .filter((row) => row.reviewStatus === "pending" && row.fieldKey === "phone")
+      .sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime());
+    assert.equal(pending.length, 2);
+
+    const result = await decideSubmissions(
+      [pending[0]!.id],
+      "approved",
+      scenario.userId,
+    );
+
+    assert.equal(result.applied, 0);
+
+    const after = await submissionsFor(scenario.requestId);
+    assert.equal(
+      after.find((row) => row.id === pending[1]!.id)!.reviewStatus,
+      "pending",
+      "the newest answer must survive to be reviewed",
+    );
+
+    const student = await studentById(first!.studentId);
+    assert.equal(student!.phone, "9111111111", "master must not have moved");
   });
 });
 

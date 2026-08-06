@@ -59,11 +59,21 @@ export default async function StudentDetailPage({
       .select({
         record: schema.studentRecords,
         fieldLabel: schema.fieldDefs.labelEn,
+        recordKind: schema.fieldDefs.recordKind,
+        // A one-off question files its answers under the ask that raised it, so
+        // the period reads as "ask/<uuid>". Nobody should have to look at that;
+        // the request already knows what it was called.
+        requestTitle: schema.requests.title,
+        requestId: schema.requests.id,
       })
       .from(schema.studentRecords)
       .innerJoin(
         schema.fieldDefs,
         eq(schema.fieldDefs.key, schema.studentRecords.fieldKey),
+      )
+      .leftJoin(
+        schema.requests,
+        eq(schema.requests.id, schema.studentRecords.requestId),
       )
       .where(eq(schema.studentRecords.studentId, studentId))
       .orderBy(desc(schema.studentRecords.period), asc(schema.studentRecords.fieldKey)),
@@ -137,7 +147,7 @@ export default async function StudentDetailPage({
           {records.length > 0 ? (
             <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
               <h2 className="border-b border-[var(--color-border)] px-4 py-3 text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
-                Period records
+                Marks and answers
               </h2>
               <table className="w-full text-sm">
                 <tbody>
@@ -146,8 +156,21 @@ export default async function StudentDetailPage({
                       key={row.record.id}
                       className="border-b border-[var(--color-border)] last:border-0"
                     >
-                      <td className="px-4 py-2 font-mono text-xs">
-                        {row.record.period}
+                      <td className="px-4 py-2 text-xs text-[var(--color-ink-muted)]">
+                        {row.recordKind === "adhoc" ? (
+                          row.requestId ? (
+                            <Link
+                              href={`/requests/${row.requestId}`}
+                              className="hover:underline"
+                            >
+                              asked in {row.requestTitle}
+                            </Link>
+                          ) : (
+                            "one-off question"
+                          )
+                        ) : (
+                          <span className="font-mono">{row.record.period}</span>
+                        )}
                       </td>
                       <td className="px-4 py-2">{row.fieldLabel}</td>
                       <td className="px-4 py-2 text-right font-mono">

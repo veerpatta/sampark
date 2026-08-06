@@ -4,7 +4,7 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { db, schema } from "../src/lib/db";
 import { generateToken } from "../src/lib/auth/token";
-import { readStudentColumn } from "../src/lib/student-columns";
+import { buildSnapshots } from "../src/lib/snapshots";
 import type { ResolvedRequest } from "../src/lib/auth/token";
 
 /**
@@ -129,6 +129,8 @@ export async function createScenario(options?: {
       token,
       title: "Test request",
       classLabel: TEST_CLASS,
+      audienceKind: "class",
+      audienceLabel: TEST_CLASS,
       teacherId,
       fieldKeys,
       period: options?.period ?? null,
@@ -137,36 +139,33 @@ export async function createScenario(options?: {
     })
     .returning({ id: schema.requests.id });
 
-  const students = await db
-    .select()
-    .from(schema.students)
-    .where(inArray(schema.students.id, studentIds));
+  // Sorted, because Postgres does not promise an order without one and every
+  // test here reaches for `roster[0]` expecting the first child. It held by
+  // luck until an UPDATE rewrote a tuple and moved it down the heap, at which
+  // point a test asserting on child one silently started asserting on child two.
+  const students = (
+    await db
+      .select()
+      .from(schema.students)
+      .where(inArray(schema.students.id, studentIds))
+  ).sort((a, b) => a.id.localeCompare(b.id));
 
   const fields = await db
     .select()
     .from(schema.fieldDefs)
     .where(inArray(schema.fieldDefs.key, fieldKeys));
 
+  // The real builder, not a copy of it. A hand-rolled snapshot here would drift
+  // from production silently, and the snapshot is the thing every review
+  // decision is compared against.
+  const snapshots = buildSnapshots(students, fields, new Map());
+
   await db.insert(schema.requestStudents).values(
     students.map((student) => ({
       requestId: request!.id,
       studentId: student.id,
       rollNo: student.rollNo,
-      snapshot: {
-        name: student.name,
-        srNo: student.srNo,
-        route: student.busRoute,
-        house: student.house,
-        fatherName: student.fatherName,
-        values: Object.fromEntries(
-          fields.map((field) => [
-            field.key,
-            field.targetColumn
-              ? readStudentColumn(student, field.targetColumn)
-              : null,
-          ]),
-        ),
-      },
+      snapshot: snapshots.get(student.id)!,
     })),
   );
 
@@ -183,30 +182,90 @@ export async function createScenario(options?: {
     resolved: {
       requestId: request!.id,
       title: "Test request",
-      classLabel: TEST_CLASS,
+      audienceLabel: TEST_CLASS,
       period: options?.period ?? null,
       dueDate: futureDate(),
       status: "open",
       teacherName: "Test Teacher",
       fields: ordered,
-      roster: students.map((student) => ({
-        studentId: student.id,
-        srNo: student.srNo,
-        name: student.name,
-        route: student.busRoute,
-        house: student.house,
-        fatherName: student.fatherName,
-        values: Object.fromEntries(
-          ordered.map((field) => [
-            field.key,
-            field.targetColumn
-              ? readStudentColumn(student, field.targetColumn)
-              : null,
-          ]),
-        ),
-      })),
+      // Read back off the same snapshots that were frozen above, so what a test
+      // hands to recordSubmissions is exactly what the teacher would have seen.
+      roster: students.map((student) => {
+        const snapshot = snapshots.get(student.id)!;
+        return { studentId: student.id, ...snapshot };
+      }),
     },
   };
+}
+
+export type FanOutScenario = {
+  userId: string;
+  /** Two groups, each with exactly one owning teacher and two students. */
+  groups: {
+    classLabel: string;
+    teacherId: string;
+    teacherName: string;
+    studentIds: string[];
+  }[];
+};
+
+/**
+ * A school in miniature: two classes, one teacher each, two children each.
+ *
+ * The class labels are fixture-only strings rather than real ones. A fan-out
+ * groups by whatever is in students.class_label and resolves the owner from
+ * teachers.classes, so a real class here would pull in real students and any
+ * real teacher who owns it — turning "one owner" into "two owners" and blocking
+ * the group. Isolating the vocabulary makes the test deterministic against
+ * whatever the dev database happens to hold.
+ */
+export async function createFanOutScenario(options?: {
+  houses?: (string | null)[];
+}): Promise<FanOutScenario> {
+  const suffix = generateToken().slice(0, 6).replace(/[^A-Za-z0-9]/g, "x");
+  const userId = `${PREFIX}U${suffix}`;
+
+  await db.insert(schema.users).values({
+    id: userId,
+    email: `${userId.toLowerCase()}@example.invalid`,
+    name: "Test Office",
+    passwordHash: "not-a-real-hash",
+    role: "admin",
+  });
+
+  const groups = [0, 1].map((index) => ({
+    classLabel: `${PREFIX}CLASS${index}${suffix}`,
+    teacherId: `${PREFIX}T${index}${suffix}`,
+    teacherName: `Test Teacher ${index}`,
+    studentIds: [
+      `${PREFIX}S${index}A${suffix}`,
+      `${PREFIX}S${index}B${suffix}`,
+    ],
+  }));
+
+  await db.insert(schema.teachers).values(
+    groups.map((group) => ({
+      id: group.teacherId,
+      name: group.teacherName,
+      phone: "9000000000",
+      classes: [group.classLabel],
+    })),
+  );
+
+  await db.insert(schema.students).values(
+    groups.flatMap((group, index) =>
+      group.studentIds.map((id, position) => ({
+        id,
+        name: `Test Child ${index}${position}`,
+        classLabel: group.classLabel,
+        phone: position === 0 ? "9111111111" : null,
+        fatherName: `Test Father ${index}${position}`,
+        house: options?.houses?.[index] ?? null,
+      })),
+    ),
+  );
+
+  return { userId, groups };
 }
 
 /** Remove everything any scenario has ever created, in dependency order. */
@@ -262,6 +321,11 @@ export async function cleanup() {
   await ownerDb
     .delete(schema.teachers)
     .where(like(schema.teachers.id, `${PREFIX}%`));
+  // Batches after their requests: requests.batch_id is ON DELETE SET NULL, so a
+  // batch row outlives the links it created rather than cascading with them.
+  await ownerDb
+    .delete(schema.requestBatches)
+    .where(like(schema.requestBatches.createdBy, `${PREFIX}%`));
   await ownerDb.delete(schema.users).where(like(schema.users.id, `${PREFIX}%`));
 }
 

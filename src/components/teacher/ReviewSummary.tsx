@@ -3,25 +3,28 @@
 import type { Summary } from "./summary";
 
 /**
- * "This is what you are about to send."
+ * "This is what you have sent."
  *
- * The last screen before anything leaves the phone. She has just tapped
- * through forty-six rows; this is where a mistyped digit gets caught, by her,
- * while she still remembers which child it was.
+ * A receipt, not a gate. Answers now upload by themselves as she works, so this
+ * screen no longer stands between her and the school — it is where she checks
+ * what went, and fixes anything that should not have. Every change is tappable
+ * for exactly that reason, and a correction supersedes what went before.
  *
- * Weighting is deliberate. The changes are listed in full and every one of
- * them is tappable, because those are the rows worth checking. The
- * confirmations collapse to a single line with a count, because thirty-eight
- * rows of "यह सही है" is a wall that hides the six that matter.
+ * Weighting is unchanged and still deliberate. The changes are listed in full
+ * because those are the rows worth checking. The confirmations collapse to a
+ * single line with a count, because thirty-eight rows of "यह सही है" is a wall
+ * that hides the six that matter.
  *
- * Unanswered rows are named plainly but do NOT block sending. She may genuinely
- * not know — the child left, the family moved, nobody has the number — and
- * refusing to send would strand a class's worth of correct answers behind four
- * she cannot give.
+ * Unanswered rows are named plainly but block nothing. She may genuinely not
+ * know — the child left, the family moved, nobody has the number — and holding
+ * back a class's worth of correct answers behind four she cannot give would
+ * help no one.
  */
 export function ReviewSummary({
   summary,
   total,
+  pending,
+  sent,
   busy,
   online,
   error,
@@ -31,6 +34,10 @@ export function ReviewSummary({
 }: {
   summary: Summary;
   total: number;
+  /** Answered but not yet acknowledged by the server. */
+  pending: number;
+  /** Acknowledged. */
+  sent: number;
   busy: boolean;
   online: boolean;
   error: string | null;
@@ -44,7 +51,9 @@ export function ReviewSummary({
   return (
     <section className="mt-4">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-lg font-semibold">आप यह भेज रही हैं</h2>
+        <h2 className="text-lg font-semibold">
+          {pending > 0 ? "आपने यह भरा है" : "आपने यह भेजा है"}
+        </h2>
         <button
           type="button"
           onClick={onBack}
@@ -54,7 +63,8 @@ export function ReviewSummary({
         </button>
       </div>
       <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-        कुल {total} बच्चों में से
+        कुल {total} बच्चों में से · {sent} विद्यालय पहुँच गए
+        {pending > 0 ? ` · ${pending} जा रहे हैं` : ""}
       </p>
 
       {/* ================================================= what she changed */}
@@ -154,23 +164,31 @@ export function ReviewSummary({
         </p>
       ) : null}
 
-      {/* Send lives HERE and nowhere else. She cannot submit without having
-          seen this screen, which is the entire point of it existing. */}
+      {/* Not a gate any more — an escape hatch. Everything here goes by itself
+          within a few seconds; this is for the moment she is standing by the
+          gate about to leave and wants it gone NOW. When nothing is waiting it
+          says so rather than offering a button that would do nothing. */}
       <div className="sticky bottom-0 -mx-4 mt-6 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 pb-[env(safe-area-inset-bottom)] pt-3 shadow-[0_-4px_16px_rgba(15,23,42,0.08)]">
-        <button
-          type="button"
-          onClick={onSend}
-          disabled={busy || summary.empty}
-          className="min-h-12 w-full rounded-lg bg-[var(--color-brand-600)] px-4 font-semibold text-white disabled:opacity-40"
-        >
-          {busy
-            ? "भेजा जा रहा है…"
-            : summary.empty
-              ? "भेजने के लिए कुछ नहीं है"
+        {pending > 0 ? (
+          <button
+            type="button"
+            onClick={onSend}
+            disabled={busy}
+            className="min-h-12 w-full rounded-lg bg-[var(--color-brand-600)] px-4 font-semibold text-white disabled:opacity-40"
+          >
+            {busy
+              ? "भेजा जा रहा है…"
               : online
-                ? "विद्यालय को भेजें"
-                : "इंटरनेट आते ही भेजें"}
-        </button>
+                ? `अभी भेजें (${pending})`
+                : "इंटरनेट आते ही चला जाएगा"}
+          </button>
+        ) : (
+          <p className="min-h-12 rounded-lg bg-[var(--color-confirm-bg)] px-4 py-3 text-center font-semibold text-[var(--color-confirm-fg)]">
+            {summary.empty
+              ? "अभी कुछ भरा नहीं है"
+              : "सब विद्यालय पहुँच गया ✓"}
+          </p>
+        )}
         {!online ? (
           <p className="mt-2 text-center text-xs text-[var(--color-ink-muted)]">
             इंटरनेट नहीं है — सब फ़ोन में सुरक्षित है और जुड़ते ही चला जाएगा।

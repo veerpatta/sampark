@@ -9,6 +9,25 @@ import {
   parseClassList,
   unknownClassLabelMessage,
 } from "@/lib/classes";
+import { normaliseHouse } from "@/lib/houses";
+import { isBusRoute, unknownRouteMessage } from "@/lib/routes";
+
+/**
+ * Read a repeated form field as a list.
+ *
+ * The editor sends one checkbox per assignment, so `getAll` returns many values;
+ * the older single text input sent one comma-separated string. Joining and
+ * reusing parseClassList covers both, and none of the three vocabularies —
+ * class labels, house names, route names — contains a comma.
+ */
+function readList(formData: FormData, name: string): string[] {
+  return parseClassList(
+    formData
+      .getAll(name)
+      .map((value) => String(value))
+      .join(","),
+  );
+}
 
 /**
  * Teacher records are entered here, in the browser, and never in a seed file.
@@ -29,7 +48,9 @@ export async function saveTeacher(formData: FormData) {
   const id = String(formData.get("id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").replace(/\D/g, "");
-  const classes = parseClassList(String(formData.get("classes") ?? ""));
+  const classes = readList(formData, "classes");
+  const houses = readList(formData, "houses");
+  const routes = readList(formData, "routes");
   const active = formData.get("active") === "on";
 
   if (!id) throw new Error("Teacher ID is required.");
@@ -44,13 +65,33 @@ export async function saveTeacher(formData: FormData) {
   const unknown = classes.find((label) => !isClassLabel(label));
   if (unknown) throw new Error(unknownClassLabelMessage(unknown));
 
+  // Same reasoning for the other two, and the failure is quieter: a house or
+  // route nobody owns simply drops out of a bulk send's recipient list, so a
+  // misspelling here reads as "nobody is assigned" rather than as an error.
+  const canonicalHouses = houses.map((house) => {
+    const match = normaliseHouse(house);
+    if (!match) {
+      throw new Error(`"${house}" is not one of the four houses.`);
+    }
+    return match;
+  });
+
+  const badRoute = routes.find((route) => !isBusRoute(route));
+  if (badRoute) throw new Error(unknownRouteMessage(badRoute));
+
+  const values = {
+    name,
+    phone,
+    classes,
+    houses: canonicalHouses,
+    routes,
+    active,
+  };
+
   await db
     .insert(schema.teachers)
-    .values({ id, name, phone, classes, active })
-    .onConflictDoUpdate({
-      target: schema.teachers.id,
-      set: { name, phone, classes, active },
-    });
+    .values({ id, ...values })
+    .onConflictDoUpdate({ target: schema.teachers.id, set: values });
 
   revalidatePath("/settings/teachers");
 }

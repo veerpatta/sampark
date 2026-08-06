@@ -1,46 +1,13 @@
 import type { NewFieldDef } from "../schema";
 import { HOUSES } from "../../src/lib/houses";
+import { BUS_ROUTES } from "../../src/lib/routes";
 
 /**
- * The 29 bus routes, from the fee app's Routes sheet.
- *
- * "No Transport" is one of them and is a real answer, not a blank — a child who
- * walks to school has been asked and answered, and that is different from a
- * child nobody has asked.
- *
- * These are place names from the route master, not student data.
+ * The route list moved to src/lib/routes.ts once runtime UI needed it — a page
+ * must not import from the seed. Re-exported here so existing importers of this
+ * module keep working.
  */
-export const BUS_ROUTES = [
-  "Aambaghati",
-  "Agariya",
-  "Agariya Kotari",
-  "Aidana",
-  "Amet Bus",
-  "Amet City",
-  "Amet College Road (Colony Inside)",
-  "Amet College Side (On Road)",
-  "Amet Railway Station (Inside)",
-  "Amet Railway Station (On Road)",
-  "Ballo Ka Khera",
-  "Banda",
-  "Bhakroda",
-  "Bhopji Ka Kheda",
-  "Dabla",
-  "Dhelana",
-  "Ghosundi",
-  "Gugli",
-  "Jilola",
-  "Kanji Ka Kedha",
-  "Karera",
-  "Makarda",
-  "Masingpura",
-  "Mund Koshiya",
-  "No Transport",
-  "Saprav",
-  "Sardargarh",
-  "Selaguda",
-  "Tanvan",
-];
+export { BUS_ROUTES };
 
 /**
  * Starting field registry — SAMPARK_BUILD_PLAN.md section 9.

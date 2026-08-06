@@ -25,7 +25,7 @@ async function requireOwner() {
   return user;
 }
 
-const INPUT_TYPES = ["text", "tel", "date", "number", "select"];
+const INPUT_TYPES = ["text", "tel", "date", "number", "select", "boolean"];
 const MODES = ["verify", "collect"];
 
 export async function saveField(formData: FormData) {

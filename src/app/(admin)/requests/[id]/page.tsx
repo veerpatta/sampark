@@ -37,7 +37,7 @@ export default async function RequestDetailPage({
   const started = waiting.length < rosterSize;
   const message = (started ? buildReminderMessage : buildRequestMessage)({
     teacherName: teacher.name,
-    classLabel: request.classLabel,
+    audience: { kind: request.audienceKind, label: request.audienceLabel },
     title: request.title,
     dueDate: request.dueDate,
     url,
@@ -58,7 +58,7 @@ export default async function RequestDetailPage({
           </Link>
         </div>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          {request.classLabel} · {teacher.name} · due {request.dueDate}
+          {request.audienceLabel} · {teacher.name} · due {request.dueDate}
         </p>
       </header>
 

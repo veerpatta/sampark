@@ -13,7 +13,15 @@ import {
   loadDraft,
   newIdempotencyKey,
   saveDraft,
+  type PendingBatch,
 } from "./draft";
+import {
+  pickBatch,
+  rowReady,
+  shouldFlush,
+  ROW_COMMIT_MS,
+} from "./autosave";
+import { suggestForRow } from "./suggest";
 import {
   ANSWERED,
   isBlankRow,
@@ -44,21 +52,31 @@ import {
  *   saved on phone  — in localStorage, safe from a closed tab or a flat battery
  *   sent to school  — the server has it
  * Collapsing those into one tick would be a lie on a bad signal, and the whole
- * point of showing it is that she can put the phone down and trust it.
+ * point of showing it is that she can put the phone down and trust it. This
+ * matters MORE now that both happen by themselves: with no send button there is
+ * no moment that means "I have handed this over", so the row has to say it.
  *
- * SEND IS BEHIND A REVIEW SCREEN. `stage` is "list" or "review", and the send
- * button exists only in the second one, so she cannot submit without having
- * seen what she is submitting. It is a stage rather than a route on purpose:
- * everything the summary needs is already in this component's state, and a
- * second route would mean another no-store round trip on a bad signal, a
- * remount on every "jump back and fix", and the online listener below either
- * duplicated or dropped exactly when she is standing still and signal returns.
+ * SHE DOES NOT PRESS ANYTHING TO SAVE. A row commits itself a second after she
+ * stops typing, and committed rows upload in the background. The old per-row
+ * "हो गया" only ever flipped a local status — it looked like a save button and
+ * was not one — and the send screen behind it cost her a review of forty rows
+ * she had already read once.
+ *
+ * WHAT THAT TRADES AWAY, SAID PLAINLY. The review screen used to guarantee she
+ * had seen what she was submitting. It is now a receipt: it shows what has gone
+ * and lets her correct any of it, and a correction supersedes what went before.
+ * That is only safe because the office /review queue is unchanged and is still
+ * the only door into the master record — nothing a teacher types here reaches a
+ * student record without an approval carrying a user id.
  */
 
 type Stage = "list" | "review";
 
 /** Rows revealed at a time. Ten is a batch she can see the end of. */
 const BATCH = 10;
+
+/** How long to stand down after a 429 before trying again. */
+const RATE_LIMIT_BACKOFF_MS = 15_000;
 
 export function RequestForm({
   token,
@@ -114,8 +132,26 @@ export function RequestForm({
   const [shownBlanks, setShownBlanks] = useState(BATCH);
   const [shownKnown, setShownKnown] = useState(BATCH);
 
-  // Held across a failed send so the retry is the SAME batch, not a second one.
-  const batchKey = useRef<string | null>(null);
+  /**
+   * The upload in flight, or the last one that failed. One key per upload, held
+   * until the server acknowledges it — see PendingBatch in draft.ts for why it
+   * is neither one key per session nor a fresh key per retry.
+   */
+  const pending = useRef<PendingBatch | null>(null);
+  /** Students inside the request currently in the air. */
+  const inFlight = useRef<Set<string>>(new Set());
+  const lastCommitAt = useRef(0);
+  const lastFlushAt = useRef(0);
+  /** Per-row commit timers, so typing in one row cannot reset another's. */
+  const commitTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+  // Mirrors, so the pagehide handler reads the latest state without being
+  // re-registered on every keystroke.
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const sentRef = useRef(sentIds);
+  sentRef.current = sentIds;
 
   /* ------------------------------------------------ restore what she had */
   useEffect(() => {
@@ -132,18 +168,27 @@ export function RequestForm({
         setRestored(true);
       }
       setSentIds(new Set(draft.sent.filter((id) => known.has(id))));
-      batchKey.current = draft.idempotencyKey;
+      pending.current = draft.pending;
     }
     setOnline(navigator.onLine);
   }, [token, roster]);
 
   /* --------------------------------------------------- save as she types */
+  //
+  // Debounced, unlike the first version. localStorage.setItem is synchronous
+  // and this serialises the whole rows object, so writing on every keystroke
+  // janks the old Android phones this is for. 300ms is well inside the window
+  // where a dropped tab loses nothing — and pagehide below flushes it anyway,
+  // because a debounce must never be the reason the only copy was not written.
   useEffect(() => {
-    saveDraft(token, {
-      rows,
-      sent: [...sentIds],
-      idempotencyKey: batchKey.current,
-    });
+    const timer = setTimeout(() => {
+      saveDraft(token, {
+        rows,
+        sent: [...sentIds],
+        pending: pending.current,
+      });
+    }, 300);
+    return () => clearTimeout(timer);
   }, [token, rows, sentIds]);
 
   const done = useMemo(
@@ -173,14 +218,73 @@ export function RequestForm({
       [studentId]: { ...current[studentId]!, ...patch },
     }));
     // Touching a row again un-sends it, so a correction after a send is not
-    // silently dropped.
+    // silently dropped. It will go up again in the next batch, under a new key,
+    // and the server supersedes what came before.
     setSentIds((current) => {
       if (!current.has(studentId)) return current;
       const next = new Set(current);
       next.delete(studentId);
       return next;
     });
+    if (patch.status && patch.status !== "editing") {
+      lastCommitAt.current = Date.now();
+    }
   }
+
+  /**
+   * A row commits itself once she stops typing.
+   *
+   * This is what the "हो गया" button used to do — and that button never saved
+   * anything, it only flipped this status, which is exactly why it could go.
+   *
+   * A row that is not ready STAYS `editing` and is not counted as answered. A
+   * half-typed phone number is not an answer, and a timer must never be the
+   * thing that decides it was: rowReady refuses anything blank, invalid, or
+   * short of a fixed length.
+   */
+  const commit = useCallback(
+    (studentId: string) => {
+      setRows((current) => {
+        const row = current[studentId];
+        if (!row || row.status !== "editing") return current;
+        if (!rowReady(fields, row)) return current;
+
+        lastCommitAt.current = Date.now();
+        tick();
+        return { ...current, [studentId]: { ...row, status: "edited" } };
+      });
+    },
+    [fields],
+  );
+
+  /** Restart this row's timer. Typing in one row must not commit another. */
+  function scheduleCommit(studentId: string) {
+    const timers = commitTimers.current;
+    const existing = timers.get(studentId);
+    if (existing) clearTimeout(existing);
+    timers.set(
+      studentId,
+      setTimeout(() => {
+        timers.delete(studentId);
+        commit(studentId);
+      }, ROW_COMMIT_MS),
+    );
+  }
+
+  /** Leaving the row, or filling its last field, does not need the wait. */
+  function commitNow(studentId: string) {
+    const existing = commitTimers.current.get(studentId);
+    if (existing) clearTimeout(existing);
+    commitTimers.current.delete(studentId);
+    commit(studentId);
+  }
+
+  useEffect(() => {
+    const timers = commitTimers.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+    };
+  }, []);
 
   /**
    * Confirm the whole known group in one tap.
@@ -306,36 +410,46 @@ export function RequestForm({
     setFocusId(null);
   }, [stage, focusId]);
 
-  const submit = useCallback(
-    async (auto = false) => {
-      const pending = roster.filter(
-        (student) =>
-          ANSWERED.includes(rows[student.studentId]!.status) &&
-          !sentIds.has(student.studentId),
-      );
-      if (pending.length === 0 || busy) return;
+  /**
+   * Upload everything answered and not yet acknowledged.
+   *
+   * Never per keystroke and never per row: rows pile up and go together, at most
+   * one request in the air, and never closer together than
+   * MIN_FLUSH_INTERVAL_MS. The teacher bucket is 30 a minute per token and a
+   * retry needs headroom inside it.
+   */
+  const flush = useCallback(
+    async (options: { manual?: boolean } = {}) => {
+      if (inFlight.current.size > 0) return;
 
-      // THE REVIEW GATE.
-      //
-      // An automatic retry may only replay a batch she has ALREADY reviewed and
-      // sent. A live batch key means exactly that: it is minted below when a
-      // send starts and cleared on success, so a non-null key is a send that
-      // left this screen and did not land. Without this check, coming back
-      // online would post everything answered-but-unsent straight past the
-      // review screen, and the promise that she has seen what she sends would
-      // be false.
-      if (auto && batchKey.current === null) return;
+      // A live pending batch is one that left and was not acknowledged. Replay
+      // exactly it, under exactly its key, so the unique index no-ops whatever
+      // the server already wrote. Anything else she has answered since waits
+      // for the next round.
+      const replaying = pending.current !== null;
+      const key = pending.current?.key ?? newIdempotencyKey();
+      const carried = pending.current?.studentIds ?? [];
 
+      const ids =
+        replaying && carried.length > 0
+          ? carried.filter((id) => !sentIds.has(id))
+          : pickBatch(roster, rows, sentIds, inFlight.current);
+
+      if (ids.length === 0) {
+        pending.current = null;
+        return;
+      }
+
+      pending.current = { key, studentIds: ids };
+      inFlight.current = new Set(ids);
+      lastFlushAt.current = Date.now();
       setBusy(true);
-      if (!auto) setError(null);
+      if (options.manual) setError(null);
 
-      // One key for this batch, reused if the send fails and she taps again.
-      batchKey.current ??= newIdempotencyKey();
-
-      const payload = pending.map((student) => {
-        const row = rows[student.studentId]!;
+      const payload = ids.map((studentId) => {
+        const row = rows[studentId]!;
         return {
-          studentId: student.studentId,
+          studentId,
           notPresent: row.status === "absent",
           values: row.status === "absent" ? {} : row.values,
         };
@@ -345,10 +459,7 @@ export function RequestForm({
         const response = await fetch(`/api/r/${token}`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            students: payload,
-            idempotencyKey: batchKey.current,
-          }),
+          body: JSON.stringify({ students: payload, idempotencyKey: key }),
         });
 
         if (response.status === 404) {
@@ -356,7 +467,11 @@ export function RequestForm({
           return;
         }
         if (response.status === 429) {
-          setError("थोड़ा रुककर फिर भेजें।");
+          // Real backoff. Pushing the next attempt out past the window is the
+          // only thing that helps; retrying immediately hits the same wall and
+          // burns the budget a genuine retry needs.
+          lastFlushAt.current = Date.now() + RATE_LIMIT_BACKOFF_MS;
+          setError("थोड़ा धीरे — आपका काम सुरक्षित है, अपने आप चला जाएगा।");
           return;
         }
         if (response.status === 422) {
@@ -364,78 +479,152 @@ export function RequestForm({
           return;
         }
         if (!response.ok) {
-          setError("भेजने में दिक्कत हुई। थोड़ी देर बाद फिर कोशिश करें।");
+          setError("भेजने में दिक्कत हुई। अपने आप फिर कोशिश होगी।");
           return;
         }
 
-        batchKey.current = null;
-        const justSent = new Set([
-          ...sentIds,
-          ...pending.map((student) => student.studentId),
-        ]);
-        setSentIds(justSent);
+        pending.current = null;
+        setSentIds((current) => new Set([...current, ...ids]));
         setError(null);
-
-        if (justSent.size === roster.length) {
-          clearDraft(token);
-          router.push(`/r/${token}/done`);
-          return;
-        }
-
-        // Some landed but the roster is not finished — the remaining work is
-        // back on the list, so that is where she goes.
-        setStage("list");
       } catch {
-        // No signal. The draft is already on the phone and the batch key is
-        // kept, so the retry below replays the same batch rather than a new one.
-        setError(
-          auto
-            ? null
-            : "इंटरनेट नहीं मिल रहा। आपका काम फ़ोन में सुरक्षित है — जुड़ते ही अपने आप चला जाएगा।",
-        );
+        // No signal. The draft is on the phone and the pending batch is kept,
+        // so the retry replays the same batch under the same key.
+        setError(null);
       } finally {
+        inFlight.current = new Set();
         setBusy(false);
       }
     },
-    [busy, roster, rows, sentIds, token, router],
+    [roster, rows, sentIds, token],
   );
+
+  /* ------------------------------------------------ the background uploader */
+  //
+  // A single interval rather than a timer per commit: one thing to reason about,
+  // and shouldFlush holds all the rules.
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!navigator.onLine) return;
+      const waiting = pickBatch(roster, rows, sentIds, inFlight.current).length;
+      if (
+        shouldFlush(
+          waiting,
+          Date.now() - lastCommitAt.current,
+          Date.now() - lastFlushAt.current,
+        )
+      ) {
+        void flushRef.current();
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [roster, rows, sentIds]);
 
   /* --------------------------------------- retry the moment signal returns */
   useEffect(() => {
     function goOnline() {
       setOnline(true);
-      void submit(true);
+      void flushRef.current();
     }
     function goOffline() {
       setOnline(false);
     }
+
+    /**
+     * Closing the tab must not strand the last few rows.
+     *
+     * keepalive lets the request outlive the page. An unacknowledged POST that
+     * the server did record is harmless — the pending key survives in the draft
+     * and the unique index no-ops the replay on the next load.
+     */
+    function onHide() {
+      saveDraft(token, {
+        rows: rowsRef.current,
+        sent: [...sentRef.current],
+        pending: pending.current,
+      });
+
+      const ids = pickBatch(
+        roster,
+        rowsRef.current,
+        sentRef.current,
+        inFlight.current,
+      );
+      if (ids.length === 0) return;
+
+      const key = pending.current?.key ?? newIdempotencyKey();
+      pending.current = { key, studentIds: ids };
+
+      try {
+        void fetch(`/api/r/${token}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          keepalive: true,
+          body: JSON.stringify({
+            students: ids.map((studentId) => {
+              const row = rowsRef.current[studentId]!;
+              return {
+                studentId,
+                notPresent: row.status === "absent",
+                values: row.status === "absent" ? {} : row.values,
+              };
+            }),
+            idempotencyKey: key,
+          }),
+        });
+      } catch {
+        /* the draft is written; the next load will replay it */
+      }
+    }
+
+    function onVisibility() {
+      if (document.visibilityState === "hidden") onHide();
+    }
+
     window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
+    window.addEventListener("pagehide", onHide);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);
+      window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [submit]);
+  }, [token, roster]);
 
-  const renderRow = (student: TeacherRosterRow) => (
+  const renderRow = (student: TeacherRosterRow, index: number, group: TeacherRosterRow[]) => (
     <StudentRow
       key={student.studentId}
       student={student}
       fields={fields}
       state={rows[student.studentId]!}
+      // Within the group she is looking at, not across both: the blanks and the
+      // known rows are two separate runs down the screen, and the row "above"
+      // only means anything inside one of them.
+      suggestions={Object.fromEntries(
+        fields.map((field) => [
+          field.key,
+          suggestForRow(field, group, index, rows),
+        ]),
+      )}
       blank={blankIds.has(student.studentId)}
       sent={sentIds.has(student.studentId)}
       onConfirm={() => update(student.studentId, { status: "confirmed" })}
       onEdit={() => update(student.studentId, { status: "editing" })}
       onAbsent={() => update(student.studentId, { status: "absent", values: {} })}
-      onDone={() => update(student.studentId, { status: "edited" })}
       onReopen={() => update(student.studentId, { status: "todo" })}
-      onChange={(fieldKey, value) =>
+      onLeave={() => commitNow(student.studentId)}
+      onFilledLast={() => commitNow(student.studentId)}
+      onChange={(fieldKey, value) => {
         update(student.studentId, {
           status: "editing",
           values: { ...rows[student.studentId]!.values, [fieldKey]: value },
-        })
-      }
+        });
+        scheduleCommit(student.studentId);
+      }}
     />
   );
 
@@ -444,12 +633,14 @@ export function RequestForm({
       <ReviewSummary
         summary={summary}
         total={roster.length}
+        pending={unsent.length}
+        sent={sentIds.size}
         busy={busy}
         online={online}
         error={error}
         onFix={fix}
         onBack={closeReview}
-        onSend={() => void submit(false)}
+        onSend={() => void flush({ manual: true })}
       />
     );
   }
@@ -530,6 +721,28 @@ export function RequestForm({
         >
           {error}
         </p>
+      ) : null}
+
+      {/* Finishing is now something she does, not something that happens to
+          her. With auto-send there is no submit to hang a redirect off, and
+          yanking her out of the list mid-scroll because a counter hit the
+          roster size would be worse than no ending at all. */}
+      {done === roster.length && unsent.length === 0 && roster.length > 0 ? (
+        <div className="mt-6 rounded-[var(--radius-card)] border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] p-4 text-center">
+          <p className="font-semibold text-[var(--color-confirm-fg)]">
+            सब {roster.length} बच्चों की जानकारी विद्यालय पहुँच गई
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              clearDraft(token);
+              router.push(`/r/${token}/done`);
+            }}
+            className="mt-3 min-h-12 w-full rounded-lg bg-[var(--color-confirm-fg)] px-4 font-semibold text-white transition-transform active:scale-[0.98]"
+          >
+            पूरा हुआ
+          </button>
+        </div>
       ) : null}
 
       <ProgressRail

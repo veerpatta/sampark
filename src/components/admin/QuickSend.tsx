@@ -94,7 +94,7 @@ export function QuickSend({
       const url = `${window.location.origin}/r/${payload.token}`;
       const message = buildRequestMessage({
         teacherName: teacher.name,
-        classLabel,
+        audience: { kind: "class", label: classLabel },
         title: template.name,
         dueDate: plusFiveDays(),
         url,
@@ -127,9 +127,17 @@ export function QuickSend({
 
   return (
     <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4 md:p-6">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
-        Send a link
-      </h2>
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
+          Send a link
+        </h2>
+        <Link
+          href="/requests/bulk"
+          className="text-sm font-medium text-[var(--color-brand-600)] hover:underline"
+        >
+          Send to many →
+        </Link>
+      </div>
 
       {/* -------------------------------------------------------- tap one */}
       <div className="mt-3 flex flex-wrap gap-2">

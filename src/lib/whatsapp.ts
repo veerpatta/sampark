@@ -8,15 +8,22 @@
  * Messages are Hindi-first — the teacher-facing surface always is.
  */
 
+import { HOUSES } from "./houses";
+
 const DATE_FMT = new Intl.DateTimeFormat("en-IN", {
   day: "numeric",
   month: "short",
   timeZone: "Asia/Kolkata",
 });
 
+export type MessageAudience = {
+  kind: string;
+  label: string;
+};
+
 export type RequestMessageInput = {
   teacherName: string;
-  classLabel: string;
+  audience: MessageAudience;
   title: string;
   dueDate: Date | string;
   url: string;
@@ -26,12 +33,28 @@ function formatDue(due: Date | string): string {
   return DATE_FMT.format(typeof due === "string" ? new Date(due) : due);
 }
 
+/**
+ * How the group reads inside a Hindi sentence.
+ *
+ * Houses have a Hindi name and are worth using — every child knows them. Bus
+ * routes are place names off the route master and stay in Latin script: a
+ * transliteration nobody uses is harder to recognise than the name on the bus.
+ */
+export function describeAudienceHi(audience: MessageAudience): string {
+  if (audience.kind === "house") {
+    const house = HOUSES.find((row) => row.name === audience.label);
+    return `${house?.hi ?? audience.label} सदन`;
+  }
+  if (audience.kind === "route") return `${audience.label} रूट`;
+  return `कक्षा ${audience.label}`;
+}
+
 /** The initial "please fill this" message. */
 export function buildRequestMessage(input: RequestMessageInput): string {
   const lines = [
     `नमस्ते ${input.teacherName} जी,`,
     ``,
-    `कक्षा ${input.classLabel} के लिए ${input.title} की जाँच करनी है।`,
+    `${describeAudienceHi(input.audience)} के लिए ${input.title} की जाँच करनी है।`,
     `नीचे दिए लिंक पर सूची खुलेगी — जो सही है उस पर "सही है" दबाएँ, गलत हो तो "बदलें" दबाकर ठीक कर दें।`,
     ``,
     input.url,
@@ -48,7 +71,7 @@ export function buildReminderMessage(input: RequestMessageInput): string {
   return [
     `नमस्ते ${input.teacherName} जी,`,
     ``,
-    `कक्षा ${input.classLabel} की ${input.title} अभी बाकी है। अंतिम तिथि ${formatDue(input.dueDate)} है।`,
+    `${describeAudienceHi(input.audience)} की ${input.title} अभी बाकी है। अंतिम तिथि ${formatDue(input.dueDate)} है।`,
     ``,
     input.url,
     ``,

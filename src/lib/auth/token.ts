@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { asc, eq, inArray } from "drizzle-orm";
 import { db, schema } from "../db";
 import { compareStudentNames } from "../classes";
+import type { RosterSnapshot } from "../snapshots";
 import type { FieldDef } from "../../../drizzle/schema";
 
 /**
@@ -83,14 +84,27 @@ export type ResolvedRosterRow = {
   route: string | null;
   /** A coloured chip — the field a child answers instantly. */
   house: string | null;
+  /** Which class, for a house or route link whose roster spans several. */
+  classLabel: string | null;
   fatherName: string | null;
   values: Record<string, string | null>;
+  /**
+   * A number already on record for a sibling of this child, when this child has
+   * none. Offered as one tap, never prefilled. Frozen at send time like
+   * everything else on this row.
+   */
+  siblingPhone: { name: string; phone: string } | null;
 };
 
 export type ResolvedRequest = {
   requestId: string;
   title: string;
-  classLabel: string;
+  /**
+   * The group this link is for, as it reads on her screen: "Class 8", "Rana
+   * Pratap", "Amet City". Not necessarily a class — a house or route link
+   * carries children from several.
+   */
+  audienceLabel: string;
   period: string | null;
   dueDate: string;
   status: string;
@@ -158,7 +172,7 @@ export async function resolveToken(
   return {
     requestId: row.request.id,
     title: row.request.title,
-    classLabel: row.request.classLabel,
+    audienceLabel: row.request.audienceLabel,
     period: row.request.period,
     dueDate: row.request.dueDate,
     status: row.request.status,
@@ -170,22 +184,19 @@ export async function resolveToken(
     // paper register.
     roster: roster
       .map((entry) => {
-        const snapshot = entry.snapshot as {
-          name?: string;
-          srNo?: string | null;
-          route?: string | null;
-          house?: string | null;
-          fatherName?: string | null;
-          values?: Record<string, string | null>;
-        };
+        // Every field is optional and defaulted: snapshots frozen before a
+        // field was added to the shape are still on record and must still open.
+        const snapshot = entry.snapshot as Partial<RosterSnapshot>;
         return {
           studentId: entry.studentId,
           srNo: snapshot.srNo ?? null,
           name: snapshot.name ?? "",
           route: snapshot.route ?? null,
           house: snapshot.house ?? null,
+          classLabel: snapshot.classLabel ?? null,
           fatherName: snapshot.fatherName ?? null,
           values: snapshot.values ?? {},
+          siblingPhone: snapshot.siblingPhone ?? null,
         };
       })
       .sort((a, b) => compareStudentNames(a.name, b.name)),
