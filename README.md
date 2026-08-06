@@ -84,15 +84,17 @@ until a preview deploy fails with "relation does not exist".
 ```bash
 npm run db:migrate:branch -- ep-summer-art-azhmd10t   # vercel-dev
 npm run db:grants -- ep-summer-art-azhmd10t
+npm run db:seed:branch -- ep-summer-art-azhmd10t
 ```
 
-Both take a Neon compute id and rewrite only the host of the existing owner
-connection string, so there is no second credential to store. Neither prints the
+All three take a Neon compute id and rewrite only the host of the existing owner
+connection string, so there is no second credential to store. None prints the
 URL, and granting on a side branch deliberately leaves `.env.local` alone.
 
-`vercel-dev` currently has the schema and the role but **no seeded field
-registry** — run `npm run db:seed` against it before using a preview deployment
-for anything real.
+Schema, roles, grants **and seed data** are all per-branch. `vercel-dev` sat with
+every migration applied and an empty `field_defs` for a while, which does not
+fail at deploy — it fails later, on the first screen that reads the registry.
+Both branches now carry the registry; `db:seed:branch` is what keeps it that way.
 
 **Re-run `db:grants` after every migration.** It deliberately does not use
 `ALTER DEFAULT PRIVILEGES`, because blanket defaults would silently hand `app_rw`
@@ -158,6 +160,7 @@ drizzle/
 scripts/
   db-grants.ts          creates app_rw, applies grants.sql
   migrate-branch.ts     migrations for a non-default Neon branch
+  seed-branch.ts        field registry for a non-default Neon branch
   import-fees-bundle.ts master refresh from a fee-app context bundle
   create-user.ts        interactive admin account creation
   make-icons.ts         PWA icons, rasterised from icon.svg

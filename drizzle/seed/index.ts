@@ -95,9 +95,13 @@ function sqlExcluded(column: string) {
   return sql.raw(`excluded."${column}"`);
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+// No process.exit(0) on success. It used to be here, and on Node 24 for Windows
+// it tore the event loop down while the Neon HTTP socket was still closing:
+// libuv asserts (`!(handle->flags & UV_HANDLE_CLOSING)`) and the command exits
+// 3221226505 having seeded everything correctly. A seed that reports failure
+// after succeeding is one people re-run, and re-running is how a real mistake
+// gets made. Nothing here holds the loop open, so falling off the end exits 0.
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
