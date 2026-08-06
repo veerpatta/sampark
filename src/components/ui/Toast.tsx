@@ -112,10 +112,16 @@ function ToastRow({
 }) {
   const { id, message, undo, undoLabel = "Undo", tone = "info" } = toast;
   const duration = toast.duration ?? (undo ? 8000 : 4000);
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => onDismiss(id), duration);
-    return () => clearTimeout(timer);
+    // Start fading a beat before it actually goes, so it does not blink out.
+    const fade = setTimeout(() => setLeaving(true), Math.max(0, duration - 200));
+    const gone = setTimeout(() => onDismiss(id), duration);
+    return () => {
+      clearTimeout(fade);
+      clearTimeout(gone);
+    };
   }, [id, duration, onDismiss]);
 
   const border = {
@@ -125,8 +131,14 @@ function ToastRow({
   }[tone];
 
   return (
+    // Comes up from the bottom on a phone, where her thumb and her eyes are;
+    // in from the right on a desktop, away from the table she is reading. Both
+    // keyframes are neutralised by the prefers-reduced-motion rule in
+    // globals.css, which is the whole reason these are CSS and not JS.
     <div
-      className={`pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-[var(--radius-card)] border ${border} bg-[var(--color-surface)] px-4 py-3 text-sm shadow-lg`}
+      className={`pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-[var(--radius-card)] border ${border} bg-[var(--color-surface)] px-4 py-3 text-sm shadow-lg transition-opacity duration-200 ${
+        leaving ? "opacity-0" : "animate-[toast-in_220ms_ease-out]"
+      }`}
     >
       <span className="flex-1">{message}</span>
       {undo ? (

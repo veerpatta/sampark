@@ -5,6 +5,8 @@ import { validateField } from "@/lib/fields";
 import { titleCaseName } from "@/lib/classes";
 import { houseOf } from "@/lib/houses";
 import { normalisePhone, PHONE_LENGTH } from "@/lib/phone";
+import { tick } from "./haptics";
+
 import type { RowState, TeacherField, TeacherRosterRow } from "./types";
 
 /**
@@ -49,6 +51,13 @@ export function StudentRow({
   onDone: () => void;
   onReopen: () => void;
 }) {
+  // Every answer gets one tick. Wrapped here rather than at each call site so
+  // no future action can quietly ship without the feedback.
+  const answer = (fn: () => void) => () => {
+    tick();
+    fn();
+  };
+
   const editing = state.status === "editing" || (blank && state.status === "todo");
   const showStored = state.status === "todo" && !blank;
   const showEntered = state.status === "edited";
@@ -67,7 +76,12 @@ export function StudentRow({
     <li
       // The anchor the review screen scrolls back to when she taps a change.
       id={`student-${student.studentId}`}
-      className={`scroll-mt-24 rounded-[var(--radius-card)] border-2 p-4 ${
+      // The state colour crossfades over 200ms rather than snapping, which is
+      // how the row says "yes, that registered". A plain CSS transition and not
+      // Motion on purpose: Motion cannot tween a var(), and the reduced-motion
+      // rule in globals.css already neutralises transition-duration, so this
+      // honours the OS setting without a second mechanism to remember.
+      className={`scroll-mt-24 rounded-[var(--radius-card)] border-2 p-4 transition-colors duration-200 ${
         {
           todo: "border-[var(--color-border)] bg-[var(--color-surface)]",
           editing: "border-[var(--color-correct-border)] bg-[var(--color-surface)]",
@@ -205,15 +219,15 @@ export function StudentRow({
             <>
               <button
                 type="button"
-                onClick={onConfirm}
-                className="min-h-12 flex-1 rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)]"
+                onClick={answer(onConfirm)}
+                className="min-h-12 flex-1 rounded-lg transition-transform active:scale-[0.98] border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)]"
               >
                 सही है
               </button>
               <button
                 type="button"
                 onClick={onEdit}
-                className="min-h-12 flex-1 rounded-lg border-2 border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 font-semibold text-[var(--color-correct-fg)]"
+                className="min-h-12 flex-1 rounded-lg transition-transform active:scale-[0.98] border-2 border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 font-semibold text-[var(--color-correct-fg)]"
               >
                 बदलें
               </button>
@@ -227,9 +241,9 @@ export function StudentRow({
           {editing ? (
             <button
               type="button"
-              onClick={onDone}
+              onClick={answer(onDone)}
               disabled={invalid}
-              className="sticky bottom-2 z-10 min-h-12 flex-1 rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)] shadow-sm disabled:opacity-40"
+              className="sticky bottom-2 z-10 min-h-12 flex-1 rounded-lg transition-transform active:scale-[0.98] border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)] shadow-sm disabled:opacity-40"
             >
               हो गया
             </button>
@@ -239,7 +253,7 @@ export function StudentRow({
             <button
               type="button"
               onClick={onReopen}
-              className="min-h-12 rounded-lg border-2 border-[var(--color-border)] px-4 text-sm font-medium text-[var(--color-ink-muted)]"
+              className="min-h-12 rounded-lg border-2 border-[var(--color-border)] px-4 text-sm transition-transform active:scale-[0.98] font-medium text-[var(--color-ink-muted)]"
             >
               फिर से देखें
             </button>
@@ -253,8 +267,8 @@ export function StudentRow({
         {state.status !== "absent" ? (
           <button
             type="button"
-            onClick={onAbsent}
-            className="min-h-12 w-full rounded-lg border border-dashed border-[var(--color-absent-border)] px-4 text-sm font-medium text-[var(--color-absent-fg)]"
+            onClick={answer(onAbsent)}
+            className="min-h-12 w-full rounded-lg border border-dashed transition-transform active:scale-[0.98] border-[var(--color-absent-border)] px-4 text-sm font-medium text-[var(--color-absent-fg)]"
           >
             यह बच्चा मेरी कक्षा में नहीं है
           </button>

@@ -1,6 +1,7 @@
 "use client";
 
 
+
 /**
  * The sticky bar at the bottom of the teacher surface.
  *
@@ -52,8 +53,19 @@ export function ProgressRail({
             अभी {remaining} बाकी हैं
           </span>
         )}
+        {/* "Reached the school" is the one that matters, so it gets the tick
+            and a spring on every increase. Saved-on-phone below stays flat
+            grey text — the two must never look alike, because on a bad signal
+            they are genuinely different facts. */}
         {sent > 0 ? (
-          <span className="text-[var(--color-ink-muted)]">
+          // key={sent} remounts the span on every increase, which restarts the
+          // pop. The tick and the colour are what separate this from the grey
+          // saved-on-phone line below.
+          <span
+            key={sent}
+            className="animate-[pop_240ms_ease-out] flex items-center gap-1 font-medium text-[var(--color-confirm-fg)]"
+          >
+            <span aria-hidden>✓</span>
             {sent} विद्यालय पहुँच गए
           </span>
         ) : null}
@@ -66,8 +78,11 @@ export function ProgressRail({
         aria-valuemax={100}
         className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--color-surface-muted)]"
       >
+        {/* Slides to its new width rather than jumping. "How much is left" is
+            a question she is asking constantly, and a bar that travels answers
+            it in a way a bar that teleports does not. */}
         <div
-          className="h-full rounded-full bg-[var(--color-success)] transition-[width]"
+          className="h-full rounded-full bg-[var(--color-success)] transition-[width] duration-300 ease-out"
           style={{ width: `${percent}%` }}
         />
       </div>

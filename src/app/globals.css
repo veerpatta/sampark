@@ -12,6 +12,58 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * Motion that answers a question she is already asking. Nothing here is
+ * decoration, nothing runs longer than 300ms, and nothing moves a tap target
+ * while a finger is travelling toward it.
+ *
+ * Deliberately CSS rather than an animation library. `motion` was tried and
+ * measured at 50.4 kB in the SHARED bundle — every route, including the
+ * teacher's, which runs on a cheap Android over patchy 3G. Five effects, each
+ * of which is one line of CSS, is not worth 41% on top of that page. The other
+ * gain is that the reduced-motion rule below actually governs these: it sets
+ * animation-duration and transition-duration, which a JS library animating
+ * inline styles would have ignored entirely.
+ */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* "It reached the school." Fires on every increase, via a changing React key. */
+@keyframes pop {
+  0% {
+    opacity: 0.6;
+    transform: scale(0.94);
+  }
+  60% {
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (min-width: 768px) {
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(1.5rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+}
+
 /* Respect the OS setting rather than fighting it. */
 @media (prefers-reduced-motion: reduce) {
   *,

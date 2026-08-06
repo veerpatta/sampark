@@ -59,8 +59,8 @@ export default function RootLayout({
       <body
         className={`${anekLatin.variable} ${anekDevanagari.variable} ${plexMono.variable} antialiased`}
       >
-        {/* Both surfaces get it: the office needs undo, the teacher needs to
-            be told her forty taps landed. */}
+        {/* Both surfaces get the toast: the office needs undo, the teacher
+            needs to be told her forty taps landed. */}
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

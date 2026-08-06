@@ -6,6 +6,8 @@ import { StudentRow } from "./StudentRow";
 import { ProgressRail } from "./ProgressRail";
 import { ReviewSummary } from "./ReviewSummary";
 import { summarise } from "./summary";
+import { tick } from "./haptics";
+import { useToast } from "@/components/ui/Toast";
 import {
   clearDraft,
   loadDraft,
@@ -68,6 +70,7 @@ export function RequestForm({
   roster: TeacherRosterRow[];
 }) {
   const router = useRouter();
+  const toast = useToast();
 
   // Blanks first. Order within each group is the name order the server sent.
   const { blanks, known, blankIds } = useMemo(() => {
@@ -96,8 +99,6 @@ export function RequestForm({
   const [error, setError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
   const [restored, setRestored] = useState(false);
-  /** Set for ten seconds after a bulk confirm, so it can be taken back. */
-  const [undo, setUndo] = useState<Record<string, RowState> | null>(null);
   /**
    * Not persisted to the draft. On reload she lands on the list with her
    * answers restored; dropping her into a review screen she did not ask for is
@@ -210,22 +211,23 @@ export function RequestForm({
       return next;
     });
 
+    // One tick for the whole action, not one per student. Forty buzzes from a
+    // single tap would read as a fault, not as feedback.
+    tick();
+
     // Ten seconds to take it back. The only thing worse than forty taps is
-    // forty taps undone one at a time.
-    setUndo(before);
+    // forty taps undone one at a time. This used to be an inline strip that
+    // pushed the list down as it appeared and again as it went; the toast sits
+    // over the list instead, at the bottom, next to her thumb.
+    toast({
+      message: `${untouchedKnown.length} पर सही का निशान लगाया`,
+      undoLabel: "वापस लें",
+      duration: 10_000,
+      tone: "success",
+      undo: () => setRows((current) => ({ ...current, ...before })),
+    });
   }
 
-  useEffect(() => {
-    if (!undo) return;
-    const timer = setTimeout(() => setUndo(null), 10_000);
-    return () => clearTimeout(timer);
-  }, [undo]);
-
-  function takeBack() {
-    if (!undo) return;
-    setRows((current) => ({ ...current, ...undo }));
-    setUndo(null);
-  }
 
   const summary = useMemo(
     () => summarise(roster, fields, rows),
@@ -506,21 +508,6 @@ export function RequestForm({
             >
               सब सही हैं ({untouchedKnown.length})
             </button>
-          ) : null}
-
-          {undo ? (
-            <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
-              <span className="text-[var(--color-ink-muted)]">
-                {Object.keys(undo).length} पर सही का निशान लगाया
-              </span>
-              <button
-                type="button"
-                onClick={takeBack}
-                className="min-h-12 shrink-0 px-3 font-medium underline"
-              >
-                वापस लें
-              </button>
-            </div>
           ) : null}
 
           <ol className="mt-3 space-y-3">
