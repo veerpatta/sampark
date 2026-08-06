@@ -32,23 +32,15 @@
   --color-absent-fg: #64748b;
   --color-absent-border: #cbd5e1;
 
-  /* --- the four houses ---
-     A house chip is recognition context, not an action, so each pairs a pale
-     ground with a dark enough foreground to stay legible on a cheap phone in
-     daylight. Named for the house, not the colour, so renaming a house's colour
-     is one edit here. See src/lib/houses.ts. */
-  --color-house-red-bg: #fef2f2;      /* Rana Pratap */
-  --color-house-red-fg: #b91c1c;
-  --color-house-blue-bg: #eff6ff;     /* Rana Kumbha */
-  --color-house-blue-fg: #1d4ed8;
-  --color-house-green-bg: #f0fdf4;    /* Bappa Rawal */
-  --color-house-green-fg: #15803d;
-  --color-house-yellow-bg: #fefce8;   /* Rana Sanga */
-  --color-house-yellow-fg: #a16207;
-
   /* --- state --- */
   --color-danger: #dc2626;
   --color-warning: #d97706;
+  /* Darker cut for warning text on white. --color-warning is tuned for a
+     border or an icon; at 14-16px on a cheap screen in daylight it is thin.
+     It was also being referenced before it existed — the teacher screen's
+     "6 children have nothing on record" heading, the most important line on
+     that page, was silently falling back to inherited ink. */
+  --color-warning-fg: #b45309;
   --color-success: #059669;
   --color-pending: #7c3aed;
 
@@ -64,9 +56,61 @@
   --font-devanagari: var(--font-anek-devanagari), var(--font-anek-latin), sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 
+  /* --- depth ---
+     One soft shadow over a 1px border, never a heavy outline. Two levels is
+     all this app has: things that sit on the page, and things that sit over
+     it. A third would only invite a fourth. */
+  --shadow-card:
+    0 1px 2px rgb(15 23 42 / 0.04), 0 4px 12px rgb(15 23 42 / 0.06);
+  --shadow-raised: 0 8px 24px rgb(15 23 42 / 0.1);
+
+  /* --- type scale ---
+     Named for the job, not the size, so "a student's name" and "a field
+     label" are visibly different decisions rather than two numbers somebody
+     picked. Cramped, undifferentiated type is most of what reads as "old". */
+  --text-display: 1.75rem;
+  --text-display--line-height: 2.125rem;
+  --text-title: 1.25rem;
+  --text-title--line-height: 1.75rem;
+  --text-name: 1.125rem;
+  --text-name--line-height: 1.625rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.125rem;
+  --text-meta: 0.75rem;
+  --text-meta--line-height: 1rem;
+
   /* --- ergonomics --- */
   --tap-min: 48px;
   --radius-card: 12px;
+  --radius-chip: 999px;
+}
+
+/*
+ * The four houses.
+ *
+ * A house chip is recognition context, not an action, so each pairs a pale
+ * ground with a dark enough foreground to stay legible on a cheap phone in
+ * daylight. Named for the house, not the colour, so renaming a house's colour
+ * is one edit here. See src/lib/houses.ts.
+ *
+ * DELIBERATELY OUTSIDE @theme. Tailwind v4 drops theme variables it cannot see
+ * being used, and these are only ever referenced as
+ * `var(--color-house-${colour}-bg)` inside a template literal — which its
+ * scanner reads as a string, not as a usage. They were being pruned from the
+ * stylesheet entirely, so every chip has been rendering transparent with grey
+ * text since the houses were added. A plain :root block is always emitted.
+ */
+:root {
+  --color-house-red-bg: #fef2f2; /* Rana Pratap */
+  --color-house-red-fg: #b91c1c;
+  --color-house-blue-bg: #eff6ff; /* Rana Kumbha */
+  --color-house-blue-fg: #1d4ed8;
+  --color-house-green-bg: #f0fdf4; /* Bappa Rawal */
+  --color-house-green-fg: #15803d;
+  --color-house-yellow-bg: #fefce8; /* Rana Sanga */
+  --color-house-yellow-fg: #a16207;
 }
 
 /* Hindi text gets the Devanagari cut of Anek. */

@@ -33,10 +33,10 @@ export default async function NewRequestPage({
   ]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <header>
         <div className="flex items-baseline gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">New request</h1>
+          <h1 className="text-display font-semibold tracking-tight">New request</h1>
           <Link
             href="/requests"
             className="text-sm text-[var(--color-brand-600)] hover:underline"

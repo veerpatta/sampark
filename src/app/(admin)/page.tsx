@@ -44,7 +44,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <h1 className="text-display font-semibold tracking-tight">Dashboard</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           Shri Veer Patta Senior Secondary School, Amet
         </p>
@@ -93,7 +93,7 @@ export default async function DashboardPage() {
       ) : null}
 
       {overdue.length > 0 ? (
-        <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+        <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
             Past their due date
           </h2>
@@ -166,7 +166,7 @@ function Stat({
   return (
     <Link
       href={href}
-      className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 hover:border-[var(--color-brand-600)]"
+      className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-5 hover:border-[var(--color-brand-600)]"
     >
       <div className={`text-3xl font-semibold ${colour}`}>
         {value.toLocaleString("en-IN")}

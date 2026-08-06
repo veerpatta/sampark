@@ -6,6 +6,7 @@ import { currentUser } from "@/lib/auth/session";
 import { IMPORT_COLUMNS } from "@/lib/students-import";
 import { readStudentColumn } from "@/lib/student-columns";
 import { titleCaseName } from "@/lib/classes";
+import { HouseChip } from "@/components/HouseChip";
 import type { Student } from "../../../../../drizzle/schema";
 
 export const metadata = { title: "Student — Sampark" };
@@ -72,10 +73,10 @@ export default async function StudentDetailPage({
   if (!student) notFound();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <header>
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">
+        <div className="flex flex-wrap items-baseline gap-3">
+          <h1 className="text-display font-semibold tracking-tight">
             {titleCaseName(student.name)}
           </h1>
           <Link
@@ -84,6 +85,9 @@ export default async function StudentDetailPage({
           >
             {student.classLabel}
           </Link>
+          {/* The house was collected in prompt 4 and then never shown here,
+              which is the screen you open when a parent rings. */}
+          <HouseChip house={student.house} lang="en" />
           {student.id.startsWith("TMP-") ? (
             <span className="rounded bg-[var(--color-correct-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-correct-fg)]">
               temporary ID — replace with the real PSP one
@@ -102,7 +106,7 @@ export default async function StudentDetailPage({
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr]">
-        <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+        <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
             What we hold
           </h2>
@@ -129,9 +133,9 @@ export default async function StudentDetailPage({
           </p>
         </section>
 
-        <div className="space-y-6">
+        <div className="space-y-8">
           {records.length > 0 ? (
-            <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
               <h2 className="border-b border-[var(--color-border)] px-4 py-3 text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
                 Period records
               </h2>
@@ -156,7 +160,7 @@ export default async function StudentDetailPage({
             </section>
           ) : null}
 
-          <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
             <h2 className="border-b border-[var(--color-border)] px-4 py-3 text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
               Change history
             </h2>

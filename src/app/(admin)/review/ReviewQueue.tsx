@@ -90,8 +90,8 @@ export function ReviewQueue({
   const groups = groupByRequest(showStale ? [...live, ...stale] : live);
 
   return (
-    <div className="space-y-6">
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+    <div className="space-y-8">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card px-4 py-3">
         <span className="text-sm font-medium">
           {selected.size} of {live.length} selected
         </span>
@@ -154,7 +154,7 @@ export function ReviewQueue({
       {groups.map((group) => (
         <section
           key={group.requestId}
-          className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]"
+          className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card"
         >
           <header className="flex flex-wrap items-baseline gap-2 border-b border-[var(--color-border)] px-4 py-3">
             <h2 className="font-medium">{group.requestTitle}</h2>

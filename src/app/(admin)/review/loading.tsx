@@ -15,7 +15,7 @@ export default function ReviewLoading() {
       {Array.from({ length: 2 }, (_, group) => (
         <section
           key={group}
-          className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]"
+          className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card"
         >
           <header className="flex items-baseline gap-3 border-b border-[var(--color-border)] px-4 py-3">
             <SkeletonBlock className="h-5 w-32" />

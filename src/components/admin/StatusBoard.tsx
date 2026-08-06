@@ -74,7 +74,7 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
   }
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 md:p-6">
+    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4 md:p-6">
       <h2 className="text-xl font-semibold tracking-tight">
         {submitted.length} of {open.length}{" "}
         {open.length === 1 ? "class has" : "classes have"} submitted

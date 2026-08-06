@@ -105,7 +105,7 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
   const canDryRun = mapped.size > 0 && duplicates.length === 0 && (identifiable || insertable);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* ---------------------------------------------------------- step 1 */}
       <Card step="1" title="Choose the file">
         <div className="flex flex-wrap items-center gap-3">
@@ -429,7 +429,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
       <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-surface-muted)] font-mono text-xs">
           {step}

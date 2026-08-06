@@ -28,7 +28,7 @@ export default async function UsersPage() {
     <div className="space-y-8">
       <header>
         <div className="flex items-baseline gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Admin users</h1>
+          <h1 className="text-display font-semibold tracking-tight">Admin users</h1>
           <Link
             href="/settings/teachers"
             className="text-sm text-[var(--color-brand-600)] hover:underline"
@@ -57,7 +57,7 @@ export default async function UsersPage() {
         </p>
       </header>
 
-      <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+      <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
           Add a user, or reset a password
         </h2>
@@ -132,7 +132,7 @@ export default async function UsersPage() {
         </form>
       </section>
 
-      <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
         <table className="w-full text-sm">
           <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
             <tr>

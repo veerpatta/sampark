@@ -28,9 +28,9 @@ export default async function ReviewPage({
   const actionable = items.filter((item) => !item.superseded);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Review</h1>
+        <h1 className="text-display font-semibold tracking-tight">Review</h1>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           {actionable.length === 0
             ? "Nothing waiting."

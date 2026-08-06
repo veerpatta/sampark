@@ -25,7 +25,7 @@ export default async function TeachersPage() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Teachers</h1>
+        <h1 className="text-display font-semibold tracking-tight">Teachers</h1>
         <p className="mt-1 max-w-prose text-sm text-[var(--color-ink-muted)]">
           Phone numbers are 10 digits with no country code — the WhatsApp link
           builder adds 91. Classes are comma separated and must match the
@@ -34,7 +34,7 @@ export default async function TeachersPage() {
         </p>
       </header>
 
-      <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+      <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
           Add a teacher
         </h2>
@@ -55,7 +55,7 @@ export default async function TeachersPage() {
         </form>
       </section>
 
-      <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
         {teachers.length === 0 ? (
           <p className="p-6 text-sm text-[var(--color-ink-muted)]">
             No teachers yet. Add the class teachers above — a request cannot be

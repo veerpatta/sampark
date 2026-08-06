@@ -10,7 +10,7 @@ export default function NewRequestLoading() {
   return (
     <SkeletonPage>
       <SkeletonPageHeader />
-      <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+      <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
         <SkeletonBlock className="h-4 w-32" />
         <div className="mt-4 flex flex-wrap gap-2">
           {Array.from({ length: 11 }, (_, index) => (

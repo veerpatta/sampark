@@ -12,8 +12,8 @@ export default function RequestDetailLoading() {
       <SkeletonPageHeader wide />
       <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
         <SkeletonCard lines={6} heading={false} />
-        <div className="space-y-6">
-          <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+        <div className="space-y-8">
+          <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
             <SkeletonBlock className="h-4 w-24" />
             <SkeletonBlock className="mt-4 h-20 w-full rounded-lg" />
             <div className="mt-4 flex flex-wrap gap-2">

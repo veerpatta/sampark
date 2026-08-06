@@ -30,7 +30,7 @@ export default async function FieldSettingsPage() {
     <div className="space-y-8">
       <header>
         <div className="flex items-baseline gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-display font-semibold tracking-tight">
             Field registry
           </h1>
           <Link
@@ -62,7 +62,7 @@ export default async function FieldSettingsPage() {
         </p>
       </header>
 
-      <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+      <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
           Add or update a field
         </h2>
@@ -110,7 +110,7 @@ export default async function FieldSettingsPage() {
         </form>
       </section>
 
-      <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
         <table className="w-full text-sm">
           <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
             <tr>

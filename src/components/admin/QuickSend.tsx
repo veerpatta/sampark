@@ -126,7 +126,7 @@ export function QuickSend({
   if (usable.length === 0 || teachers.length === 0) return null;
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 md:p-6">
+    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4 md:p-6">
       <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
         Send a link
       </h2>

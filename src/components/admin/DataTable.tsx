@@ -58,7 +58,7 @@ export function DataTable<T>({
   );
 
   return (
-    <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+    <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
       {/* ------------------------------------------------------ md and up */}
       <table className="hidden w-full text-sm md:table">
         <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">

@@ -5,6 +5,7 @@ import { validateField } from "@/lib/fields";
 import { titleCaseName } from "@/lib/classes";
 import { houseOf } from "@/lib/houses";
 import { normalisePhone, PHONE_LENGTH } from "@/lib/phone";
+import { HouseChip } from "@/components/HouseChip";
 import { tick } from "./haptics";
 
 import type { RowState, TeacherField, TeacherRosterRow } from "./types";
@@ -98,7 +99,7 @@ export function StudentRow({
         <div className="min-w-0">
           {/* Stored ALL CAPS, rendered title case. A Hindi-first screen
               shouting a child's name reads as an error message. */}
-          <span className="text-lg font-medium">{titleCaseName(student.name)}</span>
+          <span className="text-name font-medium">{titleCaseName(student.name)}</span>
           <Recognition student={student} fields={fields} />
         </div>
 
@@ -321,20 +322,7 @@ function Recognition({
         <span className="font-mono text-xs">क्र. {student.srNo}</span>
       ) : null}
 
-      {/* A house is the one field a child answers instantly, which makes the
-          chip the fastest recognition cue on the card. Colour carries it —
-          text in a dropdown would not. */}
-      {showHouse ? (
-        <span
-          className="rounded-full px-2 py-0.5 text-xs font-medium"
-          style={{
-            backgroundColor: `var(--color-house-${house.colour}-bg)`,
-            color: `var(--color-house-${house.colour}-fg)`,
-          }}
-        >
-          {house.hi}
-        </span>
-      ) : null}
+      {showHouse ? <HouseChip house={student.house} /> : null}
 
       {showFather ? <span>पिता: {titleCaseName(student.fatherName!)}</span> : null}
       {showRoute ? <span>{student.route}</span> : null}
@@ -380,7 +368,7 @@ function FieldInput({
   if (field.inputType === "select") {
     return (
       <label className="block">
-        <span className="text-sm text-[var(--color-ink-muted)]">
+        <span className="text-label text-[var(--color-ink-muted)]">
           {field.labelHi}
         </span>
         <select
@@ -401,7 +389,7 @@ function FieldInput({
 
   return (
     <label className="block">
-      <span className="flex items-baseline justify-between text-sm text-[var(--color-ink-muted)]">
+      <span className="flex items-baseline justify-between text-label text-[var(--color-ink-muted)]">
         <span>{field.labelHi}</span>
         {isNumeric && field.exactLen && value.length > 0 ? (
           <span className="font-mono text-xs">

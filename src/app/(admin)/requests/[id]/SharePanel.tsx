@@ -46,7 +46,7 @@ export function SharePanel({
   }
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
       <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
         {reminder ? `Remind ${teacherName}` : `Send it to ${teacherName}`}
       </h2>

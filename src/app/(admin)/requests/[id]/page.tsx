@@ -44,10 +44,10 @@ export default async function RequestDetailPage({
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <header>
         <div className="flex items-baseline gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-display font-semibold tracking-tight">
             {request.title}
           </h1>
           <Link
@@ -63,7 +63,7 @@ export default async function RequestDetailPage({
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-        <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+        <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
             What was frozen
           </h2>
@@ -140,7 +140,7 @@ export default async function RequestDetailPage({
           </p>
         </section>
 
-        <div className="space-y-6">
+        <div className="space-y-8">
           {/* contactPhone is set only when the office deliberately overrode
               her saved number for this one request. */}
           <SharePanel
@@ -156,7 +156,7 @@ export default async function RequestDetailPage({
             reminder={started}
           />
 
-          <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+          <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
               Export
             </h2>

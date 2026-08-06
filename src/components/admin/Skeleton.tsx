@@ -58,7 +58,7 @@ export function SkeletonStatGrid({ n = 4 }: { n?: number }) {
       {Array.from({ length: n }, (_, index) => (
         <div
           key={index}
-          className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5"
+          className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-5"
         >
           <SkeletonBlock className="h-9 w-16" />
           <SkeletonBlock className="mt-2 h-4 w-32" />
@@ -77,7 +77,7 @@ export function SkeletonCard({
   heading?: boolean;
 }) {
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
+    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
       {heading ? <SkeletonBlock className="h-4 w-40" /> : null}
       <div className={heading ? "mt-4 space-y-3" : "space-y-3"}>
         {Array.from({ length: lines }, (_, index) => (
@@ -105,7 +105,7 @@ export function SkeletonTable({
   rows?: number;
 }) {
   return (
-    <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+    <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
       <table className="hidden w-full text-sm md:table">
         <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
           <tr>

@@ -25,10 +25,10 @@ export default async function StudentImportPage() {
   }));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <header>
         <div className="flex items-baseline gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-display font-semibold tracking-tight">
             Import students
           </h1>
           <Link
