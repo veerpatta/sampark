@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Anek_Latin, Anek_Devanagari, IBM_Plex_Mono } from "next/font/google";
+import { ToastProvider } from "@/components/ui/Toast";
 import "./globals.css";
 
 /**
@@ -51,7 +52,9 @@ export default function RootLayout({
       <body
         className={`${anekLatin.variable} ${anekDevanagari.variable} ${plexMono.variable} antialiased`}
       >
-        {children}
+        {/* Both surfaces get it: the office needs undo, the teacher needs to
+            be told her forty taps landed. */}
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

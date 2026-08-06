@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Decision, ReviewItem } from "@/lib/submissions";
 import { titleCaseName } from "@/lib/classes";
+import { useToast } from "@/components/ui/Toast";
 import { decide } from "./actions";
 
 /**
@@ -24,26 +25,51 @@ export function ReviewQueue({
   items: ReviewItem[];
   canApprove: boolean;
 }) {
-  const live = items.filter((item) => !item.superseded);
-  const stale = items.filter((item) => item.superseded);
+  // Rows the server has not caught up on yet. They leave the list the moment
+  // she taps; if the action throws, React discards this and they come back.
+  const [decided, setDecided] = useOptimistic<string[]>([]);
+
+  const visible = items.filter((item) => !decided.includes(item.id));
+  const live = visible.filter((item) => !item.superseded);
+  const stale = visible.filter((item) => item.superseded);
 
   const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(live.map((item) => item.id)),
+    () => new Set(items.filter((item) => !item.superseded).map((item) => item.id)),
   );
   const [showStale, setShowStale] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+  const toast = useToast();
 
   function submit(decision: Decision) {
     setError(null);
+    const ids = [...selected];
+    if (ids.length === 0) return;
+
+    // Optimistic update and refresh inside ONE transition. Split them and the
+    // rows reappear for a frame between the action resolving and the fresh
+    // data landing.
     startTransition(async () => {
+      setDecided(ids);
       try {
-        await decide([...selected], decision, note);
+        await decide(ids, decision, note);
         setSelected(new Set());
         setNote("");
         router.refresh();
+
+        // No undo offered, and that is deliberate. Approving writes through the
+        // precedence rules into the master record; there is no clean inverse,
+        // and a button labelled Undo that leaves the record changed would be
+        // worse than not offering one. Say what happened instead.
+        toast({
+          message:
+            decision === "approved"
+              ? `${ids.length} ${ids.length === 1 ? "change is" : "changes are"} now in the master record.`
+              : `${ids.length} ${ids.length === 1 ? "change" : "changes"} rejected. The master record is unchanged.`,
+          tone: decision === "approved" ? "success" : "info",
+        });
       } catch {
         setError(
           "That did not go through. Nothing has been changed — try again.",
