@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { validateField } from "@/lib/fields";
 import { titleCaseName } from "@/lib/classes";
+import { houseOf } from "@/lib/houses";
 import { toHindiDigits } from "./digits";
 import type { RowState, TeacherField, TeacherRosterRow } from "./types";
 
@@ -82,12 +83,7 @@ export function StudentRow({
           {/* Stored ALL CAPS, rendered title case. A Hindi-first screen
               shouting a child's name reads as an error message. */}
           <span className="text-lg font-medium">{titleCaseName(student.name)}</span>
-          <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-sm text-[var(--color-ink-muted)]">
-            {student.srNo ? (
-              <span className="font-mono text-xs">क्र. {student.srNo}</span>
-            ) : null}
-            {student.route ? <span>{student.route}</span> : null}
-          </div>
+          <Recognition student={student} fields={fields} />
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -247,6 +243,70 @@ export function StudentRow({
         ) : null}
       </div>
     </li>
+  );
+}
+
+/**
+ * Everything we know about this child that is NOT being asked about.
+ *
+ * The teacher knows these children by face and by nickname, not as a row in a
+ * spreadsheet. Every scrap of identifying data makes it faster for her to be
+ * sure which child she is answering for, and being sure is the whole product.
+ *
+ * Three rules keep it from becoming clutter:
+ *
+ *   1. Read-only and visually recessive. Smaller and muted, never competing
+ *      with the input. She is not confirming this; she is using it to recognise
+ *      a child.
+ *   2. Never repeat a field the request is asking about. Showing the father's
+ *      name as context on a form collecting the father's name is noise at best
+ *      and a leading answer at worst.
+ *   3. Class is in the sticky header, not on every row.
+ *
+ * The virtuous circle worth knowing about: the more fields get filled, the
+ * better every FUTURE request works. A house collected in September makes the
+ * January request easier to answer.
+ */
+function Recognition({
+  student,
+  fields,
+}: {
+  student: TeacherRosterRow;
+  fields: TeacherField[];
+}) {
+  const asked = new Set(fields.map((field) => field.key));
+  const house = houseOf(student.house);
+
+  const showRoute = student.route && !asked.has("bus_route");
+  const showFather = student.fatherName && !asked.has("father_name");
+  const showHouse = house && !asked.has("house");
+
+  if (!student.srNo && !showRoute && !showFather && !showHouse) return null;
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--color-ink-muted)]">
+      {student.srNo ? (
+        <span className="font-mono text-xs">क्र. {student.srNo}</span>
+      ) : null}
+
+      {/* A house is the one field a child answers instantly, which makes the
+          chip the fastest recognition cue on the card. Colour carries it —
+          text in a dropdown would not. */}
+      {showHouse ? (
+        <span
+          className="rounded-full px-2 py-0.5 text-xs font-medium"
+          style={{
+            backgroundColor: `var(--color-house-${house.colour}-bg)`,
+            color: `var(--color-house-${house.colour}-fg)`,
+          }}
+        >
+          {house.hi}
+        </span>
+      ) : null}
+
+      {showFather ? <span>पिता: {titleCaseName(student.fatherName!)}</span> : null}
+      {showRoute ? <span>{student.route}</span> : null}
+    </div>
   );
 }
 

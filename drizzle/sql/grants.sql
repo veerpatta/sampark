@@ -28,8 +28,16 @@ GRANT USAGE ON SCHEMA public TO app_rw;
 -- ---------------------------------------------------------------- read/write
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   students, requests, request_students, student_records,
-  teachers, users, field_defs, rate_limits
+  teachers, users, field_defs, rate_limits,
+  value_sources
 TO app_rw;
+
+-- `sources` and `field_sources` are precedence POLICY, not data the app
+-- collects. Which source outranks which for a given field is an administrative
+-- decision that arrives through a migration or a seed run as the owner — an
+-- import must never be able to promote its own source mid-run and thereby win
+-- an argument it should have lost.
+GRANT SELECT ON sources, field_sources TO app_rw;
 
 -- --------------------------------------------------------------- append-only
 GRANT SELECT, INSERT ON submissions, change_log TO app_rw;

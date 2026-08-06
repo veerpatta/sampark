@@ -305,6 +305,22 @@ export function RequestBuilder({
           not alter what the teacher sees.
         </span>
       </div>
+
+      {/* The reason to keep collecting, said out loud where the decision is
+          made. Every field filled makes every later request easier to answer,
+          and that compounding is invisible unless someone points at it. */}
+      {classLabel ? (
+        <p className="rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-xs text-[var(--color-ink-muted)]">
+          <strong className="font-medium text-[var(--color-ink)]">
+            Recognition context.
+          </strong>{" "}
+          Each row will also show whatever else we hold for that child — SR
+          number, house as a coloured chip, bus route, father&rsquo;s name — so
+          the teacher can be sure which child she is answering for. Fields you
+          are asking about are never repeated as context. The more that gets
+          collected, the easier every later request is to answer.
+        </p>
+      ) : null}
     </form>
   );
 }

@@ -28,6 +28,9 @@ export type TeacherRosterRow = {
   name: string;
   /** Present for about half the school, and real context when it is. */
   route: string | null;
+  /** One of the four houses. Rendered as a coloured chip. */
+  house: string | null;
+  fatherName: string | null;
   values: Record<string, string | null>;
 };
 

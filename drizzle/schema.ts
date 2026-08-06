@@ -55,6 +55,16 @@ export const students = pgTable(
     village: text("village"),
     address: text("address"),
     busRoute: text("bus_route"),
+    house: text("house"), // Rana Pratap | Rana Kumbha | Bappa Rawal | Rana Sanga
+    /**
+     * PSP masks Aadhaar: 328 of 504 rows carry the LAST FOUR DIGITS ONLY and
+     * there is not one full number in the file. Writing that into `aadhaar`
+     * would look like real data, fail its exactLen 12 validation forever, and
+     * make the field permanently un-collectable. It lands here instead and can
+     * never satisfy the aadhaar field. Collecting the real number stays a
+     * teacher job.
+     */
+    aadhaarLast4: text("aadhaar_last4"),
     status: text("status").notNull().default("active"), // active | left | tc_issued
     source: text("source").default("psp"),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -96,6 +106,81 @@ export const fieldDefs = pgTable("field_defs", {
   sortOrder: integer("sort_order").default(100),
   active: boolean("active").notNull().default(true),
 });
+
+/* ============ SOURCES AND PRECEDENCE ============ */
+
+/**
+ * Every place a value can come from.
+ *
+ * More files keep arriving, each covering some students and some fields, each
+ * better than the others at something. A one-off importer per file does not
+ * survive that — the third file silently overwrites what the second one got
+ * right. So a value carries where it came from, and precedence decides who wins.
+ */
+export const sources = pgTable("sources", {
+  key: text("key").primaryKey(), // psp | fees | election | teacher | office
+  label: text("label").notNull(),
+  kind: text("kind").notNull(), // import | collected | manual
+  /**
+   * Higher wins when no field-specific rule applies. `teacher` sits above every
+   * import on purpose — see fieldSources.
+   */
+  rank: integer("rank").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+});
+
+/**
+ * Which source is authoritative for which field. DATA, not a switch statement,
+ * because this will change: the fee app owns class allocation today and might
+ * not in a year.
+ *
+ * THE RULE THAT IS NOT IN THIS TABLE: an APPROVED TEACHER SUBMISSION OUTRANKS
+ * EVERY IMPORT, for every field, always. It is enforced in code
+ * (lib/precedence.ts) rather than as a row here precisely so nobody can switch
+ * it off by editing a table. A teacher who corrected a number, had it approved,
+ * and then watched a re-imported PSP export undo her work would never use the
+ * tool again — that is the difference between this being trusted and abandoned.
+ */
+export const fieldSources = pgTable("field_sources", {
+  fieldKey: text("field_key").primaryKey(), // students column name, e.g. 'class_label'
+  sourceKey: text("source_key")
+    .notNull()
+    .references(() => sources.key),
+});
+
+/**
+ * Where each individual value came from, and when.
+ *
+ * A SIDE TABLE rather than two columns per field on `students`. The registry is
+ * data, not code — adding a collectable field must stay a database row, not a
+ * deployment (plan principle 8) — and `source_key`/`source_updated_at` columns
+ * per field would make every new field a migration, which breaks exactly that
+ * rule. It is also sparse: most (student, field) pairs have no provenance yet,
+ * and `students` stays readable as the master record it is.
+ *
+ * The cost is a join on import. Imports are batch operations that already read
+ * every candidate row, so it is one more query per run, not per value.
+ */
+export const valueSources = pgTable(
+  "value_sources",
+  {
+    studentId: text("student_id")
+      .notNull()
+      .references(() => students.id, { onDelete: "cascade" }),
+    /** The students column this describes, e.g. 'phone'. */
+    fieldKey: text("field_key").notNull(),
+    sourceKey: text("source_key")
+      .notNull()
+      .references(() => sources.key),
+    sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.studentId, t.fieldKey] }),
+    index("value_sources_source_idx").on(t.sourceKey),
+  ],
+);
 
 /* ============ NON-MASTER DATA (marks, term-scoped values) ============ */
 
@@ -315,3 +400,7 @@ export type RequestStudent = typeof requestStudents.$inferSelect;
 export type Submission = typeof submissions.$inferSelect;
 export type ChangeLogEntry = typeof changeLog.$inferSelect;
 export type RateLimit = typeof rateLimits.$inferSelect;
+export type Source = typeof sources.$inferSelect;
+export type NewSource = typeof sources.$inferInsert;
+export type FieldSource = typeof fieldSources.$inferSelect;
+export type ValueSource = typeof valueSources.$inferSelect;

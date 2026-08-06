@@ -45,6 +45,8 @@ const row = (values: Record<string, string | null>): TeacherRosterRow => ({
   srNo: "ZZ-1",
   name: "TEST CHILD",
   route: null,
+  house: null,
+  fatherName: null,
   values,
 });
 

@@ -81,6 +81,9 @@ export type ResolvedRosterRow = {
   name: string;
   /** Real identifying context in a village school; present for about half. */
   route: string | null;
+  /** A coloured chip — the field a child answers instantly. */
+  house: string | null;
+  fatherName: string | null;
   values: Record<string, string | null>;
 };
 
@@ -171,6 +174,8 @@ export async function resolveToken(
           name?: string;
           srNo?: string | null;
           route?: string | null;
+          house?: string | null;
+          fatherName?: string | null;
           values?: Record<string, string | null>;
         };
         return {
@@ -178,6 +183,8 @@ export async function resolveToken(
           srNo: snapshot.srNo ?? null,
           name: snapshot.name ?? "",
           route: snapshot.route ?? null,
+          house: snapshot.house ?? null,
+          fatherName: snapshot.fatherName ?? null,
           values: snapshot.values ?? {},
         };
       })

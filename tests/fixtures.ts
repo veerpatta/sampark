@@ -37,7 +37,27 @@ const ownerDb = drizzle(neon(ownerUrl), { schema });
  * Everything created here is prefixed ZZTEST and torn down afterwards. Every
  * value is invented: no real student, teacher or number appears (rule 12).
  */
-const PREFIX = "ZZTEST";
+/**
+ * Every fixture is prefixed ZZTEST and torn down afterwards — but the prefix
+ * also carries the TEST FILE, because `node --test` runs files in parallel and
+ * a shared prefix means one file's `cleanup()` deletes another file's students
+ * out from under it. That surfaced as a foreign-key violation on
+ * request_students: not a flaky test, two teardowns racing.
+ *
+ * Five characters of the filename is enough to separate them and keeps the ids
+ * inside the column widths.
+ */
+const FILE_TAG = (process.argv[1] ?? "x")
+  .replace(/\\/g, "/")
+  .split("/")
+  .pop()!
+  .replace(/\.test\.ts$/, "")
+  .replace(/[^a-z]/gi, "")
+  .slice(0, 5)
+  .toUpperCase()
+  .padEnd(5, "X");
+
+const PREFIX = `ZZTEST${FILE_TAG}`;
 
 /**
  * Fixture students need a class the request builder will accept, because
@@ -136,6 +156,8 @@ export async function createScenario(options?: {
         name: student.name,
         srNo: student.srNo,
         route: student.busRoute,
+        house: student.house,
+        fatherName: student.fatherName,
         values: Object.fromEntries(
           fields.map((field) => [
             field.key,
@@ -172,6 +194,8 @@ export async function createScenario(options?: {
         srNo: student.srNo,
         name: student.name,
         route: student.busRoute,
+        house: student.house,
+        fatherName: student.fatherName,
         values: Object.fromEntries(
           ordered.map((field) => [
             field.key,
@@ -224,6 +248,14 @@ export async function cleanup() {
   await ownerDb
     .delete(schema.studentRecords)
     .where(like(schema.studentRecords.studentId, `${PREFIX}%`));
+  // Also by STUDENT, not only by the requests found above. A roster row can
+  // outlive the query that found its request — a request created in an earlier
+  // run, or one whose creator was cleaned up first — and the only symptom is a
+  // foreign-key violation here, at teardown, which reads like a flaky test and
+  // is not one.
+  await ownerDb
+    .delete(schema.requestStudents)
+    .where(like(schema.requestStudents.studentId, `${PREFIX}%`));
   await ownerDb
     .delete(schema.students)
     .where(like(schema.students.id, `${PREFIX}%`));

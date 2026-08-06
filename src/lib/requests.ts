@@ -25,16 +25,28 @@ import type { FieldDef, Student } from "../../drizzle/schema";
 /**
  * Exactly what one student's row on the teacher's phone was prefilled with.
  *
- * `srNo` and `route` are the only identifying context that exists. There are no
- * roll numbers and no parent names in the real data, so the card carries the SR
- * number — the one stable thing she can cross-check against a paper register —
- * and the bus route, which in a village school tells her which child this is for
- * the half of them who have one.
+ * RECOGNITION IS THE PRODUCT. When a request asks Class 8 for father's names,
+ * the teacher gets 46 children she knows by face and by nickname and does not
+ * know as a row in a spreadsheet. Every scrap of identifying data we hold makes
+ * it faster for her to be SURE which child she is answering for, and being sure
+ * is the whole thing. So the snapshot carries context beyond the fields being
+ * asked about:
+ *
+ *   srNo    the one stable identifier, checkable against a paper register
+ *   house   a coloured chip; the field a child answers instantly
+ *   route   real context in a village school, present for about half
+ *   father  known for all 504 since PSP landed
+ *
+ * Frozen at send time like everything else here, so the context she saw is the
+ * context review reasons about. And it is per-class by construction: the token
+ * scopes one class and showing more per row does not change that.
  */
 export type RosterSnapshot = {
   name: string;
   srNo: string | null;
   route: string | null;
+  house: string | null;
+  fatherName: string | null;
   /** Keyed by field_defs.key. null means "we hold nothing for this field". */
   values: Record<string, string | null>;
 };
@@ -221,6 +233,8 @@ async function buildSnapshots(
       name: student.name,
       srNo: student.srNo,
       route: student.busRoute,
+      house: student.house,
+      fatherName: student.fatherName,
       values,
     });
   }

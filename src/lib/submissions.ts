@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { db, schema, withTransaction } from "./db";
 import { validateField } from "./fields";
+import { teacherOrigin, type OriginWrite } from "./precedence";
 import { STUDENT_COLUMN_BY_DB_NAME } from "./student-columns";
 import type { ResolvedRequest } from "./auth/token";
 import type { FieldDef } from "../../drizzle/schema";
@@ -452,6 +453,17 @@ export async function decideSubmissions(
     //    the office, not a field update. See the note in /review.
     const applicable = claimed.filter((row) => row.action === "changed");
     const touched = new Set<string>();
+    /**
+     * Every approved correction claims its field for `teacher`, permanently.
+     *
+     * Written INSIDE this transaction on purpose. If the stamp were a separate
+     * step that could fail, an approved correction would sit in master looking
+     * settled while still carrying the old source — and the next PSP import
+     * would quietly overwrite it. That is the single failure this whole
+     * precedence layer exists to prevent, so it is not allowed to be a separate
+     * step. See lib/precedence.ts.
+     */
+    const claims: OriginWrite[] = [];
 
     const periods = await loadPeriods(tx, applicable);
 
@@ -466,6 +478,7 @@ export async function decideSubmissions(
           .update(schema.students)
           .set({ [column]: row.newValue, updatedAt: new Date() })
           .where(eq(schema.students.id, row.studentId));
+        claims.push(teacherOrigin(row.studentId, field.targetColumn));
       } else {
         const period = periods.get(row.requestId);
         if (!period) continue; // guarded at creation; belt and braces
@@ -488,6 +501,17 @@ export async function decideSubmissions(
           });
       }
       touched.add(row.studentId);
+    }
+
+    if (claims.length > 0) {
+      const now = new Date();
+      await tx
+        .insert(schema.valueSources)
+        .values(claims.map((claim) => ({ ...claim, sourceUpdatedAt: now })))
+        .onConflictDoUpdate({
+          target: [schema.valueSources.studentId, schema.valueSources.fieldKey],
+          set: { sourceKey: sql`excluded."source_key"`, sourceUpdatedAt: now },
+        });
     }
 
     return {

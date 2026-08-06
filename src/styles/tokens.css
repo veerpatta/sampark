@@ -32,6 +32,20 @@
   --color-absent-fg: #64748b;
   --color-absent-border: #cbd5e1;
 
+  /* --- the four houses ---
+     A house chip is recognition context, not an action, so each pairs a pale
+     ground with a dark enough foreground to stay legible on a cheap phone in
+     daylight. Named for the house, not the colour, so renaming a house's colour
+     is one edit here. See src/lib/houses.ts. */
+  --color-house-red-bg: #fef2f2;      /* Rana Pratap */
+  --color-house-red-fg: #b91c1c;
+  --color-house-blue-bg: #eff6ff;     /* Rana Kumbha */
+  --color-house-blue-fg: #1d4ed8;
+  --color-house-green-bg: #f0fdf4;    /* Bappa Rawal */
+  --color-house-green-fg: #15803d;
+  --color-house-yellow-bg: #fefce8;   /* Rana Sanga */
+  --color-house-yellow-fg: #a16207;
+
   /* --- state --- */
   --color-danger: #dc2626;
   --color-warning: #d97706;

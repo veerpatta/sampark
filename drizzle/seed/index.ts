@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import * as schema from "../schema";
 import { FIELD_DEFS } from "./field_defs";
 import { TEACHERS } from "./teachers";
+import { FIELD_SOURCES, SOURCES } from "./sources";
 
 /**
  * Idempotent seed. Safe to re-run: every insert is an upsert keyed on the
@@ -21,6 +22,30 @@ async function main() {
   if (!url) throw new Error("DATABASE_URL is not set.");
 
   const db = drizzle(neon(url), { schema });
+
+  // Sources first: field_sources references them, and value_sources will too.
+  await db
+    .insert(schema.sources)
+    .values(SOURCES)
+    .onConflictDoUpdate({
+      target: schema.sources.key,
+      set: {
+        label: sqlExcluded("label"),
+        kind: sqlExcluded("kind"),
+        rank: sqlExcluded("rank"),
+        active: sqlExcluded("active"),
+      },
+    });
+  console.log(`seeded ${SOURCES.length} sources`);
+
+  await db
+    .insert(schema.fieldSources)
+    .values(FIELD_SOURCES)
+    .onConflictDoUpdate({
+      target: schema.fieldSources.fieldKey,
+      set: { sourceKey: sqlExcluded("source_key") },
+    });
+  console.log(`seeded ${FIELD_SOURCES.length} field ownership rules`);
 
   if (FIELD_DEFS.length > 0) {
     await db

@@ -1,0 +1,90 @@
+import { test, describe } from "node:test";
+import assert from "node:assert/strict";
+import { looksLikeHtml, parseHtmlTable } from "../src/lib/excel";
+
+/**
+ * The PSP report downloads as `.xls` and is not an Excel file — it is an HTML
+ * document with one <table>, saved with the wrong extension. ExcelJS throws on
+ * it with an error that tells the office nothing.
+ *
+ * A government portal is not going to stop doing this because we would prefer
+ * it didn't, so read files by what they are rather than what they are called.
+ */
+
+const encode = (text: string) => new TextEncoder().encode(text).buffer as ArrayBuffer;
+
+describe("looksLikeHtml", () => {
+  test("recognises what PSP actually sends", () => {
+    // The real first bytes: a <style> block, then a <div>, then the table.
+    assert.equal(looksLikeHtml(encode('<style> .textmode { } </style><div>\n\t<table>')), true);
+  });
+
+  test("recognises an ordinary HTML document", () => {
+    assert.equal(looksLikeHtml(encode("<!DOCTYPE html><html><body>")), true);
+    assert.equal(looksLikeHtml(encode("<table><tr><td>x</td></tr></table>")), true);
+  });
+
+  test("sees past a byte-order mark and leading whitespace", () => {
+    assert.equal(looksLikeHtml(encode("﻿\n  <html>")), true);
+  });
+
+  test("does not mistake a real spreadsheet for HTML", () => {
+    // A .xlsx is a zip: 'PK' then two control bytes.
+    assert.equal(looksLikeHtml(encode("PKrest-of-the-zip")), false);
+  });
+
+  test("does not mistake a CSV for HTML", () => {
+    assert.equal(looksLikeHtml(encode("Name,Class\nAaaa,Class 8")), false);
+  });
+});
+
+describe("parseHtmlTable", () => {
+  test("reads the header row and the data rows", () => {
+    const table = parseHtmlTable(
+      encode(`<table>
+        <tr><td>SR No.</td><td>Student Name</td></tr>
+        <tr><td>ZZ-1</td><td>AAAA BBBB</td></tr>
+        <tr><td>ZZ-2</td><td>CCCC DDDD</td></tr>
+      </table>`),
+    );
+
+    assert.deepEqual(table.headers, ["SR No.", "Student Name"]);
+    assert.equal(table.rows.length, 2);
+    assert.equal(table.rows[0]!["Student Name"], "AAAA BBBB");
+    assert.equal(table.format, "html-table");
+  });
+
+  test("handles <th> headers and nested markup inside a cell", () => {
+    const table = parseHtmlTable(
+      encode(`<table>
+        <tr><th>Name</th></tr>
+        <tr><td><span class="x">AAAA</span> <b>BBBB</b></td></tr>
+      </table>`),
+    );
+    assert.equal(table.rows[0]!.Name, "AAAA BBBB");
+  });
+
+  test("decodes entities so a name is not mangled", () => {
+    const table = parseHtmlTable(
+      encode(`<table><tr><td>Name</td></tr><tr><td>A&amp;B&nbsp;C</td></tr></table>`),
+    );
+    assert.equal(table.rows[0]!.Name, "A&B C");
+  });
+
+  test("drops entirely empty rows", () => {
+    const table = parseHtmlTable(
+      encode(`<table>
+        <tr><td>Name</td></tr>
+        <tr><td>AAAA</td></tr>
+        <tr><td></td></tr>
+      </table>`),
+    );
+    assert.equal(table.rows.length, 1);
+  });
+
+  test("a table with no rows is empty, not an exception", () => {
+    const table = parseHtmlTable(encode("<div>no table here</div>"));
+    assert.deepEqual(table.headers, []);
+    assert.deepEqual(table.rows, []);
+  });
+});

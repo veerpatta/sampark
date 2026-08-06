@@ -54,19 +54,130 @@ export type ParsedTable = {
    */
   sheets?: string[];
   sheet?: string | null;
+  /** What the file turned out to actually be. Shown in the import UI. */
+  format?: FileFormat;
+};
+
+export type FileFormat = "csv" | "xlsx" | "html-table";
+
+export const FORMAT_LABEL: Record<FileFormat, string> = {
+  csv: "CSV",
+  xlsx: "Excel workbook",
+  "html-table": "PSP report (HTML table)",
 };
 
 /** Excel serial dates are days since 1899-12-30. */
 const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30);
 
+/**
+ * Read a file by WHAT IT IS, not what it is called.
+ *
+ * The PSP Student Data Entry Report downloads as `.xls` and is not an Excel
+ * file at all — it is an HTML document containing one <table>, saved with the
+ * wrong extension. ExcelJS throws on it, and the error it throws tells the
+ * office nothing useful. So sniff the content first: a government portal is not
+ * going to stop doing this because we would prefer it didn't.
+ */
 export async function parseTabularFile(
   data: ArrayBuffer,
   filename: string,
   sheet?: string | null,
 ): Promise<ParsedTable> {
-  return filename.toLowerCase().endsWith(".csv")
-    ? parseCsv(data)
-    : parseXlsx(data, sheet);
+  if (filename.toLowerCase().endsWith(".csv")) return parseCsv(data);
+  if (looksLikeHtml(data)) return parseHtmlTable(data);
+  return parseXlsx(data, sheet);
+}
+
+/**
+ * Does this start like an HTML document? Checks the first bytes after any BOM
+ * and leading whitespace, so `<style>…<table>` (which is exactly what PSP
+ * emits) is recognised as readily as a proper `<html>`.
+ */
+export function looksLikeHtml(data: ArrayBuffer): boolean {
+  const head = new TextDecoder("utf-8")
+    .decode(data.slice(0, 1024))
+    .replace(/^﻿/, "")
+    .trimStart()
+    .toLowerCase();
+
+  return (
+    head.startsWith("<!doctype html") ||
+    head.startsWith("<html") ||
+    head.startsWith("<table") ||
+    head.startsWith("<style") ||
+    head.startsWith("<div")
+  );
+}
+
+/**
+ * Pull the first <table> out of an HTML document.
+ *
+ * Deliberately a small regex scanner rather than a DOM library: the input is one
+ * machine-generated table with no nesting, no scripts and no user content, and
+ * adding a parser dependency to read it would be a poor trade. If PSP ever
+ * emits nested tables this will need replacing — it will fail loudly rather
+ * than quietly, because the header row will not match anything.
+ */
+export function parseHtmlTable(data: ArrayBuffer): ParsedTable {
+  const html = new TextDecoder("utf-8").decode(data).replace(/^﻿/, "");
+
+  const rows: string[][] = [];
+  const rowPattern = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  const cellPattern = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+
+  let rowMatch: RegExpExecArray | null;
+  while ((rowMatch = rowPattern.exec(html)) !== null) {
+    const cells: string[] = [];
+    let cellMatch: RegExpExecArray | null;
+    cellPattern.lastIndex = 0;
+    while ((cellMatch = cellPattern.exec(rowMatch[1]!)) !== null) {
+      cells.push(decodeHtml(cellMatch[1]!));
+    }
+    if (cells.length > 0) rows.push(cells);
+  }
+
+  const [headerRow, ...dataRows] = rows;
+  if (!headerRow) {
+    return { headers: [], rows: [], sheets: [], sheet: null, format: "html-table" };
+  }
+
+  const headers = dedupeHeaders(headerRow);
+  const parsed = dataRows
+    .map((cells) => {
+      const out: Record<string, string> = {};
+      headers.forEach((header, index) => {
+        out[header] = cells[index] ?? "";
+      });
+      return out;
+    })
+    .filter(hasAnyValue);
+
+  return {
+    headers,
+    rows: parsed,
+    sheets: [],
+    sheet: null,
+    format: "html-table",
+  };
+}
+
+const ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+};
+
+function decodeHtml(cell: string): string {
+  return cell
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
+    .replace(/&([a-z]+);/gi, (whole, name: string) => ENTITIES[name.toLowerCase()] ?? whole)
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parseCsv(data: ArrayBuffer): ParsedTable {

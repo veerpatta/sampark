@@ -12,7 +12,7 @@ export function student(overrides: Partial<Student> & { id: string }): Student {
   return {
     srNo: null,
     admissionNo: null,
-    classLabel: "6",
+    classLabel: "Class 6",
     section: null,
     rollNo: null,
     name: "Test Student",
@@ -28,6 +28,8 @@ export function student(overrides: Partial<Student> & { id: string }): Student {
     village: null,
     address: null,
     busRoute: null,
+    house: null,
+    aadhaarLast4: null,
     status: "active",
     source: "psp",
     createdAt: new Date("2026-01-01T00:00:00Z"),
