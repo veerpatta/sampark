@@ -1,3 +1,4 @@
+import { cache } from "react";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
@@ -140,8 +141,13 @@ export type SessionUser = {
  * So the row is read on every guarded call and the ROLE comes from the database,
  * not from the token. One indexed lookup for three to five users is nothing
  * against the cost of a revoked account still being able to approve changes.
+ *
+ * Read it once per REQUEST, though, not once per caller. The (admin) layout
+ * asks, and then so does the page inside it, and so does whatever that page
+ * renders — nine JWT decodes and nine SELECTs to answer the same question, all
+ * in the same render pass. `cache()` below collapses them into one.
  */
-export async function currentUser(): Promise<SessionUser | null> {
+async function loadCurrentUser(): Promise<SessionUser | null> {
   const session = await auth();
   if (!session?.user?.id) return null;
 
@@ -160,6 +166,17 @@ export async function currentUser(): Promise<SessionUser | null> {
     role: user.role,
   };
 }
+
+/**
+ * Memoised for the lifetime of ONE request, via React's per-request cache.
+ *
+ * This must never become `unstable_cache` or `"use cache"`. Those persist
+ * across requests, which would put the revocation guarantee above straight back
+ * where it was — a deactivated account signed in until someone remembered to
+ * revalidate. A server action is its own request and re-reads; that is the
+ * behaviour we want.
+ */
+export const currentUser = cache(loadCurrentUser);
 
 /**
  * Guard for route handlers and server actions. The (admin) layout redirects
