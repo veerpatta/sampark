@@ -265,6 +265,17 @@ export const requests = pgTable(
      * one class. Worth revisiting before an Aadhaar collection round.
      */
     status: text("status").notNull().default("open"), // open | submitted | closed | expired
+    /**
+     * The number this link was actually sent to, when it is not the teacher's
+     * saved one. NULL means "use teachers.phone".
+     *
+     * The office often knows a better number for one round — she is on leave
+     * and her sister is covering, the saved number is a landline, we never had
+     * one at all. Typing it here sends the link and changes nothing else.
+     * Changing a teacher's saved number stays a separate, deliberate act in
+     * settings, because that one affects every future request.
+     */
+    contactPhone: text("contact_phone"),
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id),

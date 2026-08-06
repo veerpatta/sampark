@@ -50,6 +50,10 @@ export default async function NewRequestPage() {
           id: teacher.id,
           name: teacher.name,
           classes: teacher.classes,
+          // Sent down so the number can be shown and edited beside her name.
+          // The office should never have to leave this screen to find out
+          // which number a link is about to go to.
+          phone: teacher.phone,
         }))}
         fields={fields.map((field) => ({
           key: field.key,

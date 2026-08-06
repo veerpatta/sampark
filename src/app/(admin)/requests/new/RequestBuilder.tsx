@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Template } from "@/lib/templates";
+import { hasPhone, isCompletePhone, normalisePhone, samePhone } from "@/lib/phone";
+import { chooseTeacherForClass, partitionByClass } from "@/lib/teachers";
 
 type FieldOption = {
   key: string;
@@ -17,6 +19,7 @@ type TeacherOption = {
   id: string;
   name: string;
   classes: string[];
+  phone: string;
 };
 
 type ClassOption = {
@@ -50,6 +53,10 @@ export function RequestBuilder({
   const [fieldKeys, setFieldKeys] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [teacherId, setTeacherId] = useState("");
+  const [phone, setPhone] = useState("");
+  /** Once she types a number herself, changing the teacher must not clobber it. */
+  const [phoneEdited, setPhoneEdited] = useState(false);
+  const [teacherNote, setTeacherNote] = useState<string | null>(null);
   const [dueDate, setDueDate] = useState(defaultDueDate());
   const [period, setPeriod] = useState(defaultPeriod);
   const [error, setError] = useState<string | null>(null);
@@ -60,11 +67,55 @@ export function RequestBuilder({
 
   // A teacher who owns the class comes first, but the list is not restricted to
   // them — classes get covered by whoever is available.
-  const owners = teachers.filter((teacher) => teacher.classes.includes(classLabel));
-  const others = teachers.filter((teacher) => !teacher.classes.includes(classLabel));
+  const { owners, others } = partitionByClass(teachers, classLabel);
+  const teacher = teachers.find((option) => option.id === teacherId) ?? null;
 
+  const phoneComplete = isCompletePhone(phone);
   const ready =
-    classLabel && fieldKeys.length > 0 && title.trim() && teacherId && dueDate;
+    classLabel &&
+    fieldKeys.length > 0 &&
+    title.trim() &&
+    teacherId &&
+    dueDate &&
+    phoneComplete;
+
+  /**
+   * Picking a class decides the teacher and her number in the same breath.
+   *
+   * Deliberately a handler and not a useEffect on classLabel: an effect would
+   * also fire when she overrides the teacher by hand, and quietly put it back.
+   */
+  function chooseClass(label: string) {
+    setClassLabel(label);
+    const choice = chooseTeacherForClass(teachers, label);
+
+    if (choice.kind === "one") {
+      // Exactly one owner. Select her without saying anything — announcing the
+      // obvious is how a screen gets noisy.
+      chooseTeacher(choice.teacherId, { keepEditedPhone: false });
+      setTeacherNote(null);
+      return;
+    }
+
+    // Two owners, or none. Select NOBODY and say why. Guessing here sends the
+    // link to the wrong person and nothing surfaces it until the due date.
+    setTeacherId("");
+    setPhone("");
+    setPhoneEdited(false);
+    setTeacherNote(choice.message);
+  }
+
+  function chooseTeacher(
+    id: string,
+    { keepEditedPhone = true }: { keepEditedPhone?: boolean } = {},
+  ) {
+    setTeacherId(id);
+    const picked = teachers.find((option) => option.id === id);
+    if (!keepEditedPhone || !phoneEdited) {
+      setPhone(normalisePhone(picked?.phone));
+      setPhoneEdited(false);
+    }
+  }
 
   function applyTemplate(template: Template) {
     const available = template.fieldKeys.filter((key) =>
@@ -98,6 +149,9 @@ export function RequestBuilder({
           fieldKeys,
           period: needsPeriod ? period.trim() : null,
           dueDate,
+          // Only sent when it differs from her saved number. The server stores
+          // null otherwise, so the column means "somebody overrode this".
+          contactPhone: samePhone(phone, teacher?.phone) ? null : phone,
         }),
       });
       const payload = await response.json();
@@ -145,10 +199,7 @@ export function RequestBuilder({
                   ? "No active students in this class — import it first"
                   : undefined
               }
-              onClick={() => {
-                setClassLabel(option.label);
-                setTeacherId("");
-              }}
+              onClick={() => chooseClass(option.label)}
               className={`rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
                 classLabel === option.label
                   ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
@@ -243,27 +294,69 @@ export function RequestBuilder({
             </span>
             <select
               value={teacherId}
-              onChange={(event) => setTeacherId(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+              onChange={(event) => {
+                chooseTeacher(event.target.value, { keepEditedPhone: false });
+                setTeacherNote(null);
+              }}
+              className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
             >
               <option value="">Choose…</option>
               {owners.length > 0 ? (
                 <optgroup label={`${classLabel} teachers`}>
-                  {owners.map((teacher) => (
-                    <option key={teacher.id} value={teacher.id}>
-                      {teacher.name}
+                  {owners.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
                     </option>
                   ))}
                 </optgroup>
               ) : null}
               <optgroup label="Everyone else">
-                {others.map((teacher) => (
-                  <option key={teacher.id} value={teacher.id}>
-                    {teacher.name}
+                {others.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
                   </option>
                 ))}
               </optgroup>
             </select>
+            {teacherNote ? (
+              <span className="mt-1 block text-xs font-medium text-[var(--color-warning)]">
+                {teacherNote}
+              </span>
+            ) : null}
+          </label>
+
+          {/* Her number, here, not on the next screen. This is what the link
+              gets sent to and it is the one thing most likely to be wrong. */}
+          <label className="block">
+            <span className="text-xs font-medium text-[var(--color-ink-muted)]">
+              Her number — this request only
+            </span>
+            <input
+              value={phone}
+              onChange={(event) => {
+                setPhone(normalisePhone(event.target.value));
+                setPhoneEdited(true);
+              }}
+              type="tel"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="10 digits"
+              disabled={!teacherId}
+              className={`mt-1 min-h-[var(--tap-min)] w-full rounded-lg border px-3 py-2 font-mono text-sm disabled:opacity-50 ${
+                phone && !phoneComplete
+                  ? "border-[var(--color-danger)]"
+                  : "border-[var(--color-border)]"
+              }`}
+            />
+            <span className="mt-1 block text-xs text-[var(--color-ink-muted)]">
+              {!teacherId
+                ? "Pick a teacher first."
+                : !hasPhone(teacher?.phone)
+                  ? `No number is saved for ${teacher?.name}. Type one — it is used for this request and her record is left alone.`
+                  : phoneEdited && !samePhone(phone, teacher?.phone)
+                    ? "This request only. Her saved number is unchanged — change that in Settings → Teachers."
+                    : "Her saved number. Edit it here to send this one link somewhere else."}
+            </span>
           </label>
 
           <label className="block">

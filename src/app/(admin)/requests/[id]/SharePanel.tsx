@@ -14,12 +14,18 @@ export function SharePanel({
   message,
   whatsappUrl,
   teacherName,
+  sentTo,
+  overridden,
   reminder,
 }: {
   url: string;
   message: string;
   whatsappUrl: string;
   teacherName: string;
+  /** The number this link goes to — her saved one, or the override. */
+  sentTo: string;
+  /** True when the office typed a different number when creating this. */
+  overridden: boolean;
   /** True once she has started, so the message becomes a nudge not a first ask. */
   reminder: boolean;
 }) {
@@ -41,6 +47,15 @@ export function SharePanel({
       <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
         {reminder ? `Remind ${teacherName}` : `Send it to ${teacherName}`}
       </h2>
+
+      {/* Which number, said out loud. It is the one detail that decides
+          whether this link reaches anybody, and it used to be invisible. */}
+      <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+        Going to <span className="font-mono">{sentTo}</span>
+        {overridden
+          ? ` — typed for this request. ${teacherName}'s saved number is unchanged.`
+          : ""}
+      </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <code className="flex-1 overflow-x-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 font-mono text-xs">

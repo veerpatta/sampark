@@ -9,6 +9,7 @@ import {
 } from "./classes";
 import { listClassRoster } from "./students";
 import { readStudentColumn } from "./student-columns";
+import { hasPhone, isCompletePhone, normalisePhone, samePhone } from "./phone";
 import type { FieldDef, Student } from "../../drizzle/schema";
 
 /**
@@ -59,6 +60,12 @@ export type CreateRequestInput = {
   period?: string | null;
   dueDate: string;
   createdBy: string;
+  /**
+   * A number for THIS request only, when the teacher's saved one is wrong or
+   * missing. Stored as null when it matches what we already hold, so that the
+   * column means "an override was made" and not merely "a form was submitted".
+   */
+  contactPhone?: string | null;
 };
 
 export class RequestValidationError extends Error {
@@ -101,6 +108,24 @@ export async function createRequest(input: CreateRequestInput): Promise<{
   if (!teacher.active) {
     throw new RequestValidationError(`${teacher.name} is marked inactive.`);
   }
+
+  // Whatever number this link is going to has to exist before we mint a token
+  // for it. A request nobody can be sent is a roster frozen for nothing.
+  const typed = normalisePhone(input.contactPhone);
+  if (typed && !isCompletePhone(typed)) {
+    throw new RequestValidationError(
+      "A mobile number is 10 digits. Leave it blank to use her saved one.",
+    );
+  }
+  if (!typed && !hasPhone(teacher.phone)) {
+    throw new RequestValidationError(
+      `No number is saved for ${teacher.name}. Type one for this request.`,
+    );
+  }
+  // Null means "use her saved number". Only a genuine override is stored, so
+  // the column reads as a decision rather than as form noise.
+  const contactPhone =
+    typed && !samePhone(typed, teacher.phone) ? typed : null;
 
   const fields = await db
     .select()
@@ -150,6 +175,7 @@ export async function createRequest(input: CreateRequestInput): Promise<{
       fieldKeys,
       period,
       dueDate: input.dueDate,
+      contactPhone,
       createdBy: input.createdBy,
     })
     .returning({ id: schema.requests.id });

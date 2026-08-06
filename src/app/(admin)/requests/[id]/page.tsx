@@ -141,11 +141,18 @@ export default async function RequestDetailPage({
         </section>
 
         <div className="space-y-6">
+          {/* contactPhone is set only when the office deliberately overrode
+              her saved number for this one request. */}
           <SharePanel
             url={url}
             message={message}
-            whatsappUrl={buildWhatsAppLink(teacher.phone, message)}
+            whatsappUrl={buildWhatsAppLink(
+              request.contactPhone ?? teacher.phone,
+              message,
+            )}
             teacherName={teacher.name}
+            sentTo={request.contactPhone ?? teacher.phone}
+            overridden={request.contactPhone !== null}
             reminder={started}
           />
 

@@ -44,6 +44,7 @@ export async function POST(request: Request) {
       fieldKeys: Array.isArray(body.fieldKeys) ? body.fieldKeys.map(String) : [],
       period: body.period ? String(body.period) : null,
       dueDate: String(body.dueDate ?? ""),
+      contactPhone: body.contactPhone ? String(body.contactPhone) : null,
       createdBy: user.id,
     });
 
