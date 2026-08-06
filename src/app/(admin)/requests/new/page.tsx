@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
-import { listClassLabels } from "@/lib/students";
+import { countByClass } from "@/lib/students";
+import { CLASS_LABELS } from "@/lib/classes";
 import { TEMPLATES } from "@/lib/templates";
 import { RequestBuilder } from "./RequestBuilder";
 
@@ -9,8 +10,8 @@ export const metadata = { title: "New request — Sampark" };
 export const dynamic = "force-dynamic";
 
 export default async function NewRequestPage() {
-  const [classes, teachers, fields] = await Promise.all([
-    listClassLabels(),
+  const [counts, teachers, fields] = await Promise.all([
+    countByClass(),
     db
       .select()
       .from(schema.teachers)
@@ -37,8 +38,14 @@ export default async function NewRequestPage() {
         </div>
       </header>
 
+      {/* The canonical nineteen, not whatever labels happen to be in the
+          students table. A class with no students is shown but cannot be
+          picked — that is a missing import to fix, not a class to invent. */}
       <RequestBuilder
-        classes={classes}
+        classes={CLASS_LABELS.map((label) => ({
+          label,
+          students: counts.get(label) ?? 0,
+        }))}
         teachers={teachers.map((teacher) => ({
           id: teacher.id,
           name: teacher.name,

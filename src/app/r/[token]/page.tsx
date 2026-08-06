@@ -25,24 +25,39 @@ export default async function TeacherRequestPage({
   const request = await resolveToken(token);
   if (!request) notFound();
 
+  // What is being asked, in the fewest words that still say it. Scrolling 46
+  // cards should never leave her wondering which class she is in or why.
+  const asking = request.fields.map((field) => field.labelHi).join(" · ");
+
   return (
     <main className="teacher-surface mx-auto max-w-md px-4 pb-4 pt-5">
       <ServiceWorker />
-      <header className="rounded-[var(--radius-card)] bg-[var(--color-brand-900)] px-4 py-4 text-white">
-        <p className="text-sm opacity-80">
-          कक्षा {request.classLabel} · {request.teacherName} जी
-        </p>
-        <h1 className="mt-0.5 text-xl font-semibold">{request.title}</h1>
-        <p className="mt-2 text-sm opacity-80">
-          अंतिम तिथि: {formatHindiDate(request.dueDate)}
-          {request.period ? ` · ${request.period}` : ""}
-        </p>
+      {/* Sticky, and deliberately short: the class and the ask stay on screen
+          the whole way down a 46-card list. */}
+      <header className="sticky top-0 z-10 -mx-4 bg-[var(--color-brand-900)] px-4 py-3 text-white">
+        <div className="mx-auto max-w-md">
+          <div className="flex items-baseline justify-between gap-3">
+            <h1 className="text-lg font-semibold">{request.classLabel}</h1>
+            <p className="shrink-0 text-xs opacity-80">
+              {formatHindiDate(request.dueDate)} तक
+            </p>
+          </div>
+          <p className="mt-0.5 truncate text-sm opacity-90">
+            {asking}
+            {request.period ? ` · ${request.period}` : ""}
+          </p>
+        </div>
       </header>
 
-      <p className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-3 text-sm text-[var(--color-confirm-fg)]">
-        हर नाम के आगे दी गई जानकारी देखें। सही हो तो{" "}
-        <strong>सही है</strong> दबाएँ, गलत हो तो <strong>बदलें</strong> दबाकर
-        ठीक करें। अंत में नीचे <strong>भेजें</strong> दबाना न भूलें।
+      <p className="mt-4 text-sm text-[var(--color-ink-muted)]">
+        {request.teacherName} जी — {request.title}
+      </p>
+
+      <p className="mt-3 rounded-[var(--radius-card)] border border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-3 text-sm text-[var(--color-confirm-fg)]">
+        जिन बच्चों की जानकारी नहीं है, वे सबसे ऊपर हैं — पहले वही भरें। बाकी
+        सबकी जानकारी पहले से है; ठीक हो तो एक बार में{" "}
+        <strong>सब सही हैं</strong> दबा दें। अंत में नीचे <strong>भेजें</strong>{" "}
+        दबाना न भूलें।
       </p>
 
       <RequestForm

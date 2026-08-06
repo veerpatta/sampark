@@ -39,6 +39,15 @@ const ownerDb = drizzle(neon(ownerUrl), { schema });
  */
 const PREFIX = "ZZTEST";
 
+/**
+ * Fixture students need a class the request builder will accept, because
+ * createRequest validates against the canonical nineteen. The smallest real
+ * class keeps the roster a request freezes small — the fixtures' own students
+ * are always found by id, so any real students sharing the class are simply
+ * along for the ride.
+ */
+export const TEST_CLASS = "12 Commerce";
+
 export type Scenario = {
   requestId: string;
   token: string;
@@ -71,14 +80,14 @@ export async function createScenario(options?: {
     id: teacherId,
     name: "Test Teacher",
     phone: "9000000000",
-    classes: ["ZZ"],
+    classes: [TEST_CLASS],
   });
 
   await db.insert(schema.students).values([
     {
       id: studentIds[0]!,
       name: "Test Child One",
-      classLabel: "ZZ",
+      classLabel: TEST_CLASS,
       rollNo: 1,
       phone: "9111111111",
       fatherName: "Test Father One",
@@ -86,7 +95,7 @@ export async function createScenario(options?: {
     {
       id: studentIds[1]!,
       name: "Test Child Two",
-      classLabel: "ZZ",
+      classLabel: TEST_CLASS,
       rollNo: 2,
       phone: null,
       fatherName: "Test Father Two",
@@ -99,7 +108,7 @@ export async function createScenario(options?: {
     .values({
       token,
       title: "Test request",
-      classLabel: "ZZ",
+      classLabel: TEST_CLASS,
       teacherId,
       fieldKeys,
       period: options?.period ?? null,
@@ -125,7 +134,8 @@ export async function createScenario(options?: {
       rollNo: student.rollNo,
       snapshot: {
         name: student.name,
-        fatherName: student.fatherName,
+        srNo: student.srNo,
+        route: student.busRoute,
         values: Object.fromEntries(
           fields.map((field) => [
             field.key,
@@ -151,7 +161,7 @@ export async function createScenario(options?: {
     resolved: {
       requestId: request!.id,
       title: "Test request",
-      classLabel: "ZZ",
+      classLabel: TEST_CLASS,
       period: options?.period ?? null,
       dueDate: futureDate(),
       status: "open",
@@ -159,9 +169,9 @@ export async function createScenario(options?: {
       fields: ordered,
       roster: students.map((student) => ({
         studentId: student.id,
-        rollNo: student.rollNo,
+        srNo: student.srNo,
         name: student.name,
-        fatherName: student.fatherName,
+        route: student.busRoute,
         values: Object.fromEntries(
           ordered.map((field) => [
             field.key,

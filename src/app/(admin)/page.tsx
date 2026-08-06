@@ -75,7 +75,7 @@ export default async function DashboardPage() {
                   {request.title}
                 </Link>
                 <span className="text-[var(--color-ink-muted)]">
-                  Class {request.classLabel} · {request.teacher} · was due{" "}
+                  {request.classLabel} · {request.teacher} · was due{" "}
                   {request.dueDate}
                 </span>
               </li>

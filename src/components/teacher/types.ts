@@ -19,11 +19,36 @@ export type TeacherField = {
 
 export type TeacherRosterRow = {
   studentId: string;
-  rollNo: number | null;
+  /**
+   * The only stable identifier that exists. There are no roll numbers in the
+   * real data and no parent names, so this is what she cross-checks against a
+   * paper register.
+   */
+  srNo: string | null;
   name: string;
-  fatherName: string | null;
+  /** Present for about half the school, and real context when it is. */
+  route: string | null;
   values: Record<string, string | null>;
 };
+
+/**
+ * Does the school hold anything for this student, for these fields?
+ *
+ * This one predicate decides everything about how the row is presented: a blank
+ * row opens its inputs directly and goes at the top of the screen, a known row
+ * shows what we hold and can be confirmed in bulk. A collect-mode field is
+ * always blank by definition — we hold nothing for it anywhere.
+ */
+export function isBlankRow(
+  student: TeacherRosterRow,
+  fields: TeacherField[],
+): boolean {
+  return fields.some(
+    (field) =>
+      field.mode === "collect" ||
+      !student.values[field.key],
+  );
+}
 
 /**
  * Where a student's row has got to.

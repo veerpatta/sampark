@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { canApproveIntoMaster, currentUser } from "@/lib/auth/session";
 import { listClassLabels, listStudents } from "@/lib/students";
+import { titleCaseName } from "@/lib/classes";
 
 export const metadata = { title: "Students — Sampark" };
 
@@ -44,7 +45,7 @@ export default async function StudentsPage({
           <h1 className="text-2xl font-semibold tracking-tight">Students</h1>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
             {total.toLocaleString("en-IN")} record{total === 1 ? "" : "s"}
-            {classLabel ? ` in class ${classLabel}` : ""}
+            {classLabel ? ` in ${classLabel}` : ""}
             {search ? ` matching “${search}”` : ""}
           </p>
         </div>
@@ -54,7 +55,7 @@ export default async function StudentsPage({
               href={`/api/export/students.xlsx${classLabel ? `?class=${encodeURIComponent(classLabel)}` : ""}`}
               className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
             >
-              Export {classLabel ? `class ${classLabel}` : "all"} to Excel
+              Export {classLabel ? classLabel : "all"} to Excel
             </a>
           ) : null}
           {canImport ? (
@@ -150,7 +151,7 @@ export default async function StudentsPage({
                       href={`/students/${encodeURIComponent(student.id)}`}
                       className="hover:text-[var(--color-brand-600)] hover:underline"
                     >
-                      {student.name}
+                      {titleCaseName(student.name)}
                     </Link>
                   </td>
                   <td className="px-4 py-2 text-[var(--color-ink-muted)]">

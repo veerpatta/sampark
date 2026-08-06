@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Decision, ReviewItem } from "@/lib/submissions";
+import { titleCaseName } from "@/lib/classes";
 import { decide } from "./actions";
 
 /**
@@ -132,7 +133,7 @@ export function ReviewQueue({
           <header className="flex flex-wrap items-baseline gap-2 border-b border-[var(--color-border)] px-4 py-3">
             <h2 className="font-medium">{group.requestTitle}</h2>
             <span className="text-sm text-[var(--color-ink-muted)]">
-              Class {group.classLabel} · {group.teacherName} ·{" "}
+              {group.classLabel} · {group.teacherName} ·{" "}
               {group.items.length} item{group.items.length === 1 ? "" : "s"}
             </span>
           </header>
@@ -157,8 +158,7 @@ export function ReviewQueue({
                   </td>
                   <td className="px-2 py-2">
                     <div className="font-medium">
-                      {item.rollNo === null ? "" : `${item.rollNo}. `}
-                      {item.studentName}
+                      {titleCaseName(item.studentName)}
                     </div>
                     <div className="font-mono text-xs text-[var(--color-ink-muted)]">
                       {item.studentId}
@@ -185,6 +185,16 @@ export function ReviewQueue({
                         </span>
                       </span>
                     )}
+                    {/* Neutral. Siblings share a parent's phone — this is
+                        context for the office, never a warning and never a
+                        reason not to approve. */}
+                    {item.alsoOn > 0 ? (
+                      <div className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+                        also on {item.alsoOn} other{" "}
+                        {item.alsoOn === 1 ? "student" : "students"} — usually
+                        siblings
+                      </div>
+                    ) : null}
                   </td>
                   <td className="px-4 py-2 text-right text-xs text-[var(--color-ink-muted)]">
                     {item.superseded ? "superseded" : formatWhen(item.submittedAt)}

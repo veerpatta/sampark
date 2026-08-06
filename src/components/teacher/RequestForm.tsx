@@ -13,6 +13,7 @@ import {
 } from "./draft";
 import {
   ANSWERED,
+  isBlankRow,
   type RowState,
   type TeacherField,
   type TeacherRosterRow,
@@ -21,9 +22,16 @@ import {
 /**
  * The teacher's whole screen.
  *
- * State lives here rather than in each row so the progress rail can count, so
+ * State lives here rather than in each row so the counts are computable, so
  * there is one object to persist to the phone, and one place to replay from
  * when signal comes back.
+ *
+ * THE SPLIT IS THE POINT. A Class 8 teacher opens this with 46 students, of
+ * whom 40 already have a correct number and 6 have nothing. The 6 are the entire
+ * reason the request was sent and she used to have to hunt for them among 46
+ * identical cards, then spend 40 taps confirming what was already right. So:
+ * the blanks come first with their inputs already open, and the 40 are
+ * confirmed by one button.
  *
  * Nothing here decides what a submission MEANS. The browser reports what she
  * typed; the server compares it against the frozen snapshot and works out
@@ -46,9 +54,19 @@ export function RequestForm({
 }) {
   const router = useRouter();
 
-  // Marks are collected, not verified — there is nothing to confirm when the
-  // school holds nothing, so those rows show their inputs straight away.
-  const collectMode = fields.every((field) => field.mode === "collect");
+  // Blanks first. Order within each group is the name order the server sent.
+  const { blanks, known, blankIds } = useMemo(() => {
+    const blanks: TeacherRosterRow[] = [];
+    const known: TeacherRosterRow[] = [];
+    for (const student of roster) {
+      (isBlankRow(student, fields) ? blanks : known).push(student);
+    }
+    return {
+      blanks,
+      known,
+      blankIds: new Set(blanks.map((student) => student.studentId)),
+    };
+  }, [roster, fields]);
 
   const [rows, setRows] = useState<Record<string, RowState>>(() =>
     Object.fromEntries(
@@ -63,6 +81,8 @@ export function RequestForm({
   const [error, setError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
   const [restored, setRestored] = useState(false);
+  /** Set for ten seconds after a bulk confirm, so it can be taken back. */
+  const [undo, setUndo] = useState<Record<string, RowState> | null>(null);
 
   // Held across a failed send so the retry is the SAME batch, not a second one.
   const batchKey = useRef<string | null>(null);
@@ -111,6 +131,12 @@ export function RequestForm({
     [roster, rows, sentIds],
   );
 
+  /** Known-group students she has not touched yet — what "सब सही हैं" covers. */
+  const untouchedKnown = useMemo(
+    () => known.filter((student) => rows[student.studentId]!.status === "todo"),
+    [known, rows],
+  );
+
   function update(studentId: string, patch: Partial<RowState>) {
     setRows((current) => ({
       ...current,
@@ -124,6 +150,52 @@ export function RequestForm({
       next.delete(studentId);
       return next;
     });
+  }
+
+  /**
+   * Confirm the whole known group in one tap.
+   *
+   * Deliberately narrow. It touches ONLY untouched rows in the known group:
+   *
+   *   - never the blanks group. Mass-confirming an empty field would tell the
+   *     office it had been checked when nobody has looked at it, and that is a
+   *     worse outcome than the field staying empty.
+   *   - never a row she has already answered, so it cannot quietly overwrite a
+   *     correction she just made.
+   *   - it does NOT submit. Confirm and send stay separate.
+   */
+  function confirmAllKnown() {
+    if (untouchedKnown.length === 0) return;
+    const before = Object.fromEntries(
+      untouchedKnown.map((student) => [
+        student.studentId,
+        rows[student.studentId]!,
+      ]),
+    );
+
+    setRows((current) => {
+      const next = { ...current };
+      for (const student of untouchedKnown) {
+        next[student.studentId] = { status: "confirmed", values: {} };
+      }
+      return next;
+    });
+
+    // Ten seconds to take it back. The only thing worse than forty taps is
+    // forty taps undone one at a time.
+    setUndo(before);
+  }
+
+  useEffect(() => {
+    if (!undo) return;
+    const timer = setTimeout(() => setUndo(null), 10_000);
+    return () => clearTimeout(timer);
+  }, [undo]);
+
+  function takeBack() {
+    if (!undo) return;
+    setRows((current) => ({ ...current, ...undo }));
+    setUndo(null);
   }
 
   const submit = useCallback(
@@ -221,6 +293,28 @@ export function RequestForm({
     };
   }, [submit]);
 
+  const renderRow = (student: TeacherRosterRow) => (
+    <StudentRow
+      key={student.studentId}
+      student={student}
+      fields={fields}
+      state={rows[student.studentId]!}
+      blank={blankIds.has(student.studentId)}
+      sent={sentIds.has(student.studentId)}
+      onConfirm={() => update(student.studentId, { status: "confirmed" })}
+      onEdit={() => update(student.studentId, { status: "editing" })}
+      onAbsent={() => update(student.studentId, { status: "absent", values: {} })}
+      onDone={() => update(student.studentId, { status: "edited" })}
+      onReopen={() => update(student.studentId, { status: "todo" })}
+      onChange={(fieldKey, value) =>
+        update(student.studentId, {
+          status: "editing",
+          values: { ...rows[student.studentId]!.values, [fieldKey]: value },
+        })
+      }
+    />
+  );
+
   return (
     <>
       {restored ? (
@@ -236,40 +330,54 @@ export function RequestForm({
         </p>
       ) : null}
 
-      <p className="mt-4 px-1 text-sm text-[var(--color-ink-muted)]">
-        कुल {toHindiDigits(roster.length)} विद्यार्थी
-        {sentIds.size > 0 ? (
-          <span className="ml-2 text-[var(--color-confirm-fg)]">
-            · {toHindiDigits(sentIds.size)} विद्यालय पहुँच गए
-          </span>
-        ) : null}
-      </p>
+      {/* ============================================ 1. the ones that matter */}
+      {/* No blanks, no heading. An empty section with a zero in it is noise. */}
+      {blanks.length > 0 ? (
+        <section className="mt-5">
+          <h2 className="px-1 text-base font-semibold text-[var(--color-warning-fg)]">
+            {toHindiDigits(blanks.length)} बच्चों की जानकारी नहीं है — ये सबसे
+            ज़रूरी हैं
+          </h2>
+          <ol className="mt-2 space-y-3">{blanks.map(renderRow)}</ol>
+        </section>
+      ) : null}
 
-      <ol className="mt-2 space-y-3">
-        {roster.map((student) => (
-          <StudentRow
-            key={student.studentId}
-            student={student}
-            fields={fields}
-            state={rows[student.studentId]!}
-            collectMode={collectMode}
-            sent={sentIds.has(student.studentId)}
-            onConfirm={() => update(student.studentId, { status: "confirmed" })}
-            onEdit={() => update(student.studentId, { status: "editing" })}
-            onAbsent={() =>
-              update(student.studentId, { status: "absent", values: {} })
-            }
-            onDone={() => update(student.studentId, { status: "edited" })}
-            onReopen={() => update(student.studentId, { status: "todo" })}
-            onChange={(fieldKey, value) =>
-              update(student.studentId, {
-                status: "editing",
-                values: { ...rows[student.studentId]!.values, [fieldKey]: value },
-              })
-            }
-          />
-        ))}
-      </ol>
+      {/* ==================================== 2. the ones already on record */}
+      {known.length > 0 ? (
+        <section className="mt-7">
+          <h2 className="px-1 text-base font-semibold">
+            {toHindiDigits(known.length)} बच्चों की जानकारी पहले से है — देखकर
+            बता दें कि सही है
+          </h2>
+
+          {untouchedKnown.length > 0 ? (
+            <button
+              type="button"
+              onClick={confirmAllKnown}
+              className="mt-2 min-h-12 w-full rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)]"
+            >
+              सब सही हैं ({toHindiDigits(untouchedKnown.length)})
+            </button>
+          ) : null}
+
+          {undo ? (
+            <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
+              <span className="text-[var(--color-ink-muted)]">
+                {toHindiDigits(Object.keys(undo).length)} पर सही का निशान लगाया
+              </span>
+              <button
+                type="button"
+                onClick={takeBack}
+                className="min-h-12 shrink-0 px-3 font-medium underline"
+              >
+                वापस लें
+              </button>
+            </div>
+          ) : null}
+
+          <ol className="mt-3 space-y-3">{known.map(renderRow)}</ol>
+        </section>
+      ) : null}
 
       {error ? (
         <p
@@ -281,9 +389,10 @@ export function RequestForm({
       ) : null}
 
       <ProgressRail
-        done={done}
+        remaining={roster.length - done}
         total={roster.length}
         pending={unsent.length}
+        sent={sentIds.size}
         busy={busy}
         online={online}
         onSubmit={() => void submit(false)}

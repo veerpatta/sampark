@@ -52,7 +52,7 @@ export default async function RequestDetailPage({
           </Link>
         </div>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          Class {request.classLabel} · {teacher.name} · due {request.dueDate}
+          {request.classLabel} · {teacher.name} · due {request.dueDate}
         </p>
       </header>
 

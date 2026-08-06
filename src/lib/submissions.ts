@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import { db, schema, withTransaction } from "./db";
 import { validateField } from "./fields";
 import { STUDENT_COLUMN_BY_DB_NAME } from "./student-columns";
@@ -231,6 +231,16 @@ export type ReviewItem = {
   submittedAt: Date;
   /** True when a later submission for the same student and field exists. */
   superseded: boolean;
+  /**
+   * How many OTHER active students already hold this same number.
+   *
+   * Neutral information for the office, and nothing more. 134 numbers in this
+   * school are shared by more than one student and 133 of those span more than
+   * one class, because siblings share a parent's phone. It is never a warning,
+   * never blocks an approval, and is never shown to a teacher — see the note in
+   * lib/fields.ts.
+   */
+  alsoOn: number;
 };
 
 /**
@@ -280,6 +290,8 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
     }
   }
 
+  const alsoOn = await countSharedPhones(rows.map((row) => row.submission));
+
   return rows.map((row) => ({
     id: row.submission.id,
     requestId: row.submission.requestId,
@@ -298,11 +310,64 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
     superseded:
       row.submission.submittedAt.getTime() !==
       newest.get(groupKey(row.submission))!.getTime(),
+    alsoOn: alsoOn.get(row.submission.id) ?? 0,
   }));
 }
 
 const groupKey = (s: { requestId: string; studentId: string; fieldKey: string }) =>
   `${s.requestId}|${s.studentId}|${s.fieldKey}`;
+
+/**
+ * For each proposed phone number, how many other active students already have
+ * it. Context for the office; never a validation rule.
+ */
+async function countSharedPhones(
+  submissions: (typeof schema.submissions.$inferSelect)[],
+): Promise<Map<string, number>> {
+  const wanted = submissions.filter(
+    (row) =>
+      row.newValue &&
+      (row.fieldKey === "phone" || row.fieldKey === "alt_phone"),
+  );
+  if (wanted.length === 0) return new Map();
+
+  const numbers = [...new Set(wanted.map((row) => row.newValue!))];
+
+  const holders = await db
+    .select({
+      studentId: schema.students.id,
+      phone: schema.students.phone,
+      altPhone: schema.students.altPhone,
+    })
+    .from(schema.students)
+    .where(
+      and(
+        eq(schema.students.status, "active"),
+        or(
+          inArray(schema.students.phone, numbers),
+          inArray(schema.students.altPhone, numbers),
+        ),
+      ),
+    );
+
+  const byNumber = new Map<string, Set<string>>();
+  for (const holder of holders) {
+    for (const value of [holder.phone, holder.altPhone]) {
+      if (!value || !numbers.includes(value)) continue;
+      const set = byNumber.get(value) ?? new Set<string>();
+      set.add(holder.studentId);
+      byNumber.set(value, set);
+    }
+  }
+
+  return new Map(
+    wanted.map((row) => {
+      const others = new Set(byNumber.get(row.newValue!) ?? []);
+      others.delete(row.studentId); // the student this correction is about
+      return [row.id, others.size];
+    }),
+  );
+}
 
 export type Decision = "approved" | "rejected";
 

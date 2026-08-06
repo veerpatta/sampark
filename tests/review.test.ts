@@ -6,6 +6,7 @@ import {
   createScenario,
   studentById,
   submissionsFor,
+  TEST_CLASS,
 } from "./fixtures";
 import { decideSubmissions, recordSubmissions } from "../src/lib/submissions";
 
@@ -36,7 +37,7 @@ describe("the roster snapshot", () => {
 
     const created = await createRequest({
       title: "Snapshot check",
-      classLabel: "ZZ",
+      classLabel: TEST_CLASS,
       teacherId: scenario.teacherId,
       fieldKeys: ["phone", "father_name", "mother_name"],
       dueDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
@@ -56,6 +57,26 @@ describe("the roster snapshot", () => {
     );
     // mother_name genuinely is null on the fixture, so it stays null.
     assert.equal(first.values.mother_name, null);
+  });
+
+  test("a class label off the canonical list is refused before a token exists", async () => {
+    // The expensive failure mode this guards: a label that matches no student
+    // freezes an EMPTY roster and raises nothing, so the office sends a working
+    // link to a blank screen and only finds out when the teacher says so.
+    const { createRequest } = await import("../src/lib/requests");
+    const scenario = await createScenario();
+
+    await assert.rejects(
+      createRequest({
+        title: "Bad class",
+        classLabel: "12 Sci", // the convention this codebase used to assume
+        teacherId: scenario.teacherId,
+        fieldKeys: ["phone"],
+        dueDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
+        createdBy: scenario.userId,
+      }),
+      /not one of the 19 classes/,
+    );
   });
 });
 

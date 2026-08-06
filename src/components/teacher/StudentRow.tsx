@@ -1,27 +1,32 @@
 "use client";
 
+import { useState } from "react";
 import { validateField } from "@/lib/fields";
+import { titleCaseName } from "@/lib/classes";
+import { toHindiDigits } from "./digits";
 import type { RowState, TeacherField, TeacherRosterRow } from "./types";
 
 /**
- * One student, and the three things a teacher can say about them.
+ * One student, and what a teacher can say about them.
  *
  *   सही है   — what you have is right. One tap, and that is the common case.
  *   बदलें    — it is wrong, let me fix it.
  *   नहीं है  — this child is not in my class.
  *
- * The whole product rests on सही है being one tap. Checking 40 numbers is 40
- * taps and maybe 3 corrections; anything that adds a step to the confirm path
- * turns a five-minute job back into a forty-minute one.
+ * The whole product rests on सही है being one tap. Anything that adds a step to
+ * the confirm path turns a five-minute job back into a forty-minute one — which
+ * is also why most confirmations now happen in bulk, one tap for the whole
+ * group, and never reach this component at all.
  *
- * Marks-mode fields skip the confirm step entirely — there is nothing to
- * confirm when the school holds nothing — and open their inputs straight away.
+ * A BLANK row — one where the school holds nothing — skips the confirm step
+ * entirely and opens its inputs straight away. There is nothing to confirm, so
+ * asking for a tap to reveal a keyboard is a tap spent on nothing.
  */
 export function StudentRow({
   student,
   fields,
   state,
-  collectMode,
+  blank,
   sent,
   onConfirm,
   onEdit,
@@ -33,7 +38,8 @@ export function StudentRow({
   student: TeacherRosterRow;
   fields: TeacherField[];
   state: RowState;
-  collectMode: boolean;
+  /** The school holds nothing for this student — inputs open immediately. */
+  blank: boolean;
   sent: boolean;
   onConfirm: () => void;
   onEdit: () => void;
@@ -42,10 +48,13 @@ export function StudentRow({
   onDone: () => void;
   onReopen: () => void;
 }) {
-  const editing =
-    state.status === "editing" || (collectMode && state.status === "todo");
-  const showStored = state.status === "todo" && !collectMode;
+  const editing = state.status === "editing" || (blank && state.status === "todo");
+  const showStored = state.status === "todo" && !blank;
   const showEntered = state.status === "edited";
+  const answered =
+    state.status === "confirmed" ||
+    state.status === "edited" ||
+    state.status === "absent";
 
   const invalid = fields.some((field) => {
     const value = state.values[field.key];
@@ -70,19 +79,15 @@ export function StudentRow({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-baseline gap-2">
-            {student.rollNo === null ? null : (
-              <span className="font-mono text-sm text-[var(--color-ink-muted)]">
-                {student.rollNo}.
-              </span>
-            )}
-            <span className="text-lg font-medium">{student.name}</span>
+          {/* Stored ALL CAPS, rendered title case. A Hindi-first screen
+              shouting a child's name reads as an error message. */}
+          <span className="text-lg font-medium">{titleCaseName(student.name)}</span>
+          <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-sm text-[var(--color-ink-muted)]">
+            {student.srNo ? (
+              <span className="font-mono text-xs">क्र. {student.srNo}</span>
+            ) : null}
+            {student.route ? <span>{student.route}</span> : null}
           </div>
-          {student.fatherName ? (
-            <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">
-              पिता: {student.fatherName}
-            </p>
-          ) : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -121,13 +126,9 @@ export function StudentRow({
                 {field.labelHi}
               </dt>
               <dd className="text-right text-base font-medium">
-                {student.values[field.key] ? (
-                  <span className={numeric(field) ? "font-mono" : ""}>
-                    {student.values[field.key]}
-                  </span>
-                ) : (
-                  <span className="text-[var(--color-warning)]">खाली है</span>
-                )}
+                <span className={numeric(field) ? "font-mono" : ""}>
+                  {student.values[field.key]}
+                </span>
               </dd>
             </div>
           ))}
@@ -152,9 +153,11 @@ export function StudentRow({
                 <dd className="text-right text-base font-medium">
                   {changed ? (
                     <>
-                      <span className="mr-2 text-sm line-through opacity-50">
-                        {stored ?? "खाली"}
-                      </span>
+                      {stored ? (
+                        <span className="mr-2 text-sm line-through opacity-50">
+                          {stored}
+                        </span>
+                      ) : null}
                       <span className={numeric(field) ? "font-mono" : ""}>
                         {entered}
                       </span>
@@ -174,114 +177,185 @@ export function StudentRow({
       {/* --------------------------------------------------------- the inputs */}
       {editing ? (
         <div className="mt-3 space-y-3">
-          {fields.map((field) => {
-            const current =
-              state.values[field.key] ?? student.values[field.key] ?? "";
-            const check = validateField(field, current);
-            const bad = current !== "" && !check.ok;
-
-            return (
-              <label key={field.key} className="block">
-                <span className="text-sm text-[var(--color-ink-muted)]">
-                  {field.labelHi}
-                </span>
-                {field.inputType === "select" ? (
-                  <select
-                    value={current}
-                    onChange={(event) => onChange(field.key, event.target.value)}
-                    className="mt-1 w-full rounded-lg border-2 border-[var(--color-border)] px-3"
-                  >
-                    <option value="">— चुनें —</option>
-                    {optionsOf(field).map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    value={current}
-                    onChange={(event) => onChange(field.key, event.target.value)}
-                    type={field.inputType === "date" ? "date" : "text"}
-                    inputMode={numeric(field) ? "numeric" : "text"}
-                    maxLength={field.exactLen ?? undefined}
-                    className={`mt-1 w-full rounded-lg border-2 px-3 ${
-                      bad
-                        ? "border-[var(--color-danger)]"
-                        : "border-[var(--color-border)]"
-                    } ${numeric(field) ? "font-mono" : ""}`}
-                  />
-                )}
-                {bad && !check.ok ? (
-                  <span
-                    role="alert"
-                    className="mt-1 block text-sm font-medium text-[var(--color-danger)]"
-                  >
-                    {check.errorHi}
-                  </span>
-                ) : null}
-              </label>
-            );
-          })}
+          {fields.map((field) => (
+            <FieldInput
+              key={field.key}
+              field={field}
+              value={state.values[field.key] ?? student.values[field.key] ?? ""}
+              onChange={(value) => onChange(field.key, value)}
+            />
+          ))}
         </div>
       ) : null}
 
       {/* -------------------------------------------------------- the actions */}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {state.status === "todo" && !collectMode ? (
-          <>
+      <div className="mt-4 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {state.status === "todo" && !blank ? (
+            <>
+              <button
+                type="button"
+                onClick={onConfirm}
+                className="min-h-12 flex-1 rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)]"
+              >
+                सही है
+              </button>
+              <button
+                type="button"
+                onClick={onEdit}
+                className="min-h-12 flex-1 rounded-lg border-2 border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 font-semibold text-[var(--color-correct-fg)]"
+              >
+                बदलें
+              </button>
+            </>
+          ) : null}
+
+          {editing ? (
             <button
               type="button"
-              onClick={onConfirm}
-              className="flex-1 rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)]"
+              onClick={onDone}
+              disabled={invalid}
+              className="min-h-12 flex-1 rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)] disabled:opacity-40"
             >
-              सही है
+              हो गया
             </button>
+          ) : null}
+
+          {answered ? (
             <button
               type="button"
-              onClick={onEdit}
-              className="flex-1 rounded-lg border-2 border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 font-semibold text-[var(--color-correct-fg)]"
+              onClick={onReopen}
+              className="min-h-12 rounded-lg border-2 border-[var(--color-border)] px-4 text-sm font-medium text-[var(--color-ink-muted)]"
             >
-              बदलें
+              फिर से देखें
             </button>
-          </>
-        ) : null}
+          ) : null}
+        </div>
 
-        {editing ? (
-          <button
-            type="button"
-            onClick={onDone}
-            disabled={invalid}
-            className="flex-1 rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)] disabled:opacity-40"
-          >
-            हो गया
-          </button>
-        ) : null}
-
-        {state.status === "confirmed" ||
-        state.status === "edited" ||
-        state.status === "absent" ? (
-          <button
-            type="button"
-            onClick={onReopen}
-            className="rounded-lg border-2 border-[var(--color-border)] px-4 text-sm font-medium text-[var(--color-ink-muted)]"
-          >
-            फिर से देखें
-          </button>
-        ) : null}
-
+        {/* नहीं है gets its own row, away from सही है. It used to be an
+            underlined link sitting next to the confirm button — the easiest
+            thing on the screen to hit by accident, and the most annoying to
+            undo. Its own row, full height, low emphasis. */}
         {state.status !== "absent" ? (
           <button
             type="button"
             onClick={onAbsent}
-            className="px-3 text-sm text-[var(--color-absent-fg)] underline"
+            className="min-h-12 w-full rounded-lg border border-dashed border-[var(--color-absent-border)] px-4 text-sm font-medium text-[var(--color-absent-fg)]"
           >
-            नहीं है
+            यह बच्चा मेरी कक्षा में नहीं है
           </button>
         ) : null}
       </div>
     </li>
   );
+}
+
+/**
+ * One field's input.
+ *
+ * Three things matter here, all of them about not making her give up:
+ *
+ *   - The number pad is the only keyboard she should ever see for a phone
+ *     number. inputMode="numeric" plus autoComplete="off".
+ *   - Non-digits are stripped as she types rather than rejected afterwards, and
+ *     a leading +91 or 0 is dropped silently. Do not error on something you can
+ *     simply fix.
+ *   - No red until the field is full or she leaves it. Validating on the first
+ *     keystroke means the screen is scolding her for the nine digits she has
+ *     not typed yet.
+ */
+function FieldInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: TeacherField;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [touched, setTouched] = useState(false);
+  const isNumeric = numeric(field);
+  const check = validateField(field, value);
+  const full = field.exactLen !== null && value.length >= field.exactLen;
+  const bad = value !== "" && !check.ok && (touched || full);
+
+  if (field.inputType === "select") {
+    return (
+      <label className="block">
+        <span className="text-sm text-[var(--color-ink-muted)]">
+          {field.labelHi}
+        </span>
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="mt-1 min-h-12 w-full rounded-lg border-2 border-[var(--color-border)] px-3 text-base"
+        >
+          <option value="">— चुनें —</option>
+          {optionsOf(field).map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
+  return (
+    <label className="block">
+      <span className="flex items-baseline justify-between text-sm text-[var(--color-ink-muted)]">
+        <span>{field.labelHi}</span>
+        {isNumeric && field.exactLen && value.length > 0 ? (
+          <span className="font-mono text-xs">
+            {toHindiDigits(value.length)} / {toHindiDigits(field.exactLen)}
+          </span>
+        ) : null}
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(clean(field, event.target.value))}
+        onBlur={() => setTouched(true)}
+        type={field.inputType === "date" ? "date" : "text"}
+        inputMode={isNumeric ? "numeric" : "text"}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize={isNumeric ? "off" : "words"}
+        // No maxLength on a numeric field: it would truncate a pasted
+        // "+91 98765 43210" to its first ten CHARACTERS before clean() ever saw
+        // it, leaving a mangled number. clean() caps the digits instead.
+        maxLength={isNumeric ? undefined : (field.exactLen ?? undefined)}
+        className={`mt-1 min-h-12 w-full rounded-lg border-2 px-3 text-base ${
+          bad ? "border-[var(--color-danger)]" : "border-[var(--color-border)]"
+        } ${isNumeric ? "font-mono" : ""}`}
+      />
+      {bad ? (
+        <span
+          role="alert"
+          className="mt-1 block text-sm font-medium text-[var(--color-danger)]"
+        >
+          {check.ok ? "" : check.errorHi}
+        </span>
+      ) : null}
+    </label>
+  );
+}
+
+/**
+ * Strip what cannot belong, silently.
+ *
+ * A parent's number arrives on WhatsApp as +91 98765 43210 as often as not, and
+ * pasting it should just work. The same normalisation the importer already does
+ * to the fee app's export.
+ */
+function clean(field: TeacherField, raw: string): string {
+  if (!numeric(field)) return raw;
+
+  let digits = raw.replace(/\D/g, "");
+  if (field.exactLen === 10) {
+    if (digits.length > 10 && digits.startsWith("91")) digits = digits.slice(2);
+    if (digits.length > 10 && digits.startsWith("0")) digits = digits.slice(1);
+  }
+  return field.exactLen ? digits.slice(0, field.exactLen) : digits;
 }
 
 const numeric = (field: TeacherField) =>

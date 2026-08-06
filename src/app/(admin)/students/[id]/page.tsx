@@ -5,6 +5,7 @@ import { db, schema } from "@/lib/db";
 import { currentUser } from "@/lib/auth/session";
 import { IMPORT_COLUMNS } from "@/lib/students-import";
 import { readStudentColumn } from "@/lib/student-columns";
+import { titleCaseName } from "@/lib/classes";
 import type { Student } from "../../../../../drizzle/schema";
 
 export const metadata = { title: "Student — Sampark" };
@@ -74,13 +75,13 @@ export default async function StudentDetailPage({
       <header>
         <div className="flex items-baseline gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">
-            {student.name}
+            {titleCaseName(student.name)}
           </h1>
           <Link
             href={`/students?class=${encodeURIComponent(student.classLabel)}`}
             className="text-sm text-[var(--color-brand-600)] hover:underline"
           >
-            class {student.classLabel}
+            {student.classLabel}
           </Link>
           {student.id.startsWith("TMP-") ? (
             <span className="rounded bg-[var(--color-correct-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-correct-fg)]">

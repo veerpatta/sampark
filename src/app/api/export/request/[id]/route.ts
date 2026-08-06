@@ -40,11 +40,13 @@ export async function GET(
 
   const { request, teacher, fields, rows } = collected;
 
+  // SR no leads, because it is what the fee app joins on when this file goes
+  // back. There are no roll numbers and no parent names in the real data.
   const columns: ExportColumn<CollectedRow>[] = [
-    { header: "Roll No", width: 9, value: (row) => row.rollNo },
+    { header: "SR no", width: 12, value: (row) => row.srNo },
     { header: "Student ID", width: 14, value: (row) => row.studentId },
     { header: "Name", width: 26, value: (row) => row.name },
-    { header: "Father's Name", width: 24, value: (row) => row.fatherName },
+    { header: "Route", width: 22, value: (row) => row.route },
     ...fields.flatMap((field): ExportColumn<CollectedRow>[] => [
       {
         header: `${field.labelEn} (sent)`,
@@ -62,7 +64,7 @@ export async function GET(
   ];
 
   const file = await buildWorkbook(
-    [{ name: `Class ${request.classLabel}`, rows }],
+    [{ name: request.classLabel, rows }],
     columns,
   );
 

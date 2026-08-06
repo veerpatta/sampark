@@ -33,10 +33,10 @@ describe("matching", () => {
   test("matches on student ID and updates only what differs", () => {
     const plan = planRows(
       table([
-        { "Student ID": "S1001", "SR No": "", Class: "6", Name: "Aarav", Mobile: "9812345670", "Father Name": "Ramesh" },
+        { "Student ID": "S1001", "SR No": "", Class: "Class 6", Name: "Aarav", Mobile: "9812345670", "Father Name": "Ramesh" },
       ]),
       MAP,
-      [student({ id: "S1001", name: "Aarav", classLabel: "6", phone: "9800000000", fatherName: "Ramesh" })],
+      [student({ id: "S1001", name: "Aarav", classLabel: "Class 6", phone: "9800000000", fatherName: "Ramesh" })],
     );
 
     const row = byRow(plan, 2);
@@ -48,7 +48,7 @@ describe("matching", () => {
 
   test("falls back to SR number when there is no student ID", () => {
     const plan = planRows(
-      table([{ "Student ID": "", "SR No": "SR-77", Class: "6", Name: "Aarav", Mobile: "9812345670", "Father Name": "" }]),
+      table([{ "Student ID": "", "SR No": "SR-77", Class: "Class 6", Name: "Aarav", Mobile: "9812345670", "Father Name": "" }]),
       MAP,
       [student({ id: "S1001", srNo: "SR-77", name: "Aarav" })],
     );
@@ -63,9 +63,9 @@ describe("matching", () => {
     // Same name, same class, different ID. This must create a second record,
     // not overwrite the first one.
     const plan = planRows(
-      table([{ "Student ID": "S2002", "SR No": "", Class: "6", Name: "Aarav", Mobile: "9812345670", "Father Name": "" }]),
+      table([{ "Student ID": "S2002", "SR No": "", Class: "Class 6", Name: "Aarav", Mobile: "9812345670", "Father Name": "" }]),
       MAP,
-      [student({ id: "S1001", name: "Aarav", classLabel: "6", phone: "9800000000" })],
+      [student({ id: "S1001", name: "Aarav", classLabel: "Class 6", phone: "9800000000" })],
     );
 
     const row = byRow(plan, 2);
@@ -76,7 +76,7 @@ describe("matching", () => {
 
   test("an ambiguous SR number is an error, not a guess", () => {
     const plan = planRows(
-      table([{ "Student ID": "", "SR No": "SR-77", Class: "6", Name: "Aarav", Mobile: "9812345670", "Father Name": "" }]),
+      table([{ "Student ID": "", "SR No": "SR-77", Class: "Class 6", Name: "Aarav", Mobile: "9812345670", "Father Name": "" }]),
       MAP,
       [
         student({ id: "S1001", srNo: "SR-77" }),
@@ -93,8 +93,8 @@ describe("matching", () => {
   test("flags an ID that appears twice in one file", () => {
     const plan = planRows(
       table([
-        { "Student ID": "S1001", "SR No": "", Class: "6", Name: "Aarav", Mobile: "9812345670", "Father Name": "" },
-        { "Student ID": "S1001", "SR No": "", Class: "6", Name: "Aarav", Mobile: "9812345671", "Father Name": "" },
+        { "Student ID": "S1001", "SR No": "", Class: "Class 6", Name: "Aarav", Mobile: "9812345670", "Father Name": "" },
+        { "Student ID": "S1001", "SR No": "", Class: "Class 6", Name: "Aarav", Mobile: "9812345671", "Father Name": "" },
       ]),
       MAP,
       [student({ id: "S1001" })],
@@ -115,7 +115,7 @@ describe("blank cells", () => {
         student({
           id: "S1001",
           name: "Aarav",
-          classLabel: "6",
+          classLabel: "Class 6",
           fatherName: "Ramesh",
           phone: "9800000000",
         }),
@@ -133,9 +133,9 @@ describe("blank cells", () => {
 
   test("a row that changes nothing is skipped, not written", () => {
     const plan = planRows(
-      table([{ "Student ID": "S1001", "SR No": "", Class: "6", Name: "Aarav", Mobile: "9800000000", "Father Name": "" }]),
+      table([{ "Student ID": "S1001", "SR No": "", Class: "Class 6", Name: "Aarav", Mobile: "9800000000", "Father Name": "" }]),
       MAP,
-      [student({ id: "S1001", name: "Aarav", classLabel: "6", phone: "9800000000" })],
+      [student({ id: "S1001", name: "Aarav", classLabel: "Class 6", phone: "9800000000" })],
     );
 
     assert.equal(byRow(plan, 2).outcome, "skip");
@@ -147,7 +147,7 @@ describe("blank cells", () => {
 describe("new students", () => {
   test("name plus class is a valid row", () => {
     const plan = planRows(
-      table([{ "Student ID": "", "SR No": "", Class: "7", Name: "Meera", Mobile: "", "Father Name": "" }]),
+      table([{ "Student ID": "", "SR No": "", Class: "Class 7", Name: "Meera", Mobile: "", "Father Name": "" }]),
       MAP,
       [],
     );
@@ -160,7 +160,7 @@ describe("new students", () => {
 
   test("no name is an error", () => {
     const plan = planRows(
-      table([{ "Student ID": "", "SR No": "", Class: "7", Name: "", Mobile: "9812345670", "Father Name": "" }]),
+      table([{ "Student ID": "", "SR No": "", Class: "Class 7", Name: "", Mobile: "9812345670", "Father Name": "" }]),
       MAP,
       [],
     );
@@ -178,21 +178,99 @@ describe("new students", () => {
 
   test("a missing SR number is a warning, not a blocker", () => {
     const plan = planRows(
-      table([{ "Student ID": "S3003", "SR No": "", Class: "7", Name: "Meera", Mobile: "", "Father Name": "" }]),
+      table([{ "Student ID": "S3003", "SR No": "", Class: "Class 7", Name: "Meera", Mobile: "", "Father Name": "" }]),
       MAP,
       [],
     );
     assert.equal(byRow(plan, 2).outcome, "insert");
     assert.equal(plan.counts.error, 0);
   });
+
+  test("SR number becomes the id when there is no student ID", () => {
+    // The fee app has no separate student ID, so SR no is the key. A real key
+    // means re-importing the same file updates instead of duplicating.
+    const plan = planRows(
+      table([{ "Student ID": "", "SR No": "SR-91", Class: "Class 7", Name: "Meera", Mobile: "", "Father Name": "" }]),
+      MAP,
+      [],
+    );
+
+    const row = byRow(plan, 2);
+    assert.equal(row.outcome, "insert");
+    assert.equal(row.studentId, "SR-91");
+    assert.ok(
+      !row.warnings.some((warning) => /create a second one/.test(warning)),
+      "an SR number is a real key — no duplicate warning belongs on this row",
+    );
+  });
+});
+
+/**
+ * The fee app owns class labels and Sampark joins back to it on the exact
+ * string. A label off the list matches no student, so a request built on it
+ * would freeze an empty roster and raise nothing — which is why this fails the
+ * row loudly at import instead.
+ */
+describe("class labels", () => {
+  test("a label off the canonical list fails the row", () => {
+    const plan = planRows(
+      table([{ "Student ID": "S4004", "SR No": "", Class: "6", Name: "Meera", Mobile: "", "Father Name": "" }]),
+      MAP,
+      [],
+    );
+
+    const row = byRow(plan, 2);
+    assert.equal(row.outcome, "error");
+    assert.match(row.message!, /not one of the 19 classes/);
+    assert.equal(plan.writes[0]!.write, undefined);
+  });
+
+  test("it fails an UPDATE too, not just an insert", () => {
+    // Dropping just the bad cell would file the child under whatever class they
+    // were already in and look like a clean import.
+    const plan = planRows(
+      table([{ "Student ID": "S1001", "SR No": "", Class: "12 Sci", Name: "Aarav", Mobile: "9812345670", "Father Name": "" }]),
+      MAP,
+      [student({ id: "S1001", name: "Aarav", classLabel: "12 Science" })],
+    );
+
+    assert.equal(byRow(plan, 2).outcome, "error");
+    assert.equal(plan.counts.update, 0);
+  });
+
+  test("one bad row does not stop the rest of the file", () => {
+    const plan = planRows(
+      table([
+        { "Student ID": "S5005", "SR No": "", Class: "Class 9", Name: "Meera", Mobile: "", "Father Name": "" },
+        { "Student ID": "S6006", "SR No": "", Class: "Standard 9", Name: "Kavya", Mobile: "", "Father Name": "" },
+      ]),
+      MAP,
+      [],
+    );
+
+    assert.equal(plan.counts.insert, 1);
+    assert.equal(plan.counts.error, 1);
+  });
+
+  test("a surrounding space is normalised, not rejected", () => {
+    const plan = planRows(
+      table([{ "Student ID": "S7007", "SR No": "", Class: "  Class  9 ", Name: "Meera", Mobile: "", "Father Name": "" }]),
+      MAP,
+      [],
+    );
+
+    const row = byRow(plan, 2);
+    assert.equal(row.outcome, "insert");
+    assert.equal(row.changes.classLabel!.to, "Class 9");
+  });
 });
 
 describe("cell validation", () => {
   test("a bad phone number is dropped with a warning; the rest of the row imports", () => {
     const plan = planRows(
-      table([{ "Student ID": "S1001", "SR No": "", Class: "6", Name: "Aarav", Mobile: "98123", "Father Name": "Ramesh" }]),
+      table([{ "Student ID": "S1001", "SR No": "", Class: "Class 6", Name: "Aarav", Mobile: "98123", "Father Name": "Ramesh" }]),
       MAP,
-      [student({ id: "S1001", name: "Aarav", classLabel: "6" })],
+      [student({ id: "S1001", name: "Aarav", classLabel: "Class 6" })],
     );
 
     const row = byRow(plan, 2);
@@ -204,7 +282,7 @@ describe("cell validation", () => {
 
   test("strips a 91 country code rather than rejecting the number", () => {
     const plan = planRows(
-      table([{ "Student ID": "S1001", "SR No": "", Class: "6", Name: "Aarav", Mobile: "919812345670", "Father Name": "" }]),
+      table([{ "Student ID": "S1001", "SR No": "", Class: "Class 6", Name: "Aarav", Mobile: "919812345670", "Father Name": "" }]),
       MAP,
       [student({ id: "S1001" })],
     );

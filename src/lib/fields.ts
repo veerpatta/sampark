@@ -8,6 +8,14 @@
  *
  * Principle 5 from the build plan: a 9-digit phone number or 30 marks out of 25
  * must be impossible to SUBMIT, not cleaned up later.
+ *
+ * A REPEATED PHONE NUMBER IS NOT AN ERROR AND MUST NEVER BE ADDED HERE.
+ * 134 numbers in this school are held by more than one student and 133 of those
+ * span more than one class: siblings share a parent's phone, which is the normal
+ * case and not a mistake. A uniqueness check would reject the correct answer and
+ * teach a teacher that the screen is wrong about her own class. The office sees
+ * a neutral "also on N other students" line in /review; the teacher sees
+ * nothing. See listPendingReview in lib/submissions.ts.
  */
 import type { FieldDef } from "../../drizzle/schema";
 

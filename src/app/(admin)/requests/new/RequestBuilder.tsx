@@ -19,6 +19,12 @@ type TeacherOption = {
   classes: string[];
 };
 
+type ClassOption = {
+  label: string;
+  /** Active students currently in it. Zero means the class cannot be picked. */
+  students: number;
+};
+
 /**
  * class -> template or custom fields -> teacher -> due date.
  *
@@ -32,7 +38,7 @@ export function RequestBuilder({
   templates,
   defaultPeriod,
 }: {
-  classes: string[];
+  classes: ClassOption[];
   teachers: TeacherOption[];
   fields: FieldOption[];
   templates: Template[];
@@ -108,11 +114,11 @@ export function RequestBuilder({
     }
   }
 
-  if (classes.length === 0) {
+  if (classes.every((option) => option.students === 0)) {
     return (
       <Empty>
-        No students loaded yet, so there are no classes to pick from. Import a
-        PSP export first.
+        No students loaded yet, so every class is empty. Import the fee app
+        export first.
       </Empty>
     );
   }
@@ -129,21 +135,30 @@ export function RequestBuilder({
     <form onSubmit={onSubmit} className="space-y-5">
       <Card step="1" title="Which class?">
         <div className="flex flex-wrap gap-2">
-          {classes.map((label) => (
+          {classes.map((option) => (
             <button
-              key={label}
+              key={option.label}
               type="button"
+              disabled={option.students === 0}
+              title={
+                option.students === 0
+                  ? "No active students in this class — import it first"
+                  : undefined
+              }
               onClick={() => {
-                setClassLabel(label);
+                setClassLabel(option.label);
                 setTeacherId("");
               }}
-              className={`rounded-lg border px-4 py-2 text-sm font-medium ${
-                classLabel === label
+              className={`rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
+                classLabel === option.label
                   ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
                   : "border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]"
               }`}
             >
-              {label}
+              {option.label}
+              <span className="ml-2 font-mono text-xs text-[var(--color-ink-muted)]">
+                {option.students}
+              </span>
             </button>
           ))}
         </div>
@@ -233,7 +248,7 @@ export function RequestBuilder({
             >
               <option value="">Choose…</option>
               {owners.length > 0 ? (
-                <optgroup label={`Class ${classLabel} teachers`}>
+                <optgroup label={`${classLabel} teachers`}>
                   {owners.map((teacher) => (
                     <option key={teacher.id} value={teacher.id}>
                       {teacher.name}

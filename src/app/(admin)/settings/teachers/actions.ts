@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { canManageSettings, requireUser } from "@/lib/auth/session";
-import { parseClassList } from "@/lib/classes";
+import {
+  isClassLabel,
+  parseClassList,
+  unknownClassLabelMessage,
+} from "@/lib/classes";
 
 /**
  * Teacher records are entered here, in the browser, and never in a seed file.
@@ -33,6 +37,12 @@ export async function saveTeacher(formData: FormData) {
   if (phone.length !== 10) {
     throw new Error("Phone must be exactly 10 digits, no country code.");
   }
+
+  // A class typed here that does not exist in the fee app would silently never
+  // match a student, and this teacher would simply never be offered as the
+  // owner of that class. Refuse the whole submission and say which one.
+  const unknown = classes.find((label) => !isClassLabel(label));
+  if (unknown) throw new Error(unknownClassLabelMessage(unknown));
 
   await db
     .insert(schema.teachers)
