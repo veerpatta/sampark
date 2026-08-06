@@ -4,6 +4,7 @@ import { listClassLabels, listStudents } from "@/lib/students";
 import { titleCaseName } from "@/lib/classes";
 
 export const metadata = { title: "Students — Sampark" };
+export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 100;
 

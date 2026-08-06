@@ -5,6 +5,7 @@ import { canManageSettings, currentUser } from "@/lib/auth/session";
 import { saveTeacher, setTeacherActive } from "./actions";
 
 export const metadata = { title: "Teachers — Sampark" };
+export const dynamic = "force-dynamic";
 
 /**
  * Class teachers and the classes they own.

@@ -5,6 +5,7 @@ import { IMPORT_COLUMNS } from "@/lib/students-import";
 import { ImportWizard } from "./ImportWizard";
 
 export const metadata = { title: "Import students — Sampark" };
+export const dynamic = "force-dynamic";
 
 /**
  * Load a PSP export into the master record.
