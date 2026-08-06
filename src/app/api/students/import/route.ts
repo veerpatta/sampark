@@ -70,9 +70,17 @@ export async function POST(request: Request) {
     );
   }
 
+  // Which sheet, for a multi-sheet workbook. Absent on the first inspect, which
+  // is what lists the sheets in the first place.
+  const wantedSheet = form.get("sheet");
+
   let table;
   try {
-    table = await parseTabularFile(await file.arrayBuffer(), file.name);
+    table = await parseTabularFile(
+      await file.arrayBuffer(),
+      file.name,
+      typeof wantedSheet === "string" && wantedSheet ? wantedSheet : null,
+    );
   } catch {
     return NextResponse.json(
       { error: "That file could not be read. Re-save it as .csv or .xlsx." },
@@ -80,9 +88,18 @@ export async function POST(request: Request) {
     );
   }
 
+  const sheets = table.sheets ?? [];
+
   if (table.rows.length === 0) {
     return NextResponse.json(
-      { error: "The file has headers but no rows." },
+      {
+        error:
+          sheets.length > 1
+            ? `Sheet "${table.sheet ?? sheets[0]}" has no rows. Pick another sheet.`
+            : "The file has headers but no rows.",
+        sheets,
+        sheet: table.sheet ?? null,
+      },
       { status: 400 },
     );
   }
@@ -93,6 +110,8 @@ export async function POST(request: Request) {
       rowCount: table.rows.length,
       suggestion: suggestColumnMap(table.headers),
       sample: table.rows.slice(0, 5),
+      sheets,
+      sheet: table.sheet ?? null,
     });
   }
 

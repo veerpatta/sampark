@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { asc, eq, inArray } from "drizzle-orm";
 import { db, schema } from "../db";
+import { compareStudentNames } from "../classes";
 import type { FieldDef } from "../../../drizzle/schema";
 
 /**
@@ -75,9 +76,11 @@ export function checkRequestAccess(
 /** One row on the teacher's phone, exactly as it was frozen at send time. */
 export type ResolvedRosterRow = {
   studentId: string;
-  rollNo: number | null;
+  /** The only identifier she can check against a paper register. */
+  srNo: string | null;
   name: string;
-  fatherName: string | null;
+  /** Real identifying context in a village school; present for about half. */
+  route: string | null;
   values: Record<string, string | null>;
 };
 
@@ -139,8 +142,7 @@ export async function resolveToken(
     db
       .select()
       .from(schema.requestStudents)
-      .where(eq(schema.requestStudents.requestId, row.request.id))
-      .orderBy(asc(schema.requestStudents.rollNo)),
+      .where(eq(schema.requestStudents.requestId, row.request.id)),
   ]);
 
   // Keep the field order the request asked for, not the registry's, so the
@@ -159,19 +161,26 @@ export async function resolveToken(
     status: row.request.status,
     teacherName: row.teacher.name,
     fields: ordered,
-    roster: roster.map((entry) => {
-      const snapshot = entry.snapshot as {
-        name?: string;
-        fatherName?: string | null;
-        values?: Record<string, string | null>;
-      };
-      return {
-        studentId: entry.studentId,
-        rollNo: entry.rollNo,
-        name: snapshot.name ?? "",
-        fatherName: snapshot.fatherName ?? null,
-        values: snapshot.values ?? {},
-      };
-    }),
+    // Name order. The roster used to come back ordered by roll number, which is
+    // null for every one of the 504 real students — so a class arrived in
+    // whatever order Postgres happened to return and matched nothing on her
+    // paper register.
+    roster: roster
+      .map((entry) => {
+        const snapshot = entry.snapshot as {
+          name?: string;
+          srNo?: string | null;
+          route?: string | null;
+          values?: Record<string, string | null>;
+        };
+        return {
+          studentId: entry.studentId,
+          srNo: snapshot.srNo ?? null,
+          name: snapshot.name ?? "",
+          route: snapshot.route ?? null,
+          values: snapshot.values ?? {},
+        };
+      })
+      .sort((a, b) => compareStudentNames(a.name, b.name)),
   };
 }

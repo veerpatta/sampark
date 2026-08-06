@@ -11,6 +11,9 @@ type Inspection = {
   rowCount: number;
   suggestion: Record<string, string>;
   sample: Record<string, string>[];
+  /** Every sheet in the workbook. One entry, or none for CSV, hides the picker. */
+  sheets: string[];
+  sheet: string | null;
 };
 
 type Preview = {
@@ -27,6 +30,8 @@ const IGNORE = "";
  */
 export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
   const [file, setFile] = useState<File | null>(null);
+  const [sheet, setSheet] = useState<string | null>(null);
+  const [sheetList, setSheetList] = useState<string[]>([]);
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [map, setMap] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -34,7 +39,7 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function post(mode: string) {
+  async function post(mode: string, wantedSheet?: string | null) {
     if (!file) return null;
     setBusy(true);
     setError(null);
@@ -42,6 +47,8 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
     const body = new FormData();
     body.set("file", file);
     body.set("mode", mode);
+    const chosen = wantedSheet === undefined ? sheet : wantedSheet;
+    if (chosen) body.set("sheet", chosen);
     if (mode !== "inspect") body.set("map", JSON.stringify(usableMap(map)));
 
     try {
@@ -52,6 +59,9 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
       const payload = await response.json();
       if (!response.ok) {
         setError(payload.error ?? "Something went wrong.");
+        // An empty sheet still tells us what the other sheets are called, so the
+        // picker can appear instead of a dead end.
+        if (Array.isArray(payload.sheets)) setSheetList(payload.sheets);
         return null;
       }
       return payload;
@@ -63,10 +73,13 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
     }
   }
 
-  async function onInspect() {
-    const payload = await post("inspect");
+  async function onInspect(wantedSheet?: string | null) {
+    setInspection(null);
+    const payload = await post("inspect", wantedSheet);
     if (!payload) return;
     setInspection(payload);
+    setSheetList(payload.sheets ?? []);
+    setSheet(payload.sheet ?? null);
     setMap(payload.suggestion ?? {});
     setPreview(null);
     setResult(null);
@@ -102,6 +115,8 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
             onChange={(event) => {
               setFile(event.target.files?.[0] ?? null);
               setInspection(null);
+              setSheet(null);
+              setSheetList([]);
               setPreview(null);
               setResult(null);
               setError(null);
@@ -110,7 +125,7 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
           />
           <button
             type="button"
-            onClick={onInspect}
+            onClick={() => void onInspect()}
             disabled={!file || busy}
             className="rounded-lg bg-[var(--color-brand-600)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
           >
@@ -120,6 +135,32 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
         <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
           CSV or XLSX, up to 5 MB. The first row must be the column headers.
         </p>
+
+        {/* The fee app's bundle has fifteen sheets and the first is a README,
+            so reading "the first sheet" silently reads the wrong one. */}
+        {sheetList.length > 1 ? (
+          <label className="mt-4 block max-w-sm">
+            <span className="text-xs font-medium text-[var(--color-ink-muted)]">
+              This workbook has {sheetList.length} sheets — which one holds the
+              students?
+            </span>
+            <select
+              value={sheet ?? ""}
+              onChange={(event) => {
+                setSheet(event.target.value);
+                void onInspect(event.target.value);
+              }}
+              disabled={busy}
+              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            >
+              {sheetList.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </Card>
 
       {error ? (

@@ -1,6 +1,6 @@
 import { and, asc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "./db";
-import { compareClassLabels } from "./classes";
+import { compareClassLabels, compareStudentNames } from "./classes";
 import type { Student } from "../../drizzle/schema";
 
 /** Server-side reads over the master record. Never imported by a client component. */
@@ -24,7 +24,9 @@ export async function listStudents(query: StudentQuery): Promise<{
       .select()
       .from(schema.students)
       .where(where)
-      .orderBy(asc(schema.students.classLabel), asc(schema.students.rollNo), asc(schema.students.name))
+      // Name, not roll number: the export has no roll numbers and every row
+      // carries null, which made this list arbitrary. See compareStudentNames.
+      .orderBy(asc(schema.students.classLabel), asc(schema.students.name))
       .limit(limit)
       .offset(query.offset ?? 0),
     db
@@ -71,9 +73,15 @@ export async function listClassLabels(): Promise<string[]> {
   return rows.map((row) => row.classLabel).sort(compareClassLabels);
 }
 
-/** Roster for one class, in roll-number order. Used to freeze a request snapshot. */
+/**
+ * Roster for one class, in name order. Used to freeze a request snapshot.
+ *
+ * Postgres collation and JS localeCompare do not agree on every string, and the
+ * order the teacher sees comes from the snapshot read back later — so sort in JS
+ * here too, with the same comparator, and the two can never disagree.
+ */
 export async function listClassRoster(classLabel: string): Promise<Student[]> {
-  return db
+  const roster = await db
     .select()
     .from(schema.students)
     .where(
@@ -81,6 +89,21 @@ export async function listClassRoster(classLabel: string): Promise<Student[]> {
         eq(schema.students.classLabel, classLabel),
         eq(schema.students.status, "active"),
       ),
-    )
-    .orderBy(asc(schema.students.rollNo), asc(schema.students.name));
+    );
+
+  return roster.sort((a, b) => compareStudentNames(a.name, b.name));
+}
+
+/** How many active students each class actually has. Feeds the request builder. */
+export async function countByClass(): Promise<Map<string, number>> {
+  const rows = await db
+    .select({
+      classLabel: schema.students.classLabel,
+      n: sql<number>`count(*)::int`,
+    })
+    .from(schema.students)
+    .where(eq(schema.students.status, "active"))
+    .groupBy(schema.students.classLabel);
+
+  return new Map(rows.map((row) => [row.classLabel, row.n]));
 }

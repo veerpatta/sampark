@@ -42,6 +42,18 @@ export type ParsedTable = {
   headers: string[];
   /** One entry per data row, keyed by header. Values are trimmed strings. */
   rows: Record<string, string>[];
+  /**
+   * Every sheet in the workbook, and which one was read. Empty for CSV.
+   *
+   * The fee app exports a fifteen-sheet bundle whose first sheet is a README,
+   * so "just take the first sheet" quietly reads the wrong thing. The office
+   * picks.
+   *
+   * Optional because everything downstream of the parse works on headers and
+   * rows alone — only the upload screen cares which sheet they came from.
+   */
+  sheets?: string[];
+  sheet?: string | null;
 };
 
 /** Excel serial dates are days since 1899-12-30. */
@@ -50,10 +62,11 @@ const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30);
 export async function parseTabularFile(
   data: ArrayBuffer,
   filename: string,
+  sheet?: string | null,
 ): Promise<ParsedTable> {
   return filename.toLowerCase().endsWith(".csv")
     ? parseCsv(data)
-    : parseXlsx(data);
+    : parseXlsx(data, sheet);
 }
 
 function parseCsv(data: ArrayBuffer): ParsedTable {
@@ -71,15 +84,22 @@ function parseCsv(data: ArrayBuffer): ParsedTable {
     return out;
   });
 
-  return { headers, rows: rows.filter(hasAnyValue) };
+  return { headers, rows: rows.filter(hasAnyValue), sheets: [], sheet: null };
 }
 
-async function parseXlsx(data: ArrayBuffer): Promise<ParsedTable> {
+async function parseXlsx(
+  data: ArrayBuffer,
+  wanted?: string | null,
+): Promise<ParsedTable> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(data);
 
-  const sheet = workbook.worksheets[0];
-  if (!sheet) return { headers: [], rows: [] };
+  const names = workbook.worksheets.map((worksheet) => worksheet.name);
+  const sheet = wanted
+    ? workbook.worksheets.find((worksheet) => worksheet.name === wanted)
+    : workbook.worksheets[0];
+
+  if (!sheet) return { headers: [], rows: [], sheets: names, sheet: null };
 
   const headerRow = sheet.getRow(1);
   const raw: string[] = [];
@@ -99,7 +119,12 @@ async function parseXlsx(data: ArrayBuffer): Promise<ParsedTable> {
     if (hasAnyValue(out)) rows.push(out);
   });
 
-  return { headers: headers.filter(Boolean), rows };
+  return {
+    headers: headers.filter(Boolean),
+    rows,
+    sheets: names,
+    sheet: sheet.name,
+  };
 }
 
 /**

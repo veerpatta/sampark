@@ -1,7 +1,12 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import { generateToken } from "./auth/token";
-import { normaliseClassLabel } from "./classes";
+import {
+  compareStudentNames,
+  isClassLabel,
+  normaliseClassLabel,
+  unknownClassLabelMessage,
+} from "./classes";
 import { listClassRoster } from "./students";
 import { readStudentColumn } from "./student-columns";
 import type { FieldDef, Student } from "../../drizzle/schema";
@@ -17,10 +22,19 @@ import type { FieldDef, Student } from "../../drizzle/schema";
  * every review a guess. See plan section 4 and standing rule 6.
  */
 
-/** Exactly what one student's row on the teacher's phone was prefilled with. */
+/**
+ * Exactly what one student's row on the teacher's phone was prefilled with.
+ *
+ * `srNo` and `route` are the only identifying context that exists. There are no
+ * roll numbers and no parent names in the real data, so the card carries the SR
+ * number — the one stable thing she can cross-check against a paper register —
+ * and the bus route, which in a village school tells her which child this is for
+ * the half of them who have one.
+ */
 export type RosterSnapshot = {
   name: string;
-  fatherName: string | null;
+  srNo: string | null;
+  route: string | null;
   /** Keyed by field_defs.key. null means "we hold nothing for this field". */
   values: Record<string, string | null>;
 };
@@ -53,6 +67,11 @@ export async function createRequest(input: CreateRequestInput): Promise<{
 
   if (!title) throw new RequestValidationError("Give the request a title.");
   if (!classLabel) throw new RequestValidationError("Pick a class.");
+  // A label off the list would match no student and freeze an empty roster
+  // without raising anything. Refuse before a token is even generated.
+  if (!isClassLabel(classLabel)) {
+    throw new RequestValidationError(unknownClassLabelMessage(classLabel));
+  }
   if (fieldKeys.length === 0) {
     throw new RequestValidationError("Pick at least one field to ask about.");
   }
@@ -200,7 +219,8 @@ async function buildSnapshots(
 
     snapshots.set(student.id, {
       name: student.name,
-      fatherName: student.fatherName,
+      srNo: student.srNo,
+      route: student.busRoute,
       values,
     });
   }
@@ -326,8 +346,7 @@ export async function listNonResponders(requestId: string): Promise<
     db
       .select()
       .from(schema.requestStudents)
-      .where(eq(schema.requestStudents.requestId, requestId))
-      .orderBy(asc(schema.requestStudents.rollNo)),
+      .where(eq(schema.requestStudents.requestId, requestId)),
     db
       .selectDistinct({ studentId: schema.submissions.studentId })
       .from(schema.submissions)
@@ -344,14 +363,15 @@ export async function listNonResponders(requestId: string): Promise<
       // The frozen snapshot, not the live master record — this list is about
       // what the teacher was sent.
       name: (row.snapshot as { name?: string }).name ?? row.studentId,
-    }));
+    }))
+    .sort((a, b) => compareStudentNames(a.name, b.name));
 }
 
 export type CollectedRow = {
   studentId: string;
-  rollNo: number | null;
+  srNo: string | null;
   name: string;
-  fatherName: string | null;
+  route: string | null;
   /** Keyed by field key: what the school held when the link was sent. */
   sent: Record<string, string | null>;
   /** Keyed by field key: the newest thing the teacher said, if anything. */
@@ -382,8 +402,7 @@ export async function collectedFor(requestId: string): Promise<{
     db
       .select()
       .from(schema.requestStudents)
-      .where(eq(schema.requestStudents.requestId, requestId))
-      .orderBy(asc(schema.requestStudents.rollNo)),
+      .where(eq(schema.requestStudents.requestId, requestId)),
     db
       .select()
       .from(schema.submissions)
@@ -401,7 +420,8 @@ export async function collectedFor(requestId: string): Promise<{
   const rows: CollectedRow[] = roster.map((entry) => {
     const snapshot = entry.snapshot as {
       name?: string;
-      fatherName?: string | null;
+      srNo?: string | null;
+      route?: string | null;
       values?: Record<string, string | null>;
     };
 
@@ -422,15 +442,17 @@ export async function collectedFor(requestId: string): Promise<{
 
     return {
       studentId: entry.studentId,
-      rollNo: entry.rollNo,
+      srNo: snapshot.srNo ?? null,
       name: snapshot.name ?? entry.studentId,
-      fatherName: snapshot.fatherName ?? null,
+      route: snapshot.route ?? null,
       sent,
       answered,
       outcome: describeOutcome(actions),
       reviewStatus: [...statuses].sort().join(", "),
     };
   });
+
+  rows.sort((a, b) => compareStudentNames(a.name, b.name));
 
   return { ...detail, rows };
 }
@@ -462,10 +484,9 @@ export async function getRequestDetail(id: string) {
       .where(inArray(schema.fieldDefs.key, row.request.fieldKeys))
       .orderBy(asc(schema.fieldDefs.sortOrder)),
     db
-      .select()
+      .select({ studentId: schema.requestStudents.studentId })
       .from(schema.requestStudents)
-      .where(eq(schema.requestStudents.requestId, id))
-      .orderBy(asc(schema.requestStudents.rollNo)),
+      .where(eq(schema.requestStudents.requestId, id)),
   ]);
 
   return { ...row, fields, rosterSize: roster.length };

@@ -1,7 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "./db";
-import { normaliseClassLabel } from "./classes";
+import {
+  isClassLabel,
+  normaliseClassLabel,
+  unknownClassLabelMessage,
+} from "./classes";
 import {
   cellToString,
   excelSerialToDate,
@@ -96,7 +100,17 @@ export const IMPORT_COLUMNS: ColumnSpec[] = [
     column: "classLabel",
     label: "Class",
     aliases: ["class", "class label", "class_label", "standard", "std"],
-    normalise: (raw) => ({ value: normaliseClassLabel(raw) || null }),
+    // Validated, not just normalised. The fee app is the source of truth for
+    // class labels and Sampark must join back to it on this exact string — so a
+    // label off the list is a loud row error, never a new class. See planRow.
+    normalise: (raw) => {
+      const label = normaliseClassLabel(raw);
+      if (!label) return { value: null };
+      if (!isClassLabel(label)) {
+        return { value: null, warning: unknownClassLabelMessage(label) };
+      }
+      return { value: label };
+    },
   },
   {
     column: "section",
@@ -119,7 +133,13 @@ export const IMPORT_COLUMNS: ColumnSpec[] = [
   {
     column: "name",
     label: "Name",
-    aliases: ["name", "student name", "student's name", "students name"],
+    aliases: [
+      "name",
+      "student",
+      "student name",
+      "student's name",
+      "students name",
+    ],
     normalise: text,
   },
   {
@@ -137,7 +157,12 @@ export const IMPORT_COLUMNS: ColumnSpec[] = [
   {
     column: "phone",
     label: "Mobile number",
+    // "father phone" is the fee app's header, and it is the number the office
+    // actually rings. It lands in `phone`, the primary.
     aliases: [
+      "father phone",
+      "fathers phone",
+      "father's phone",
       "mobile",
       "mobile no",
       "mobile number",
@@ -150,15 +175,18 @@ export const IMPORT_COLUMNS: ColumnSpec[] = [
   },
   {
     column: "altPhone",
-    label: "Alternate mobile",
+    label: "Mother's mobile",
     aliases: [
+      "mother phone",
+      "mothers phone",
+      "mother's phone",
       "alternate mobile",
       "alt mobile",
       "alternate number",
       "second mobile",
       "alt_phone",
     ],
-    normalise: phone("Alternate mobile"),
+    normalise: phone("Mother's mobile"),
   },
   {
     column: "dob",
@@ -367,6 +395,8 @@ function planRow(
   const warnings: string[] = [];
   const values: Partial<Record<StudentColumn, string>> = {};
 
+  let badClass: string | null = null;
+
   for (const [header, column] of mapped) {
     const raw = row[header] ?? "";
     // A blank cell means "no change" — never "erase". Skip it entirely.
@@ -374,6 +404,10 @@ function planRow(
 
     const spec = COLUMN_BY_KEY.get(column)!;
     const { value, warning } = spec.normalise(coerceCell(raw, column));
+    if (column === "classLabel" && value === null && warning) {
+      badClass = warning;
+      continue;
+    }
     if (warning) warnings.push(warning);
     if (value !== null) values[column] = value;
   }
@@ -392,6 +426,13 @@ function planRow(
       warnings,
     },
   });
+
+  // A class label off the canonical nineteen fails the whole row, on update as
+  // much as on insert. Dropping just the bad cell would file the child under
+  // whatever class they were already in and look like a clean import; there is
+  // no case where the fee app legitimately emits another label, so a mismatch
+  // means the file or the list is wrong and someone has to look.
+  if (badClass) return error(badClass);
 
   // ---- match: ID first, then SR number, never name ----
   let existing: Student | undefined;
@@ -427,15 +468,17 @@ function planRow(
     return error(`No class for "${values.name}" — cannot create a record`);
   }
 
-  if (!id) {
+  // SR no becomes the key when there is no better one. The fee app has no
+  // separate student ID, SR numbers are unique in its export, and a real key
+  // means re-importing the same file updates rather than duplicating — which a
+  // generated TMP- id could never do.
+  if (!id && !srNo) {
     warnings.push(
-      srNo
-        ? `No Student ID — a new record will be created and given a temporary ID`
-        : `No Student ID or SR number — a new record will be created, and importing this file again would create a second one`,
+      `No Student ID or SR number — a new record will be created, and importing this file again would create a second one`,
     );
   }
 
-  const newId = id ?? temporaryStudentId();
+  const newId = id ?? srNo ?? temporaryStudentId();
   const insertValues: Record<string, unknown> = { ...values, id: newId };
   if (insertValues.rollNo !== undefined) {
     insertValues.rollNo = Number(insertValues.rollNo);
