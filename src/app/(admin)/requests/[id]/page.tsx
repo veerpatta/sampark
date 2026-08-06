@@ -19,12 +19,18 @@ export default async function RequestDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const detail = await getRequestDetail(id);
+
+  // None of the three needs an answer from the others — only the id, which we
+  // already have. Run them together rather than paying the round trip thrice.
+  const [detail, waiting, origin] = await Promise.all([
+    getRequestDetail(id),
+    listNonResponders(id),
+    baseUrl(),
+  ]);
   if (!detail) notFound();
 
   const { request, teacher, fields, rosterSize } = detail;
-  const waiting = await listNonResponders(id);
-  const url = `${await baseUrl()}/r/${request.token}`;
+  const url = `${origin}/r/${request.token}`;
 
   // Once she has started, nagging her with the original "please fill this in"
   // reads as if the office has not noticed her work. Switch to the nudge.

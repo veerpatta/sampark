@@ -20,8 +20,10 @@ export default async function ReviewPage({
   searchParams: Promise<{ request?: string }>;
 }) {
   const params = await searchParams;
-  const session = await currentUser();
-  const items = await listPendingReview(params.request);
+  const [session, items] = await Promise.all([
+    currentUser(),
+    listPendingReview(params.request),
+  ]);
 
   const actionable = items.filter((item) => !item.superseded);
 

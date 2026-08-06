@@ -27,21 +27,19 @@ export default async function StudentDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await currentUser();
-  if (!session) redirect("/login");
-
   const { id } = await params;
   const studentId = decodeURIComponent(id);
 
-  const [student] = await db
-    .select()
-    .from(schema.students)
-    .where(eq(schema.students.id, studentId))
-    .limit(1);
-
-  if (!student) notFound();
-
-  const [history, records] = await Promise.all([
+  // Every one of these needs only the id from the URL. The history and the
+  // records do not wait on the student row existing — if it does not, the
+  // notFound() below throws the whole page away and their answers with it.
+  const [session, [student], history, records] = await Promise.all([
+    currentUser(),
+    db
+      .select()
+      .from(schema.students)
+      .where(eq(schema.students.id, studentId))
+      .limit(1),
     db
       .select({
         entry: schema.changeLog,
@@ -69,6 +67,9 @@ export default async function StudentDetailPage({
       .where(eq(schema.studentRecords.studentId, studentId))
       .orderBy(desc(schema.studentRecords.period), asc(schema.studentRecords.fieldKey)),
   ]);
+
+  if (!session) redirect("/login");
+  if (!student) notFound();
 
   return (
     <div className="space-y-6">

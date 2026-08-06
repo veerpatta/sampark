@@ -19,13 +19,13 @@ export default async function StudentsPage({
   searchParams: Promise<{ q?: string; class?: string; page?: string }>;
 }) {
   const params = await searchParams;
-  const session = await currentUser();
 
   const search = params.q?.trim() ?? "";
   const classLabel = params.class?.trim() ?? "";
   const page = Math.max(1, Number(params.page ?? 1) || 1);
 
-  const [{ students, total }, classes] = await Promise.all([
+  const [session, { students, total }, classes] = await Promise.all([
+    currentUser(),
     listStudents({
       search,
       classLabel: classLabel || undefined,
