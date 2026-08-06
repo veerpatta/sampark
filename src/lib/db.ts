@@ -1,5 +1,5 @@
 import { neon, Pool } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { drizzle, type NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { drizzle as drizzleSocket } from "drizzle-orm/neon-serverless";
 import type { NeonDatabase } from "drizzle-orm/neon-serverless";
 import * as schema from "../../drizzle/schema";
@@ -14,20 +14,52 @@ import * as schema from "../../drizzle/schema";
  *
  * This module must never be imported from a client component.
  */
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL is not set. Copy .env.example to .env.local and fill it in.",
-  );
+export { schema };
+
+function connectionString(): string {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL is not set. Locally: copy .env.example to .env.local and " +
+        "fill it in. On Vercel: add it to the project's environment variables " +
+        "and redeploy — env changes do not apply to a running deployment.",
+    );
+  }
+  return url;
 }
 
-const sql = neon(process.env.DATABASE_URL);
+let client: NeonHttpDatabase<typeof schema> | null = null;
+
+function connect(): NeonHttpDatabase<typeof schema> {
+  client ??= drizzle(neon(connectionString()), { schema });
+  return client;
+}
 
 /**
  * The default connection: one HTTP round trip per statement. Right for almost
  * everything here — a page render, an import chunk, a roster read.
+ *
+ * Connected LAZILY, on first use, behind a proxy.
+ *
+ * This module used to throw at import time when DATABASE_URL was missing, which
+ * broke the Vercel build rather than any request: `next build` imports every
+ * route module to collect page data, so a missing runtime secret failed the
+ * build with "Failed to collect page data for /api/auth/[...nextauth]" — a
+ * message that says nothing about the actual cause. Nothing here is rendered at
+ * build time, so the build has no business needing database credentials at all.
+ *
+ * Now an absent DATABASE_URL surfaces on the first query, with a message that
+ * names the fix.
  */
-export const db = drizzle(sql, { schema });
-export { schema };
+export const db = new Proxy({} as NeonHttpDatabase<typeof schema>, {
+  get(_target, property) {
+    const real = connect();
+    const value = Reflect.get(real, property) as unknown;
+    // Bind methods to the real instance: Drizzle's builders rely on `this`, and
+    // an unbound method called through the proxy would lose it.
+    return typeof value === "function" ? value.bind(real) : value;
+  },
+});
 
 /**
  * Run a real, interactive transaction.
@@ -67,7 +99,7 @@ export async function withTransaction<T>(
     );
   }
 
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = new Pool({ connectionString: connectionString() });
   try {
     const tx = drizzleSocket(pool, { schema });
     return await tx.transaction(work);
