@@ -76,25 +76,39 @@ describe("matching the timetable's bare first names", () => {
     assert.equal(plan.confirmed[0]!.distance, 0);
   });
 
-  it("SUGGESTS a near miss rather than importing it", () => {
+  it("takes a settled alias as exact, so it is not re-asked every import", () => {
+    // "Pradhyuman" is a real spelling difference the office has already ruled
+    // on, checked against the day-wise timetable PDF and the staff list. Left
+    // as a suggestion it would need a human decision on every re-import, and
+    // the answer could come back different.
     const plan = planTimetableImport(
       grid("Class 8", [{ subject: "English compulsory", teachers: ["Pradhyuman"] }]),
       teachers,
     );
-    assert.equal(plan.confirmed.length, 0);
-    assert.equal(plan.suggested.length, 1);
-    assert.equal(plan.suggested[0]!.teacherId, "T10");
-    assert.equal(plan.suggested[0]!.timetableName, "Pradhyuman");
-    assert.equal(plan.suggested[0]!.distance, 1);
+    assert.equal(plan.suggested.length, 0);
+    assert.equal(plan.confirmed.length, 1);
+    assert.equal(plan.confirmed[0]!.teacherId, "T10");
+    assert.equal(plan.confirmed[0]!.distance, 0);
   });
 
-  it("suggests a two-character spelling difference too", () => {
+  it("falls back rather than resolving to nobody when an aliased teacher left", () => {
+    // The alias names a person, not an id.
     const plan = planTimetableImport(
       grid("Class 8", [{ subject: "Physics", teachers: ["Prateek"] }]),
-      teachers,
+      teachers.filter((t) => t.name !== "Pratik Jain"),
     );
+    assert.equal(plan.confirmed.length, 0);
+    assert.equal(plan.unmatchedTeachers.length, 1);
+  });
+
+  it("still only SUGGESTS a near miss that nobody has ruled on", () => {
+    const plan = planTimetableImport(
+      grid("Class 8", [{ subject: "Physics", teachers: ["Rashmeta"] }]),
+      [...teachers, { id: "T03", name: "Rashmita Sharma" }],
+    );
+    assert.equal(plan.confirmed.length, 0);
     assert.equal(plan.suggested.length, 1);
-    assert.equal(plan.suggested[0]!.teacherId, "T18");
+    assert.equal(plan.suggested[0]!.teacherId, "T03");
   });
 
   it("REPORTS a name it cannot place, and never drops it", () => {

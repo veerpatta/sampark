@@ -88,6 +88,25 @@ export function classLabelFromTimetable(raw: string): string | null {
 }
 
 /**
+ * Names the office has already decided about.
+ *
+ * The timetable spells three of our teachers differently, and a fuzzy match
+ * only ever produces a SUGGESTION — correctly, because a name match is a
+ * guess about two people. These three are not guesses any more: each was
+ * checked against the day-wise timetable PDF and against the staff list, and
+ * recording the answer here means a re-import six months from now does not ask
+ * the same question again and risk a different answer.
+ *
+ * Keyed by the timetable's spelling, valued by ours. Anything not listed still
+ * goes through the fuzzy path and still needs a person.
+ */
+const KNOWN_ALIASES: Record<string, string> = {
+  pradhyuman: "Pradhuman Singh Ashiya",
+  prateek: "Pratik Jain",
+  nathulal: "Nathu Lal Khatik",
+};
+
+/**
  * Candidate keys a timetable first name could be hiding in a full name.
  *
  * BOTH forms are needed, and the second is not optional:
@@ -120,6 +139,16 @@ type Match = { teacher: TeacherRow; distance: number } | null;
 function matchTeacher(timetableName: string, teachers: TeacherRow[]): Match {
   const needle = timetableName.trim().toLowerCase().replace(/[^a-z]/g, "");
   if (!needle) return null;
+
+  // A settled alias is an exact match — distance 0 — so it lands in `confirmed`
+  // and imports without --include-suggested. If the named teacher has since
+  // left the roster it falls through to the fuzzy path rather than resolving to
+  // nobody silently.
+  const alias = KNOWN_ALIASES[needle];
+  if (alias) {
+    const known = teachers.find((teacher) => teacher.name === alias);
+    if (known) return { teacher: known, distance: 0 };
+  }
 
   let best: Match = null;
   for (const teacher of teachers) {
