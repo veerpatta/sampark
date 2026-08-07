@@ -364,6 +364,23 @@ export const requests = pgTable(
      */
     sentAt: timestamp("sent_at", { withTimezone: true }),
     sentBy: text("sent_by").references(() => users.id),
+    /**
+     * Hidden from the boards, kept in the database.
+     *
+     * The office asked to be able to delete a closed request. A request that
+     * collected nothing really is deleted — there is no history to lose. One
+     * that collected answers cannot be, and not merely as a policy: submissions
+     * reference it with no cascade, and app_rw has DELETE revoked on that table
+     * (Rule 4, drizzle/sql/grants.sql). The row would have to outlive the button
+     * whatever this column said, so archiving is the honest version of the same
+     * intent — the clutter goes, the evidence does not.
+     *
+     * Deliberately not a `status` value. Status says what the LINK is doing and
+     * is read by resolveToken; whether the office wants to look at the row is a
+     * different fact, and folding them together would mean un-archiving had to
+     * guess whether to restore `open` or `closed`.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("requests_token_idx").on(t.token),

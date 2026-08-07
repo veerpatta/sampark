@@ -9,6 +9,7 @@ import {
 } from "@/lib/whatsapp";
 import { SharePanel } from "./SharePanel";
 import { StatusControls } from "./StatusControls";
+import { RemoveControls } from "./RemoveControls";
 
 export const metadata = { title: "Request — Sampark" };
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export default async function RequestDetailPage({
   ]);
   if (!detail) notFound();
 
-  const { request, teacher, fields, rosterSize } = detail;
+  const { request, teacher, fields, rosterSize, submissionCount } = detail;
   const url = `${origin}/r/${request.token}`;
 
   // Once she has started, nagging her with the original "please fill this in"
@@ -120,6 +121,11 @@ export default async function RequestDetailPage({
               <span className="rounded bg-[var(--color-surface-muted)] px-2 py-0.5 font-mono text-xs">
                 {request.status}
               </span>
+              {request.archivedAt ? (
+                <span className="ml-2 rounded bg-[var(--color-surface-muted)] px-2 py-0.5 font-mono text-xs text-[var(--color-ink-muted)]">
+                  archived
+                </span>
+              ) : null}
             </Row>
           </dl>
 
@@ -131,6 +137,19 @@ export default async function RequestDetailPage({
               rosterSize={rosterSize}
             />
           </div>
+
+          {/* Closed only. Removing a live link would strand a teacher holding a
+              URL that has quietly started 404ing, with nobody able to say why. */}
+          {request.status === "closed" ? (
+            <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+              <RemoveControls
+                requestId={request.id}
+                audienceLabel={request.audienceLabel}
+                submissionCount={submissionCount}
+                archived={request.archivedAt !== null}
+              />
+            </div>
+          ) : null}
 
           <p className="mt-4 text-xs text-[var(--color-ink-muted)]">
             The roster and its prefilled values were frozen when this request was

@@ -14,8 +14,16 @@ type Row = Awaited<ReturnType<typeof listRequests>>[number];
  * 390px phone puts the two columns that matter (answered, to review) off the
  * right edge. See components/admin/DataTable.
  */
-export default async function RequestsPage() {
-  const requests = await listRequests();
+export default async function RequestsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ archived?: string }>;
+}) {
+  // Archived rows are reachable but never the default. An archive nobody can
+  // open is a delete with extra steps, and the whole reason answered requests
+  // are archived rather than deleted is that their contents still matter.
+  const showArchived = (await searchParams).archived === "1";
+  const requests = await listRequests({ includeArchived: showArchived });
   const today = new Date().toISOString().slice(0, 10);
 
   const columns: Column<Row>[] = [
@@ -94,8 +102,15 @@ export default async function RequestsPage() {
       key: "status",
       header: "Status",
       cell: (request) => (
-        <span className="rounded bg-[var(--color-surface-muted)] px-2 py-0.5 font-mono text-xs">
-          {request.status}
+        <span className="flex flex-wrap items-center gap-1">
+          <span className="rounded bg-[var(--color-surface-muted)] px-2 py-0.5 font-mono text-xs">
+            {request.status}
+          </span>
+          {request.archivedAt ? (
+            <span className="rounded bg-[var(--color-surface-muted)] px-2 py-0.5 font-mono text-xs text-[var(--color-ink-muted)]">
+              archived
+            </span>
+          ) : null}
         </span>
       ),
     },
@@ -108,9 +123,16 @@ export default async function RequestsPage() {
           <h1 className="text-display font-semibold tracking-tight">Requests</h1>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
             {requests.length} request{requests.length === 1 ? "" : "s"}
+            {showArchived ? ", archived included" : ""}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={showArchived ? "/requests" : "/requests?archived=1"}
+            className="flex min-h-[var(--tap-min)] items-center rounded-lg border border-[var(--color-border)] px-4 text-sm font-medium text-[var(--color-ink-muted)]"
+          >
+            {showArchived ? "Hide archived" : "Show archived"}
+          </Link>
           <Link
             href="/requests/bulk"
             className="flex min-h-[var(--tap-min)] items-center rounded-lg border border-[var(--color-brand-600)] px-4 text-sm font-medium text-[var(--color-brand-700)]"

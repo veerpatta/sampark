@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import { generateToken } from "./auth/token";
 import {
@@ -444,6 +444,8 @@ export type RequestBoardRow = {
   rosterSize: number;
   studentsAnswered: number;
   changesPending: number;
+  /** Set once the office has taken it off the boards. Null for a live row. */
+  archivedAt: Date | null;
 };
 
 /**
@@ -495,8 +497,17 @@ function coveredStudentsQuery(requestIds: string[]) {
     );
 }
 
-/** The status board. Reads the request_progress view from plan section 4.3. */
-export async function listRequests(): Promise<RequestBoardRow[]> {
+/**
+ * The status board. Reads the request_progress view from plan section 4.3.
+ *
+ * Archived requests are absent unless asked for. Hiding them HERE rather than in
+ * each reader is the same reasoning as coveredStudentsQuery: the dashboard, the
+ * requests table and the overdue list all ask this one function what exists, and
+ * a filter any of them could forget is a filter one of them eventually will.
+ */
+export async function listRequests(
+  options: { includeArchived?: boolean } = {},
+): Promise<RequestBoardRow[]> {
   const rows = await db
     .select({
       id: schema.requests.id,
@@ -510,10 +521,16 @@ export async function listRequests(): Promise<RequestBoardRow[]> {
       // contact_phone when the office overrode it for this request, her saved
       // number otherwise. One extra projection on a join that already exists.
       teacherPhone: sql<string>`coalesce(nullif(${schema.requests.contactPhone}, ''), ${schema.teachers.phone})`,
+      archivedAt: schema.requests.archivedAt,
       createdAt: schema.requests.createdAt,
     })
     .from(schema.requests)
     .innerJoin(schema.teachers, eq(schema.teachers.id, schema.requests.teacherId))
+    .where(
+      options.includeArchived
+        ? undefined
+        : isNull(schema.requests.archivedAt),
+    )
     .orderBy(desc(schema.requests.createdAt));
 
   if (rows.length === 0) return [];
@@ -575,6 +592,7 @@ export async function listRequests(): Promise<RequestBoardRow[]> {
     rosterSize: sizes.get(row.id) ?? 0,
     studentsAnswered: answers.get(row.id) ?? 0,
     changesPending: changes.get(row.id) ?? 0,
+    archivedAt: row.archivedAt,
   }));
 }
 
@@ -723,7 +741,7 @@ export async function getRequestDetail(id: string) {
 
   if (!row) return null;
 
-  const [fields, roster] = await Promise.all([
+  const [fields, roster, recorded] = await Promise.all([
     db
       .select()
       .from(schema.fieldDefs)
@@ -733,7 +751,21 @@ export async function getRequestDetail(id: string) {
       .select({ studentId: schema.requestStudents.studentId })
       .from(schema.requestStudents)
       .where(eq(schema.requestStudents.requestId, id)),
+    // Submission ROWS, not students answered. The remove control decides between
+    // deleting and archiving on whether anything was ever recorded, and a
+    // student can hold submissions without being counted as covered — labelling
+    // that request "delete permanently" would be a promise the foreign key is
+    // about to break.
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(schema.submissions)
+      .where(eq(schema.submissions.requestId, id)),
   ]);
 
-  return { ...row, fields, rosterSize: roster.length };
+  return {
+    ...row,
+    fields,
+    rosterSize: roster.length,
+    submissionCount: recorded[0]?.n ?? 0,
+  };
 }
