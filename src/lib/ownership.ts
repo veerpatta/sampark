@@ -21,6 +21,18 @@ export type ScopeKind = "class" | "house" | "route";
 
 export type Scope = { kind: ScopeKind; value: string };
 
+/**
+ * What a REQUEST's group is, which is broader than what a TEACHER owns.
+ *
+ * ScopeKind is not "a kind of group" — it is the set of columns on the teacher
+ * row that ownedBy dispatches to, which is why that function gets to be an
+ * exact `.includes()` over a list of plain strings. A subject assignment is a
+ * triple (teacher, subject, class), lives in its own table, and is resolved by
+ * chooseTeacherForSubject in lib/subjects.ts. It never passes through ownedBy,
+ * so it is not a ScopeKind — but it IS something requests.audience_kind holds.
+ */
+export type AudienceKind = ScopeKind | "subject";
+
 export type TeacherLike = {
   id: string;
   name: string;

@@ -47,6 +47,12 @@ export default async function FieldSettingsPage() {
             teachers
           </Link>
           <Link
+            href="/settings/subjects"
+            className="text-sm text-[var(--color-brand-600)] hover:underline"
+          >
+            subjects
+          </Link>
+          <Link
             href="/settings/users"
             className="text-sm text-[var(--color-brand-600)] hover:underline"
           >

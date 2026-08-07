@@ -163,6 +163,12 @@ export default async function AuditPage({
           >
             teachers
           </Link>
+          <Link
+            href="/settings/subjects"
+            className="text-sm text-[var(--color-brand-600)] hover:underline"
+          >
+            subjects
+          </Link>
         </div>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           {total.toLocaleString("en-IN")} decision{total === 1 ? "" : "s"}

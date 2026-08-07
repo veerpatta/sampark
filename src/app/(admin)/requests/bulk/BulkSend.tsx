@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Template } from "@/lib/templates";
 import type { RecipientMode } from "@/lib/fanout";
 import { AddQuestion } from "@/components/admin/AddQuestion";
+import { ThumbBar } from "@/components/admin/ThumbBar";
+import { SUBJECTS } from "@/lib/subjects";
 import { preview, send, type BulkRequest } from "./actions";
 
 type Option = { label: string; students: number };
@@ -32,6 +34,7 @@ export function BulkSend({
   totalActive,
   anyHouseOwner,
   anyRouteOwner,
+  anySubjectTeacher,
   fields,
   templates,
   defaultPeriod,
@@ -42,6 +45,8 @@ export function BulkSend({
   totalActive: number;
   anyHouseOwner: boolean;
   anyRouteOwner: boolean;
+  /** Whether teacher_subjects holds anything at all. */
+  anySubjectTeacher: boolean;
   fields: FieldOption[];
   templates: Template[];
   defaultPeriod: string;
@@ -83,6 +88,14 @@ export function BulkSend({
   // and only once somebody is actually assigned as one.
   const houseModeOk = pickedHouses.size > 0 && anyHouseOwner;
   const routeModeOk = pickedRoutes.size > 0 && anyRouteOwner;
+
+  // Subject mode routes on the marks fields she ticked, so there is no separate
+  // subject picker: the field list IS the picker, and a second one would be a
+  // second place to say the same thing and a way for them to disagree.
+  const pickedSubjects = SUBJECTS.filter((subject) =>
+    fieldKeys.includes(subject.fieldKey),
+  );
+  const subjectModeOk = pickedSubjects.length > 0 && anySubjectTeacher;
 
   function request(): BulkRequest {
     return {
@@ -153,7 +166,8 @@ export function BulkSend({
   const sendable = !skipBlocked ? unresolved.length === 0 : true;
 
   return (
-    <div className="space-y-5 pb-28">
+    // Clearance for the ThumbBar. <main> already clears the nav under it.
+    <div className="space-y-5 pb-24 md:pb-0">
       {/* ------------------------------------------------------------- who */}
       <Card step="1" title="Who is this about?">
         <Chips
@@ -363,7 +377,35 @@ export function BulkSend({
                   : "One link per route, carrying children from every class."
             }
           />
+          <ModeCard
+            picked={mode === "subject_teacher"}
+            onPick={() => {
+              setMode("subject_teacher");
+              invalidate();
+            }}
+            disabled={!subjectModeOk}
+            title="Subject teachers"
+            detail={
+              !anySubjectTeacher
+                ? "No subject assignments yet — Settings → Subjects."
+                : pickedSubjects.length === 0
+                  ? "Tick a marks field above, and each goes to whoever teaches it."
+                  : `One link per teacher per subject, carrying only her own classes. ${pickedSubjects
+                      .map((s) => s.en)
+                      .join(", ")}.`
+            }
+          />
         </div>
+        {mode === "subject_teacher" && pickedSubjects.length > 1 ? (
+          // Sixteen subjects at once is thirty-eight links and thirty-eight
+          // WhatsApp handovers, and a teacher who takes three of them gets three
+          // separate messages. Allowed, but she should have meant it.
+          <p className="mt-3 rounded-lg border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-3 py-2 text-sm text-[var(--color-correct-fg)]">
+            {pickedSubjects.length} subjects at once means a separate link, and a
+            separate WhatsApp message, for every teacher of each. One subject per
+            send is usually kinder.
+          </p>
+        ) : null}
       </Card>
 
       {/* --------------------------------------------------------- preview */}
@@ -463,14 +505,14 @@ export function BulkSend({
       {error ? (
         <p
           role="alert"
-          className="rounded-lg border border-[var(--color-danger)] bg-red-50 px-4 py-3 text-sm text-[var(--color-danger)]"
+          className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger)]"
         >
           {error}
         </p>
       ) : null}
 
       {/* The bar is where the thumb is. Same reasoning as the teacher's rail. */}
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] md:static md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+      <ThumbBar>
         {result?.ok ? (
           <button
             type="button"
@@ -502,7 +544,7 @@ export function BulkSend({
                     : "Check it"}
           </button>
         )}
-      </div>
+      </ThumbBar>
     </div>
   );
 }

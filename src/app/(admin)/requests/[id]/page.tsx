@@ -38,7 +38,11 @@ export default async function RequestDetailPage({
   const started = waiting.length < rosterSize;
   const message = (started ? buildReminderMessage : buildRequestMessage)({
     teacherName: teacher.name,
-    audience: { kind: request.audienceKind, label: request.audienceLabel },
+    audience: {
+      kind: request.audienceKind,
+      label: request.audienceLabel,
+      fieldKeys: request.fieldKeys,
+    },
     title: request.title,
     dueDate: request.dueDate,
     url,
@@ -89,7 +93,7 @@ export default async function RequestDetailPage({
                   >
                     {waiting.length} of {rosterSize}
                   </span>
-                  <ul className="mt-1 max-h-40 overflow-auto text-xs font-normal text-[var(--color-ink-muted)]">
+                  <ul className="mt-1 text-xs font-normal text-[var(--color-ink-muted)]">
                     {waiting.map((student) => (
                       <li key={student.studentId}>
                         {student.rollNo === null ? "" : `${student.rollNo}. `}
@@ -204,7 +208,7 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[10rem_1fr] gap-3">
+    <div className="grid grid-cols-1 gap-1 sm:grid-cols-[10rem_1fr] sm:gap-3">
       <dt className="text-[var(--color-ink-muted)]">{label}</dt>
       <dd className="font-medium">{children}</dd>
     </div>

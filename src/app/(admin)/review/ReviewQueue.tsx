@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Decision, ReviewItem } from "@/lib/submissions";
 import { titleCaseName } from "@/lib/classes";
 import { useToast } from "@/components/ui/Toast";
+import { ThumbBar } from "@/components/admin/ThumbBar";
 import { decide } from "./actions";
 
 /**
@@ -90,7 +91,9 @@ export function ReviewQueue({
   const groups = groupByRequest(showStale ? [...live, ...stale] : live);
 
   return (
-    <div className="space-y-8 pb-40 md:pb-0">
+    // pb-44: generous, because this bar wraps to three rows on a narrow phone
+    // (count, select-all, note, then the two buttons).
+    <div className="space-y-8 pb-44 md:pb-0">
       {/*
         The bar goes to the BOTTOM on a phone and stays at the top on a desktop.
         Same reasoning as the teacher's progress rail: this is the screen the
@@ -98,8 +101,7 @@ export function ReviewQueue({
         thumb already is. At md and up there is a mouse and a top bar reads as a
         toolbar, which is what it is there.
       */}
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] md:sticky md:top-0 md:inset-x-auto md:rounded-[var(--radius-card)] md:border md:p-3 md:shadow-card">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3">
+      <ThumbBar desktop="sticky">
           <span className="text-sm font-medium">
             {selected.size} of {live.length} selected
           </span>
@@ -112,7 +114,7 @@ export function ReviewQueue({
                   : new Set(live.map((item) => item.id)),
               )
             }
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
+            className="inline-flex min-h-[var(--tap-min)] items-center px-1 text-sm text-[var(--color-brand-600)] hover:underline md:min-h-0"
           >
             {selected.size === live.length ? "Clear all" : "Select all"}
           </button>
@@ -149,13 +151,12 @@ export function ReviewQueue({
               {pending ? "Working…" : `Approve ${selected.size}`}
             </button>
           </div>
-        </div>
-      </div>
+      </ThumbBar>
 
       {error ? (
         <p
           role="alert"
-          className="rounded-lg border border-[var(--color-danger)] bg-red-50 px-4 py-3 text-sm text-[var(--color-danger)]"
+          className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger)]"
         >
           {error}
         </p>

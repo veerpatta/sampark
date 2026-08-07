@@ -55,6 +55,7 @@ export default async function BatchPage({
           token: link.token,
           audienceKind: link.audienceKind,
           audienceLabel: link.audienceLabel,
+          fieldKeys: link.fieldKeys,
           teacherName: link.teacherName,
           teacherPhone: link.teacherPhone,
           rosterSize: link.rosterSize,

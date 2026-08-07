@@ -61,13 +61,13 @@ export function SharePanel({
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <code className="flex-1 overflow-x-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 font-mono text-xs">
+        <code className="min-w-0 flex-1 break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 font-mono text-xs">
           {url}
         </code>
         <button
           type="button"
           onClick={() => copy(url, "link")}
-          className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
+          className="min-h-[var(--tap-min)] rounded-lg border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
         >
           {copied === "link" ? "Copied" : "Copy link"}
         </button>
@@ -78,7 +78,7 @@ export function SharePanel({
       </p>
       <pre
         lang="hi"
-        className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm"
+        className="mt-1 whitespace-pre-wrap rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm"
       >
         {message}
       </pre>

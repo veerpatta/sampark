@@ -61,7 +61,11 @@ export function AdminNav({ items }: { items: NavItem[] }) {
         aria-label="Main"
         className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-border)] bg-[var(--color-surface)] pb-[env(safe-area-inset-bottom)] md:hidden"
       >
-        <ul className="flex">
+        {/* The bar IS --admin-nav-h, it is not merely close to it. Everything
+            else fixed to the bottom of a phone offsets by that token, so the
+            two must be the same number by construction rather than by someone
+            re-measuring this after a padding change. It is above --tap-min. */}
+        <ul className="flex h-[var(--admin-nav-h)]">
           {items.map((item) => {
             const active = isActive(item);
             return (
@@ -69,8 +73,7 @@ export function AdminNav({ items }: { items: NavItem[] }) {
                 <Link
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  // 48px minimum on everything, per the ergonomics token.
-                  className={`flex min-h-[var(--tap-min)] flex-col items-center justify-center gap-0.5 px-1 py-2 text-xs ${
+                  className={`flex h-full flex-col items-center justify-center gap-0.5 px-1 py-1 text-xs ${
                     active
                       ? "font-semibold text-[var(--color-brand-600)]"
                       : "text-[var(--color-ink-muted)]"

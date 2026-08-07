@@ -10,7 +10,7 @@ import {
 } from "./classes";
 import { listClassRoster } from "./students";
 import { buildSnapshots, recordKey, type RosterSnapshot } from "./snapshots";
-import type { ScopeKind } from "./ownership";
+import type { AudienceKind } from "./ownership";
 import { hasPhone, isCompletePhone, normalisePhone, samePhone } from "./phone";
 import type { FieldDef, Student } from "../../drizzle/schema";
 
@@ -69,7 +69,7 @@ export type ScopedRequestInput = {
   title: string;
   /** NULL for a house or route link, whose roster spans classes. */
   classLabel: string | null;
-  audienceKind: ScopeKind;
+  audienceKind: AudienceKind;
   audienceLabel: string;
   batchId?: string | null;
   teacherId: string;
@@ -441,6 +441,8 @@ export type RequestBoardRow = {
   /** For the one-tap reminder on the dashboard, without a second page load. */
   token: string;
   teacherPhone: string;
+  /** What this request asks for — names the subject in a subject link's message. */
+  fieldKeys: string[];
   rosterSize: number;
   studentsAnswered: number;
   changesPending: number;
@@ -521,6 +523,7 @@ export async function listRequests(
       // contact_phone when the office overrode it for this request, her saved
       // number otherwise. One extra projection on a join that already exists.
       teacherPhone: sql<string>`coalesce(nullif(${schema.requests.contactPhone}, ''), ${schema.teachers.phone})`,
+      fieldKeys: schema.requests.fieldKeys,
       archivedAt: schema.requests.archivedAt,
       createdAt: schema.requests.createdAt,
     })
@@ -589,6 +592,7 @@ export async function listRequests(
     status: row.status,
     token: row.token,
     teacherPhone: row.teacherPhone,
+    fieldKeys: row.fieldKeys,
     rosterSize: sizes.get(row.id) ?? 0,
     studentsAnswered: answers.get(row.id) ?? 0,
     changesPending: changes.get(row.id) ?? 0,

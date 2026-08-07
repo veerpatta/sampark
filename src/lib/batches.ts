@@ -14,11 +14,14 @@ import { listAudienceRoster, type Audience } from "./students";
 import {
   isRecipientMode,
   planFanOut,
+  planSubjectFanOut,
   type FanOutPlan,
   type Recipient,
   type RecipientMode,
+  type GroupScope,
+  type SubjectPick,
 } from "./fanout";
-import type { Scope } from "./ownership";
+import { subjectByFieldKey, type SubjectAssignment } from "./subjects";
 import type { FieldDef, Student } from "../../drizzle/schema";
 
 /**
@@ -45,9 +48,13 @@ import type { FieldDef, Student } from "../../drizzle/schema";
  * nineteen half-finished writes.
  */
 
-/** Nineteen classes is the real ceiling. The cap is here so nobody fans out
- *  per-student by accident and mints five hundred tokens. */
-const MAX_GROUPS = 40;
+/**
+ * The cap exists so nobody fans out per-student by accident and mints five
+ * hundred tokens. Nineteen classes used to be the real ceiling; a full marks
+ * round sent to subject teachers is thirty-eight links, so forty was close
+ * enough to a hard throw to be a trap.
+ */
+const MAX_GROUPS = 60;
 const MAX_STUDENTS = 3000;
 
 export type BatchInput = {
@@ -68,7 +75,7 @@ export type BatchInput = {
   skip?: string[];
 };
 
-export const scopeKey = (scope: Scope) => `${scope.kind}|${scope.value}`;
+export const scopeKey = (scope: GroupScope) => `${scope.kind}|${scope.value}`;
 
 export type BatchPreview = {
   plan: FanOutPlan;
@@ -127,7 +134,9 @@ async function resolveBatch(
 
   const teachers = await activeRecipients();
   const plan = applyOverrides(
-    planFanOut(roster, teachers, input.recipientMode),
+    input.recipientMode === "subject_teacher"
+      ? planSubjectFanOut(roster, teachers, await activeAssignments(), subjectsFor(fields))
+      : planFanOut(roster, teachers, input.recipientMode),
     teachers,
     input.overrides,
   );
@@ -216,14 +225,14 @@ export type FanOutResult = {
   created: {
     requestId: string;
     token: string;
-    scope: Scope;
+    scope: GroupScope;
     teacherId: string;
     rosterSize: number;
   }[];
   /** The group that stopped the run, if one did. */
-  failed: { scope: Scope; message: string } | null;
+  failed: { scope: GroupScope; message: string } | null;
   /** Groups after it, untouched. Resume picks these up. */
-  remaining: Scope[];
+  remaining: GroupScope[];
 };
 
 export async function createBatch(input: BatchInput): Promise<FanOutResult> {
@@ -304,7 +313,7 @@ export async function resumeBatch(
     .where(eq(schema.requests.batchId, batchId));
 
   const done = new Set(
-    existing.map((row) => scopeKey({ kind: row.kind as Scope["kind"], value: row.label })),
+    existing.map((row) => scopeKey({ kind: row.kind as GroupScope["kind"], value: row.label } as GroupScope)),
   );
   const groups = resolved.plan.ready.filter(
     (group) => !done.has(scopeKey(group.scope)),
@@ -325,11 +334,16 @@ async function runGroups(
   input: BatchInput,
 ): Promise<FanOutResult> {
   const tokens = await uniqueTokens(groups.length);
+  // Loaded for the WHOLE field set in one query. The map is keyed by (student,
+  // fieldKey), so narrowing it per group costs nothing and reading it thirty
+  // times is still one round trip rather than thirty.
   const priorRecords = await loadPriorRecords(
     resolved.roster,
     resolved.fields,
     resolved.period,
   );
+  const batchKeys = normaliseFieldKeys(input.fieldKeys);
+  const fieldsByKey = new Map(resolved.fields.map((field) => [field.key, field]));
 
   const created: FanOutResult["created"] = [];
 
@@ -343,6 +357,16 @@ async function runGroups(
       .map((id) => resolved.byId.get(id))
       .filter((student): student is Student => Boolean(student));
 
+    // A subject link asks about its own subject and nothing else. Every other
+    // mode asks the whole batch's set, which is what an absent fieldKeys means.
+    const groupKeys = group.fieldKeys ?? batchKeys;
+    // Narrowed for the SNAPSHOT too, not only for the request row. The snapshot
+    // is what the teacher was shown, and freezing sixteen subjects' prior marks
+    // onto a link that asks about one would make that untrue.
+    const groupFields = groupKeys
+      .map((key) => fieldsByKey.get(key))
+      .filter((field): field is FieldDef => Boolean(field));
+
     try {
       const result = await createOneRequest(
         {
@@ -352,7 +376,7 @@ async function runGroups(
           audienceLabel: group.scope.value,
           batchId,
           teacherId: group.teacherId,
-          fieldKeys: normaliseFieldKeys(input.fieldKeys),
+          fieldKeys: groupKeys,
           period: resolved.period,
           dueDate: input.dueDate,
           createdBy: input.createdBy,
@@ -360,7 +384,7 @@ async function runGroups(
         },
         {
           roster,
-          fields: resolved.fields,
+          fields: groupFields,
           priorRecords,
           token: tokens[i]!,
           requestId: randomUUID(),
@@ -391,6 +415,36 @@ async function runGroups(
   return { batchId, created, failed: null, remaining: [] };
 }
 
+/** Every subject assignment on record. ~90 rows; one query, no filter. */
+async function activeAssignments(): Promise<SubjectAssignment[]> {
+  return db
+    .select({
+      teacherId: schema.teacherSubjects.teacherId,
+      subjectKey: schema.teacherSubjects.subjectKey,
+      classLabel: schema.teacherSubjects.classLabel,
+    })
+    .from(schema.teacherSubjects);
+}
+
+/**
+ * Which subjects this batch is about, derived from its field keys.
+ *
+ * DERIVED, not stored. The union of fa_* keys already has to sit in
+ * request_batches.field_keys so resolveFields, resolvePeriod and
+ * loadPriorRecords see the whole set, and a second column naming the subjects
+ * would be a second home for the same fact — which is how a Resume days later
+ * fans out over a different set of subjects than the original send did. Same
+ * reasoning as the note on why `audience` is stored as ticked, not as resolved.
+ */
+function subjectsFor(fields: FieldDef[]): SubjectPick[] {
+  return fields.flatMap((field) => {
+    const subject = subjectByFieldKey(field.key);
+    return subject
+      ? [{ key: subject.key, en: subject.en, fieldKey: subject.fieldKey }]
+      : [];
+  });
+}
+
 async function activeRecipients(): Promise<Recipient[]> {
   const rows = await db
     .select()
@@ -415,6 +469,8 @@ export type BatchLink = {
   token: string;
   audienceKind: string;
   audienceLabel: string;
+  /** What this one link asks for. A subject link asks for exactly one. */
+  fieldKeys: string[];
   teacherName: string;
   teacherPhone: string;
   rosterSize: number;
@@ -443,6 +499,7 @@ export async function getBatch(batchId: string): Promise<BatchDetail | null> {
       token: schema.requests.token,
       audienceKind: schema.requests.audienceKind,
       audienceLabel: schema.requests.audienceLabel,
+      fieldKeys: schema.requests.fieldKeys,
       teacherName: schema.teachers.name,
       teacherPhone: sql<string>`coalesce(nullif(${schema.requests.contactPhone}, ''), ${schema.teachers.phone})`,
       sentAt: schema.requests.sentAt,
@@ -460,6 +517,7 @@ export async function getBatch(batchId: string): Promise<BatchDetail | null> {
     token: row.token,
     audienceKind: row.audienceKind,
     audienceLabel: row.audienceLabel,
+    fieldKeys: row.fieldKeys,
     teacherName: row.teacherName,
     teacherPhone: row.teacherPhone,
     rosterSize: sizes.get(row.requestId) ?? 0,

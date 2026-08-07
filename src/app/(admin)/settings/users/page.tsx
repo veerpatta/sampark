@@ -36,6 +36,12 @@ export default async function UsersPage() {
             teachers
           </Link>
           <Link
+            href="/settings/subjects"
+            className="text-sm text-[var(--color-brand-600)] hover:underline"
+          >
+            subjects
+          </Link>
+          <Link
             href="/settings/fields"
             className="text-sm text-[var(--color-brand-600)] hover:underline"
           >

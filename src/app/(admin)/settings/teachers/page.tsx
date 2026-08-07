@@ -171,7 +171,7 @@ export default async function TeachersPage() {
                     />
                     <button
                       type="submit"
-                      className="text-label text-[var(--color-ink-muted)] hover:underline"
+                      className="inline-flex min-h-[var(--tap-min)] items-center text-label text-[var(--color-ink-muted)] hover:underline"
                     >
                       {teacher.active ? "Deactivate" : "Reactivate"}
                     </button>

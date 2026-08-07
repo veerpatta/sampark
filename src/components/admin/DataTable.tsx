@@ -53,8 +53,14 @@ export function DataTable<T>({
 
   const primary = columns.find((column) => column.role === "primary");
   const secondary = columns.filter((column) => column.role === "secondary");
+  // `!column.role` used to short-circuit before hideOnCard was read, so the flag
+  // did nothing on exactly the columns that set it — a column with no role is
+  // the normal way to declare one. It matters now: a card that is itself a link
+  // must not contain a second link, and hideOnCard is how such a column opts
+  // out of the card.
   const meta = columns.filter(
-    (column) => !column.role || (column.role === "meta" && !column.hideOnCard),
+    (column) =>
+      (!column.role || column.role === "meta") && !column.hideOnCard,
   );
 
   return (
@@ -81,7 +87,21 @@ export function DataTable<T>({
                   key={column.key}
                   className={`px-4 py-3 ${column.cellClassName ?? ""}`}
                 >
-                  {column.cell(row)}
+                  {/* The link lives HERE rather than in the column's cell, so a
+                      column never owns an anchor of its own. On a phone the
+                      whole card is already a link, and a cell that returned one
+                      too would nest anchors — invalid, and it swallows the tap
+                      it happens to land on. */}
+                  {href && column.role === "primary" ? (
+                    <Link
+                      href={href(row)}
+                      className="font-medium text-[var(--color-brand-600)] hover:underline"
+                    >
+                      {column.cell(row)}
+                    </Link>
+                  ) : (
+                    column.cell(row)
+                  )}
                 </td>
               ))}
             </tr>

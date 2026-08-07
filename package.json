@@ -18,6 +18,7 @@
     "db:seed": "tsx drizzle/seed/index.ts",
     "db:seed:branch": "tsx scripts/seed-branch.ts",
     "db:create-user": "tsx scripts/create-user.ts",
+    "subjects:import": "tsx scripts/import-timetable-subjects.ts",
     "icons": "tsx scripts/make-icons.ts",
     "db:migrate:branch": "tsx scripts/migrate-branch.ts"
   },

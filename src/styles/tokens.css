@@ -94,6 +94,18 @@
 
   /* --- ergonomics --- */
   --tap-min: 48px;
+  /*
+   * The phone nav's height, and therefore the offset anything else fixed to the
+   * bottom has to clear.
+   *
+   * AdminNav SETS its bar to exactly this rather than this being a measurement
+   * of it — a number that describes a layout drifts the first time the layout
+   * changes, and the symptom is an action bar overlapping the nav by four
+   * pixels that nobody notices until a thumb misses. The layout's bottom
+   * padding and every action bar's offset are the same fact, and they used to
+   * be three unrelated numbers (pb-24, pb-28, pb-40), none of them the height.
+   */
+  --admin-nav-h: 52px;
   --radius-card: 12px;
   --radius-chip: 999px;
 }
@@ -135,4 +147,36 @@
 .teacher-surface button {
   font-size: max(16px, 1rem);
   min-height: var(--tap-min);
+}
+
+/*
+ * Neither does the admin console.
+ *
+ * iOS Safari zooms the page when a focused control's font-size is under 16px,
+ * and the console's inputs are 12-14px because it was designed as a dense
+ * desktop screen. The zoom is not cosmetic: it leaves the page scaled AND
+ * scrolled, so the next tap lands somewhere other than where it was aimed —
+ * worst inside the review queue's note field, which sits in a bar fixed to the
+ * bottom of the screen. The office now works this from a corridor, one-handed.
+ *
+ * Three deliberate differences from .teacher-surface:
+ *
+ *   - no `button`. Every control on the teacher surface is a 48px target; the
+ *     console has intentional 12px chips, pills and quiet secondary links, and
+ *     forcing those to 16px would relayout every board in the app.
+ *   - no `min-height`. Giving every control 48px here would make each checkbox
+ *     48px tall and blow up every settings form. Tap targets in the console are
+ *     sized at their call sites.
+ *   - below md only. At md and up there is a pointer, no zoom behaviour to
+ *     defeat, and 14px is the density the console is meant to have.
+ *
+ * Checkboxes and radios are excluded because their size comes from width and
+ * height, not from font-size.
+ */
+@media (max-width: 767px) {
+  .admin-surface input:not([type="checkbox"]):not([type="radio"]),
+  .admin-surface select,
+  .admin-surface textarea {
+    font-size: max(16px, 1rem);
+  }
 }

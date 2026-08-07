@@ -24,7 +24,7 @@ export default async function BulkSendPage() {
   const session = await currentUser();
   if (!session || !canCreateRequests(session.role)) redirect("/");
 
-  const [classCounts, houseCounts, routeCounts, teachers, fields] =
+  const [classCounts, houseCounts, routeCounts, teachers, fields, subjectRows] =
     await Promise.all([
       countByClass(),
       countByHouse(),
@@ -39,6 +39,12 @@ export default async function BulkSendPage() {
         .from(schema.fieldDefs)
         .where(eq(schema.fieldDefs.active, true))
         .orderBy(asc(schema.fieldDefs.sortOrder)),
+      // Only whether ANY exist — the mode card is offered or explained, and the
+      // groups themselves are resolved server-side at preview time.
+      db
+        .select({ teacherId: schema.teacherSubjects.teacherId })
+        .from(schema.teacherSubjects)
+        .limit(1),
     ]);
 
   const totalActive = [...classCounts.values()].reduce((a, b) => a + b, 0);
@@ -79,6 +85,7 @@ export default async function BulkSendPage() {
         totalActive={totalActive}
         anyHouseOwner={teachers.some((teacher) => teacher.houses.length > 0)}
         anyRouteOwner={teachers.some((teacher) => teacher.routes.length > 0)}
+        anySubjectTeacher={subjectRows.length > 0}
         fields={fields.map((field) => ({
           key: field.key,
           labelEn: field.labelEn,

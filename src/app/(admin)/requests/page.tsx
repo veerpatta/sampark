@@ -38,14 +38,8 @@ export default async function RequestsPage({
       key: "title",
       header: "Request",
       role: "primary",
-      cell: (request) => (
-        <Link
-          href={`/requests/${request.id}`}
-          className="font-medium text-[var(--color-brand-600)] hover:underline md:inline"
-        >
-          {request.title}
-        </Link>
-      ),
+      // Plain text: DataTable wraps the primary cell in the row's link itself.
+      cell: (request) => request.title,
     },
     {
       key: "teacher",
@@ -71,6 +65,9 @@ export default async function RequestsPage({
     {
       key: "review",
       header: "To review",
+      // Holds a link of its own, so it stays off the card — where the card IS
+      // the link and a second one inside it cannot be tapped.
+      hideOnCard: true,
       cell: (request) =>
         request.changesPending > 0 ? (
           <Link
@@ -152,6 +149,7 @@ export default async function RequestsPage({
         columns={columns}
         rows={requests}
         rowKey={(request) => request.id}
+        href={(request) => `/requests/${request.id}`}
         empty="No requests yet. Create one and you get a link to send on WhatsApp."
       />
 

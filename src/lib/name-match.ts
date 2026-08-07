@@ -251,8 +251,15 @@ function wordSimilarity(a: string, b: string): number {
   return 1 - editDistance(a, b) / longest;
 }
 
-/** Levenshtein, single-row. Words here are never longer than a name. */
-function editDistance(a: string, b: string): number {
+/**
+ * Levenshtein, single-row. Words here are never longer than a name.
+ *
+ * Exported for the timetable importer, which matches a bare first name against
+ * a full one and needs the raw distance rather than the blended similarity the
+ * student matcher uses — "Prateek" against "Pratik Jain" scores badly as whole
+ * names and perfectly as first tokens.
+ */
+export function editDistance(a: string, b: string): number {
   if (a.length === 0) return b.length;
   if (b.length === 0) return a.length;
 

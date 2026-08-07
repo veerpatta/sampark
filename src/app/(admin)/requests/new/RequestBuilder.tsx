@@ -276,7 +276,7 @@ export function RequestBuilder({
                 type="checkbox"
                 checked={fieldKeys.includes(field.key)}
                 onChange={() => toggleField(field.key)}
-                className="h-4 w-4"
+                className="h-5 w-5"
               />
               <span className="flex-1">{field.labelEn}</span>
               <span lang="hi" className="text-xs text-[var(--color-ink-muted)]">

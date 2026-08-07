@@ -107,7 +107,11 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
     const url = `${window.location.origin}/r/${request.token}`;
     const message = buildReminderMessage({
       teacherName: request.teacher,
-      audience: { kind: request.audienceKind, label: request.audienceLabel },
+      audience: {
+        kind: request.audienceKind,
+        label: request.audienceLabel,
+        fieldKeys: request.fieldKeys,
+      },
       title: request.title,
       dueDate: request.dueDate,
       url,
@@ -143,13 +147,16 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
                 key={request.id}
                 className={`flex items-center gap-3 border-l-[4px] py-3 pl-3 first:pt-0 ${tone.rail}`}
               >
-                <div className="min-w-0 flex-1">
-                  <Link
-                    href={`/requests/${request.id}`}
-                    className="font-medium hover:text-[var(--color-brand-600)] hover:underline"
-                  >
-                    {request.audienceLabel}
-                  </Link>
+                {/* The whole block is the target. It was a bare inline link
+                    about twenty pixels tall, with the teacher's name, the
+                    status and the bar all sitting outside it and doing
+                    nothing. Nothing inside is interactive, so there is no
+                    nested-anchor problem. */}
+                <Link
+                  href={`/requests/${request.id}`}
+                  className="block min-w-0 flex-1 py-1 hover:text-[var(--color-brand-600)]"
+                >
+                  <span className="font-medium">{request.audienceLabel}</span>
                   <span className="ml-2 text-sm text-[var(--color-ink-muted)]">
                     {request.teacher}
                   </span>
@@ -163,7 +170,7 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
                     {tone.label}
                   </span>
                   <div className="mt-1 flex items-center gap-2">
-                    <div className="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--color-surface-muted)]">
+                    <div className="h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-muted)] sm:w-24 sm:flex-none">
                       {/* Takes the row's tone, not a fixed green. A green bar
                           sitting at 40% tells the office the opposite of what
                           the number beside it says. */}
@@ -172,11 +179,11 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
                         style={{ width: `${percent}%` }}
                       />
                     </div>
-                    <span className="font-mono text-xs text-[var(--color-ink-muted)]">
+                    <span className="shrink-0 font-mono text-xs text-[var(--color-ink-muted)]">
                       {request.studentsAnswered} of {request.rosterSize}
                     </span>
                   </div>
-                </div>
+                </Link>
                 <button
                   type="button"
                   onClick={() => void remind(request)}

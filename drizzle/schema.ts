@@ -242,6 +242,55 @@ export const teachers = pgTable("teachers", {
 });
 
 /**
+ * Who teaches what, to which class.
+ *
+ * A TABLE, not a fourth text[] on `teachers`, and the difference is arity.
+ * `classes`, `houses` and `routes` are lists of ONE string, which is exactly
+ * why lib/ownership.ts gets to be an exact `.includes()`. An assignment is a
+ * TRIPLE, and packing "maths|Class 8" into an array element would replace that
+ * exactness with a delimiter parser — the same trade the route-matching comment
+ * above already refuses. It is also the wrong shape for the question the
+ * fan-out actually asks: (subject, class) -> teacher, which is a two-column
+ * index rather than a scan of twenty arrays.
+ *
+ * THERE IS DELIBERATELY NO UNIQUE INDEX ON (subject_key, class_label). Two
+ * teachers down for one subject in one class is a real thing — a handover
+ * mid-year, a section split, or simply a timetable that has drifted — and it
+ * has to be REPRESENTABLE so planSubjectFanOut can report it and refuse. A
+ * constraint here would turn "the office chooses" into "the second import
+ * throws", which is the same guess wearing a database error. Exactly the
+ * reasoning that lets two teachers hold one house.
+ *
+ * `assigned_by` separates what the timetable importer put here from what the
+ * office typed. Without it, a re-import after the timetable drifts silently
+ * undoes every correction anyone made in Settings.
+ */
+export const teacherSubjects = pgTable(
+  "teacher_subjects",
+  {
+    teacherId: text("teacher_id")
+      .notNull()
+      .references(() => teachers.id, { onDelete: "cascade" }),
+    /** A key from SUBJECTS in src/lib/subjects.ts, e.g. 'maths'. */
+    subjectKey: text("subject_key").notNull(),
+    /** One of CLASS_LABELS. Validated on write, never inferred. */
+    classLabel: text("class_label").notNull(),
+    /** timetable | office */
+    assignedBy: text("assigned_by").notNull().default("office"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.teacherId, t.subjectKey, t.classLabel] }),
+    // The lookup planSubjectFanOut runs once per (subject, class) in scope.
+    index("teacher_subjects_lookup_idx").on(t.subjectKey, t.classLabel),
+  ],
+);
+
+export type TeacherSubject = typeof teacherSubjects.$inferSelect;
+
+/**
  * Admin console users only. Teachers never have an account — the token in the
  * URL is the entire onboarding.
  *

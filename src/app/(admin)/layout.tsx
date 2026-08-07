@@ -45,7 +45,13 @@ export default async function AdminLayout({
     : NAV;
 
   return (
-    <div lang="en" className="min-h-screen bg-[var(--color-surface-muted)]">
+    // admin-surface is the hook for the 16px input rule in tokens.css. One
+    // class here rather than a font-size on forty control class strings, and
+    // the rule can then say WHY in one place.
+    <div
+      lang="en"
+      className="admin-surface min-h-screen bg-[var(--color-surface-muted)]"
+    >
       <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
         <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-4 md:px-6">
           <Link href="/" className="font-semibold tracking-tight">
@@ -70,9 +76,11 @@ export default async function AdminLayout({
           </div>
         </div>
       </header>
-      {/* pb-24 clears the fixed bottom bar on a phone; nothing to clear on a
-          desktop, where the nav is back in the header. */}
-      <main className="mx-auto max-w-6xl px-4 py-6 pb-24 md:px-6 md:py-8 md:pb-8">
+      {/* Clears the fixed nav on a phone, and nothing else — a page that also
+          mounts a ThumbBar adds its own room on top. Expressed off the token
+          rather than as a round number, so the two cannot drift apart. Nothing
+          to clear on a desktop, where the nav is back in the header. */}
+      <main className="mx-auto max-w-6xl px-4 py-6 pb-[calc(var(--admin-nav-h)+env(safe-area-inset-bottom)+1.5rem)] md:px-6 md:py-8 md:pb-8">
         {children}
       </main>
     </div>

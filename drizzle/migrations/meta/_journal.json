@@ -50,6 +50,13 @@
       "when": 1786078118710,
       "tag": "0006_yellow_maginty",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786081473639,
+      "tag": "0007_nervous_gravity",
+      "breakpoints": true
     }
   ]
 }

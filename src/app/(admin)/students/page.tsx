@@ -111,11 +111,11 @@ export default async function StudentsPage({
             {search ? ` matching “${search}”` : ""}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {total > 0 ? (
             <a
               href={`/api/export/students.xlsx${classLabel ? `?class=${encodeURIComponent(classLabel)}` : ""}`}
-              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
+              className="inline-flex min-h-[var(--tap-min)] items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
             >
               Export {classLabel ? classLabel : "all"} to Excel
             </a>
@@ -123,7 +123,7 @@ export default async function StudentsPage({
           {canImport ? (
             <Link
               href="/students/import"
-              className="rounded-lg bg-[var(--color-brand-600)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-brand-700)]"
+              className="inline-flex min-h-[var(--tap-min)] items-center rounded-lg bg-[var(--color-brand-600)] px-4 text-sm font-medium text-white hover:bg-[var(--color-brand-700)]"
             >
               Import from PSP
             </Link>
@@ -132,7 +132,7 @@ export default async function StudentsPage({
       </header>
 
       <form method="get" className="flex flex-wrap items-end gap-3">
-        <label className="block">
+        <label className="block w-full sm:w-auto">
           <span className="text-xs font-medium text-[var(--color-ink-muted)]">
             Search
           </span>
@@ -140,18 +140,18 @@ export default async function StudentsPage({
             name="q"
             defaultValue={search}
             placeholder="Name, student ID, SR number, mobile"
-            className="mt-1 w-72 rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)]"
+            className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] sm:w-72 px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)]"
           />
         </label>
 
-        <label className="block">
+        <label className="block w-full sm:w-auto">
           <span className="text-xs font-medium text-[var(--color-ink-muted)]">
             Class
           </span>
           <select
             name="class"
             defaultValue={classLabel}
-            className="mt-1 w-40 rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] sm:w-40 px-3 py-2 text-sm"
           >
             <option value="">All classes</option>
             {classes.map((label) => (
@@ -164,7 +164,7 @@ export default async function StudentsPage({
 
         <button
           type="submit"
-          className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
+          className="min-h-[var(--tap-min)] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
         >
           Apply
         </button>
@@ -172,7 +172,7 @@ export default async function StudentsPage({
         {search || classLabel ? (
           <Link
             href="/students"
-            className="py-2 text-sm text-[var(--color-ink-muted)] hover:underline"
+            className="inline-flex min-h-[var(--tap-min)] items-center text-sm text-[var(--color-ink-muted)] hover:underline"
           >
             Clear
           </Link>
@@ -231,7 +231,11 @@ function PageLink({
   children: React.ReactNode;
 }) {
   if (disabled) {
-    return <span className="text-[var(--color-border)]">{children}</span>;
+    return (
+      <span className="inline-flex min-h-[var(--tap-min)] items-center px-2 text-[var(--color-border)]">
+        {children}
+      </span>
+    );
   }
   const params = new URLSearchParams();
   if (search) params.set("q", search);
@@ -240,7 +244,7 @@ function PageLink({
   return (
     <Link
       href={`/students?${params}`}
-      className="text-[var(--color-brand-600)] hover:underline"
+      className="inline-flex min-h-[var(--tap-min)] items-center px-2 text-[var(--color-brand-600)] hover:underline"
     >
       {children}
     </Link>

@@ -12,6 +12,7 @@ type QueueLink = {
   token: string;
   audienceKind: string;
   audienceLabel: string;
+  fieldKeys: string[];
   teacherName: string;
   teacherPhone: string;
   rosterSize: number;
@@ -68,7 +69,11 @@ export function SendQueue({
   async function handOver(link: QueueLink) {
     const message = buildRequestMessage({
       teacherName: link.teacherName,
-      audience: { kind: link.audienceKind, label: link.audienceLabel },
+      audience: {
+        kind: link.audienceKind,
+        label: link.audienceLabel,
+        fieldKeys: link.fieldKeys,
+      },
       title,
       dueDate,
       url: `${origin}/r/${link.token}`,
@@ -136,7 +141,7 @@ export function SendQueue({
             type="button"
             onClick={() => void finish()}
             disabled={busy}
-            className="text-label text-[var(--color-brand-600)] hover:underline disabled:opacity-50"
+            className="inline-flex min-h-[var(--tap-min)] items-center text-label text-[var(--color-brand-600)] hover:underline disabled:opacity-50"
           >
             {busy ? "Checking…" : "Any links missing? Finish the batch"}
           </button>
@@ -169,7 +174,7 @@ export function SendQueue({
                   </p>
                   <Link
                     href={`/requests/${link.requestId}`}
-                    className="mt-0.5 inline-block text-meta text-[var(--color-brand-600)] hover:underline"
+                    className="mt-0.5 inline-flex min-h-[var(--tap-min)] items-center text-meta text-[var(--color-brand-600)] hover:underline"
                   >
                     open the request
                   </Link>

@@ -1,6 +1,41 @@
 import type { NewFieldDef } from "../schema";
 import { HOUSES } from "../../src/lib/houses";
 import { BUS_ROUTES } from "../../src/lib/routes";
+import { SUBJECTS } from "../../src/lib/subjects";
+
+/**
+ * One marks field per subject, generated rather than typed sixteen times.
+ *
+ * Sixteen near-identical rows written by hand is sixteen chances for a key here
+ * to disagree with the key the subject fan-out routes on — and that
+ * disagreement is SILENT: the subject simply never appears in the picker and
+ * nobody is told why. Generating them from SUBJECTS makes the two impossible to
+ * separate.
+ *
+ * The four that already existed keep their exact keys — fa_maths, fa_physics,
+ * fa_chemistry, fa_biology. student_records references field_key, so renaming
+ * one here would orphan every mark ever collected against it.
+ *
+ * Hindi label is the bare subject name, matching those four: "FA" is office
+ * vocabulary and the teacher's screen is Hindi-first.
+ *
+ * OPEN DECISION #7 IS STILL OPEN. 25 is assumed, not confirmed against LEAD,
+ * and it is now assumed sixteen times. A cap that is too low is not cosmetic:
+ * validateField (src/lib/fields.ts) makes a legitimate 30 impossible to submit
+ * and tells the teacher her own subject's marks are invalid. Confirm the real
+ * number per subject before the first live round — it is one edit here.
+ */
+const FA_MARKS: NewFieldDef[] = SUBJECTS.map((subject, index) => ({
+  key: subject.fieldKey,
+  labelEn: `FA ${subject.en}`,
+  labelHi: subject.hi,
+  mode: "collect",
+  inputType: "number",
+  targetColumn: null,
+  recordKind: "fa_marks",
+  maxValue: "25",
+  sortOrder: 200 + index * 5,
+}));
 
 /**
  * The route list moved to src/lib/routes.ts once runtime UI needed it — a page
@@ -172,51 +207,7 @@ export const FIELD_DEFS: NewFieldDef[] = [
   },
 
   // --- collect: marks, which never existed here in the first place ---
-  // Open decision #7: max marks per FA subject. 25 assumed, confirm vs LEAD.
-  {
-    key: "fa_maths",
-    labelEn: "FA Maths",
-    labelHi: "गणित",
-    mode: "collect",
-    inputType: "number",
-    targetColumn: null,
-    recordKind: "fa_marks",
-    maxValue: "25",
-    sortOrder: 200,
-  },
-  {
-    key: "fa_physics",
-    labelEn: "FA Physics",
-    labelHi: "भौतिक विज्ञान",
-    mode: "collect",
-    inputType: "number",
-    targetColumn: null,
-    recordKind: "fa_marks",
-    maxValue: "25",
-    sortOrder: 210,
-  },
-  {
-    key: "fa_chemistry",
-    labelEn: "FA Chemistry",
-    labelHi: "रसायन विज्ञान",
-    mode: "collect",
-    inputType: "number",
-    targetColumn: null,
-    recordKind: "fa_marks",
-    maxValue: "25",
-    sortOrder: 220,
-  },
-  {
-    key: "fa_biology",
-    labelEn: "FA Biology",
-    labelHi: "जीव विज्ञान",
-    mode: "collect",
-    inputType: "number",
-    targetColumn: null,
-    recordKind: "fa_marks",
-    maxValue: "25",
-    sortOrder: 230,
-  },
+  ...FA_MARKS,
 ];
 
 /**

@@ -28,7 +28,7 @@ GRANT USAGE ON SCHEMA public TO app_rw;
 -- ---------------------------------------------------------------- read/write
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   students, requests, request_students, request_batches, student_records,
-  teachers, users, field_defs, rate_limits,
+  teachers, teacher_subjects, users, field_defs, rate_limits,
   value_sources
 TO app_rw;
 
