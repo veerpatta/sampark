@@ -22,6 +22,7 @@ import {
   type SubjectPick,
 } from "./fanout";
 import { subjectByFieldKey, type SubjectAssignment } from "./subjects";
+import type { ScopeKind } from "./ownership";
 import type { FieldDef, Student } from "../../drizzle/schema";
 
 /**
@@ -73,6 +74,15 @@ export type BatchInput = {
   overrides?: Record<string, { teacherId?: string; contactPhone?: string }>;
   /** Groups she explicitly chose to go ahead without. */
   skip?: string[];
+  /**
+   * Write the office's choices back, so the next round already knows them.
+   *
+   * Only ever ADDS, and only for a group that was blocked because NOBODY was
+   * down for it. A group with two names against it is a choice for this round —
+   * both people really do teach it, and dropping one on the strength of a send
+   * would be a deletion nobody asked for.
+   */
+  remember?: boolean;
 };
 
 export const scopeKey = (scope: GroupScope) => `${scope.kind}|${scope.value}`;
@@ -85,6 +95,16 @@ export type BatchPreview = {
 
 type Resolved = {
   plan: FanOutPlan;
+  /**
+   * The plan BEFORE the office's overrides were applied.
+   *
+   * Kept because `plan` has already moved every fixed group out of `blocked`,
+   * and remembering an assignment needs to know what was missing in the first
+   * place — which subject, which class, and that the reason really was
+   * "nobody", not "two people". Taking that from the browser instead would be
+   * trusting it with what to write; this is the server's own resolution.
+   */
+  rawPlan: FanOutPlan;
   roster: Student[];
   fields: FieldDef[];
   period: string | null;
@@ -133,13 +153,11 @@ async function resolveBatch(
   }
 
   const teachers = await activeRecipients();
-  const plan = applyOverrides(
+  const rawPlan =
     input.recipientMode === "subject_teacher"
       ? planSubjectFanOut(roster, teachers, await activeAssignments(), subjectsFor(fields))
-      : planFanOut(roster, teachers, input.recipientMode),
-    teachers,
-    input.overrides,
-  );
+      : planFanOut(roster, teachers, input.recipientMode);
+  const plan = applyOverrides(rawPlan, teachers, input.overrides);
 
   if (plan.ready.length + plan.blocked.length > MAX_GROUPS) {
     throw new RequestValidationError(
@@ -149,6 +167,7 @@ async function resolveBatch(
 
   return {
     plan,
+    rawPlan,
     roster,
     fields,
     period,
@@ -268,7 +287,89 @@ export async function createBatch(input: BatchInput): Promise<FanOutResult> {
 
   if (!batch) throw new Error("Batch insert returned nothing.");
 
+  // Before the links, not after: if runGroups fails half way the office still
+  // keeps the assignments she just made, and Resume does not ask her for them a
+  // second time. Nothing here can invalidate the plan — it only records what
+  // was already used to build it.
+  if (input.remember) await rememberChoices(resolved.rawPlan, input.overrides);
+
   return runGroups(batch.id, groups, resolved, input);
+}
+
+/**
+ * Write back the teachers the office named on the preview.
+ *
+ * "Nobody is down for Physics in Class 9" is a gap in the records, not a fact
+ * about this one send — so once she has answered it, the answer should still be
+ * there next term. Otherwise the same dropdown gets filled in every round, and a
+ * teacher who is genuinely missing from Settings stays missing forever because
+ * the send screen keeps papering over it.
+ *
+ * ONLY `no-owner`, and only ADDING. A group blocked because two people are down
+ * for it is a choice about this round: both really do teach it, and removing one
+ * on the strength of a send is a deletion nobody asked for. A `no-phone` group's
+ * override is a number for this request, which is already what contactPhone
+ * means.
+ *
+ * Scopes come from the server's own pre-override plan, never from the browser —
+ * the override says only WHICH teacher, exactly as it does for the roster.
+ */
+async function rememberChoices(
+  rawPlan: FanOutPlan,
+  overrides: BatchInput["overrides"],
+): Promise<void> {
+  if (!overrides) return;
+
+  const subjectRows: (typeof schema.teacherSubjects.$inferInsert)[] = [];
+  /** teacherId -> the class/house/route values to append to her row. */
+  const scopeRows = new Map<string, { kind: ScopeKind; value: string }[]>();
+
+  for (const group of rawPlan.blocked) {
+    if (group.reason !== "no-owner") continue;
+    const teacherId = overrides[scopeKey(group.scope)]?.teacherId;
+    if (!teacherId) continue;
+
+    if (group.scope.kind === "subject") {
+      for (const classLabel of group.scope.classLabels) {
+        subjectRows.push({
+          teacherId,
+          subjectKey: group.scope.subjectKey,
+          classLabel,
+          assignedBy: "office",
+        });
+      }
+    } else {
+      const list = scopeRows.get(teacherId) ?? [];
+      list.push({ kind: group.scope.kind, value: group.scope.value });
+      scopeRows.set(teacherId, list);
+    }
+  }
+
+  if (subjectRows.length > 0) {
+    // DoNothing, not DoUpdate: the row may already exist from the timetable
+    // import, and its assignedBy should stay as it is.
+    await db.insert(schema.teacherSubjects).values(subjectRows).onConflictDoNothing();
+  }
+
+  for (const [teacherId, additions] of scopeRows) {
+    const [teacher] = await db
+      .select()
+      .from(schema.teachers)
+      .where(eq(schema.teachers.id, teacherId));
+    if (!teacher) continue;
+
+    const next = {
+      classes: [...teacher.classes],
+      houses: [...teacher.houses],
+      routes: [...teacher.routes],
+    };
+    for (const { kind, value } of additions) {
+      const list =
+        kind === "class" ? next.classes : kind === "house" ? next.houses : next.routes;
+      if (!list.includes(value)) list.push(value);
+    }
+    await db.update(schema.teachers).set(next).where(eq(schema.teachers.id, teacherId));
+  }
 }
 
 /**

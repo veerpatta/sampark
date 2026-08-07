@@ -298,3 +298,180 @@ describe("the send queue", () => {
     );
   });
 });
+
+/* ===================== remembering who the office named ==================== */
+
+describe("filling a gap from the preview", () => {
+  /**
+   * The case this exists for, in the office's words: "I tried to ask Class 9 for
+   * Physics marks and it was not there."
+   *
+   * Class 9 takes Science, not Physics — so nobody is down for Physics in
+   * Class 9, the group is blocked, and until now the preview stated the problem
+   * and offered nothing to do about it. Naming somebody has to work, and it has
+   * to stick, or the same dropdown gets filled in every single round.
+   */
+  test("a named teacher is written back, so the next round already knows", async () => {
+    const scenario = await createFanOutScenario();
+    const [group] = scenario.groups;
+    const teacherId = group!.teacherId;
+
+    const input = {
+      title: "FA1 Physics",
+      audience: { classes: [group!.classLabel] },
+      fieldKeys: ["fa_physics"],
+      period: "2026-27/FA1",
+      dueDate: futureDate(),
+      recipientMode: "subject_teacher" as const,
+      createdBy: scenario.userId,
+    };
+
+    // Nobody teaches Physics to this class, so it is blocked and unsendable.
+    const before = await previewBatch(input);
+    assert.equal(before.plan.ready.length, 0);
+    assert.equal(before.plan.blocked.length, 1);
+    assert.equal(before.plan.blocked[0]!.reason, "no-owner");
+
+    const key = `subject|${before.plan.blocked[0]!.scope.value}`;
+    const result = await createBatch({
+      ...input,
+      overrides: { [key]: { teacherId } },
+      remember: true,
+    });
+
+    assert.equal(result.created.length, 1, "naming a teacher must make the link");
+
+    const saved = await db
+      .select()
+      .from(schema.teacherSubjects)
+      .where(eq(schema.teacherSubjects.teacherId, teacherId));
+    assert.deepEqual(
+      saved.map((row) => `${row.subjectKey}|${row.classLabel}`),
+      [`physics|${group!.classLabel}`],
+    );
+    assert.equal(
+      saved[0]!.assignedBy,
+      "office",
+      "so a later timetable re-import leaves the correction alone",
+    );
+
+    // And the whole point: asking again needs no dropdown.
+    const after = await previewBatch(input);
+    assert.equal(after.plan.blocked.length, 0);
+    assert.equal(after.plan.ready.length, 1);
+    assert.equal(after.plan.ready[0]!.teacherId, teacherId);
+  });
+
+  test("does not write anything back when she unticks it", async () => {
+    const scenario = await createFanOutScenario();
+    const [group] = scenario.groups;
+
+    const input = {
+      title: "FA1 Physics",
+      audience: { classes: [group!.classLabel] },
+      fieldKeys: ["fa_physics"],
+      period: "2026-27/FA1",
+      dueDate: futureDate(),
+      recipientMode: "subject_teacher" as const,
+      createdBy: scenario.userId,
+    };
+    const preview = await previewBatch(input);
+    const key = `subject|${preview.plan.blocked[0]!.scope.value}`;
+
+    await createBatch({
+      ...input,
+      overrides: { [key]: { teacherId: group!.teacherId } },
+      remember: false,
+    });
+
+    const saved = await db
+      .select()
+      .from(schema.teacherSubjects)
+      .where(eq(schema.teacherSubjects.teacherId, group!.teacherId));
+    assert.equal(saved.length, 0, "covering one round must not rewrite the records");
+  });
+
+  test("remembers a class-teacher gap on the teacher's own row", async () => {
+    // The same hole exists outside subject mode: a house with no in-charge had
+    // no picker either. Naming someone there belongs in her houses array, which
+    // is exactly what Settings would have written.
+    // Rana Kumbha, unclaimed by the tests above: class labels are
+    // fixture-scoped strings but house names are the real four and shared, so
+    // two tests claiming one would give it two in-charges and block it. The
+    // audience stays scoped to the fixture's own classes for the same reason —
+    // the real roster has children in every house.
+    const scenario = await createFanOutScenario({ houses: ["Rana Kumbha", null] });
+    const [group] = scenario.groups;
+
+    const input = {
+      title: "House check",
+      audience: { classes: scenario.groups.map((g) => g.classLabel) },
+      fieldKeys: ["phone"],
+      dueDate: futureDate(),
+      recipientMode: "house_incharge" as const,
+      createdBy: scenario.userId,
+    };
+    const preview = await previewBatch(input);
+    assert.equal(preview.plan.blocked[0]!.reason, "no-owner");
+
+    await createBatch({
+      ...input,
+      overrides: { "house|Rana Kumbha": { teacherId: group!.teacherId } },
+      remember: true,
+    });
+
+    const [teacher] = await db
+      .select()
+      .from(schema.teachers)
+      .where(eq(schema.teachers.id, group!.teacherId));
+    assert.ok(
+      teacher!.houses.includes("Rana Kumbha"),
+      "the choice belongs on her row, not only on this batch",
+    );
+    assert.deepEqual(
+      teacher!.classes,
+      [group!.classLabel],
+      "and it must not disturb what she already owned",
+    );
+  });
+
+  test("never removes the second name when two are already down for it", async () => {
+    // Two teachers on one subject is a real state the office resolves per send.
+    // Writing the winner back would silently delete the other's assignment.
+    const scenario = await createFanOutScenario();
+    const [first, second] = scenario.groups;
+
+    await db.insert(schema.teacherSubjects).values([
+      { teacherId: first!.teacherId, subjectKey: "physics", classLabel: first!.classLabel },
+      { teacherId: second!.teacherId, subjectKey: "physics", classLabel: first!.classLabel },
+    ]);
+
+    const input = {
+      title: "FA1 Physics",
+      audience: { classes: [first!.classLabel] },
+      fieldKeys: ["fa_physics"],
+      period: "2026-27/FA1",
+      dueDate: futureDate(),
+      recipientMode: "subject_teacher" as const,
+      createdBy: scenario.userId,
+    };
+    const preview = await previewBatch(input);
+    assert.equal(preview.plan.blocked[0]!.reason, "many-owners");
+
+    await createBatch({
+      ...input,
+      overrides: {
+        [`subject|${preview.plan.blocked[0]!.scope.value}`]: {
+          teacherId: first!.teacherId,
+        },
+      },
+      remember: true,
+    });
+
+    const rows = await db
+      .select()
+      .from(schema.teacherSubjects)
+      .where(eq(schema.teacherSubjects.classLabel, first!.classLabel));
+    assert.equal(rows.length, 2, "both must still be on record");
+  });
+});

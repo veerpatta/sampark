@@ -71,6 +71,9 @@ export function BulkSend({
     Record<string, { teacherId?: string; contactPhone?: string }>
   >({});
   const [skipBlocked, setSkipBlocked] = useState(false);
+  // On by default: the office is filling in a gap in the records, and being
+  // asked the same question every round is how the gap stays there.
+  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,6 +114,7 @@ export function BulkSend({
       dueDate,
       recipientMode: mode,
       overrides,
+      remember,
       skip:
         skipBlocked && result?.ok
           ? result.groups.filter((g) => g.problem).map((g) => g.key)
@@ -125,6 +129,7 @@ export function BulkSend({
     setResult(null);
     setOverrides({});
     setSkipBlocked(false);
+    setRemember(true);
   }
 
   function toggle(
@@ -162,6 +167,8 @@ export function BulkSend({
   }
 
   const blocked = result?.ok ? result.groups.filter((g) => g.problem) : [];
+  /** Blocked groups where naming someone corrects the records, not just this send. */
+  const gaps = blocked.filter((group) => group.fillsAGap);
   const unresolved = blocked.filter((group) => !overrides[group.key]?.teacherId);
   const sendable = !skipBlocked ? unresolved.length === 0 : true;
 
@@ -452,35 +459,78 @@ export function BulkSend({
                     <p className="text-meta text-[var(--color-ink-muted)]">
                       {group.problem}
                     </p>
-                    {group.candidates.length > 0 ? (
-                      <select
-                        value={overrides[group.key]?.teacherId ?? ""}
-                        onChange={(event) =>
-                          setOverrides((current) => ({
-                            ...current,
-                            [group.key]: { teacherId: event.target.value },
-                          }))
+                    {/* ALWAYS a picker. This used to render only when the
+                        group already had owners to choose between — so the one
+                        case that most needs answering, "nobody is down for
+                        this", showed the problem and no way to act on it. */}
+                    <select
+                      value={overrides[group.key]?.teacherId ?? ""}
+                      onChange={(event) =>
+                        setOverrides((current) => ({
+                          ...current,
+                          [group.key]: { teacherId: event.target.value },
+                        }))
+                      }
+                      className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 text-sm"
+                    >
+                      <option value="">Choose a teacher…</option>
+                      {group.candidates.length > 0 ? (
+                        <optgroup label="Already down for it">
+                          {group.candidates.map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>
+                              {candidate.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                      <optgroup
+                        label={
+                          group.candidates.length > 0 ? "Everyone else" : "Teachers"
                         }
-                        className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 text-sm"
                       >
-                        <option value="">Choose a teacher…</option>
-                        {group.candidates.map((candidate) => (
-                          <option key={candidate.id} value={candidate.id}>
-                            {candidate.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : null}
+                        {result.teachers
+                          .filter(
+                            (teacher) =>
+                              !group.candidates.some((c) => c.id === teacher.id),
+                          )
+                          .map((teacher) => (
+                            <option key={teacher.id} value={teacher.id}>
+                              {teacher.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    </select>
                   </li>
                 ))}
               </ul>
+
+              {/* Only offered when at least one group is a genuine gap. Picking
+                  between two people who both teach a subject is a decision
+                  about this round, not a correction to the records. */}
+              {gaps.length > 0 ? (
+                <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={remember}
+                    onChange={(event) => setRemember(event.target.checked)}
+                    className="mt-0.5 h-5 w-5 shrink-0"
+                  />
+                  <span>
+                    Remember {gaps.length === 1 ? "this" : "these"} for next time
+                    <span className="block text-meta text-[var(--color-ink-muted)]">
+                      Saves who teaches what, so the next round already knows.
+                      Untick if you are only covering this once.
+                    </span>
+                  </span>
+                </label>
+              ) : null}
 
               <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={skipBlocked}
                   onChange={(event) => setSkipBlocked(event.target.checked)}
-                  className="h-4 w-4"
+                  className="h-5 w-5"
                 />
                 Send without {blocked.length === 1 ? "it" : "them"}
               </label>
