@@ -446,6 +446,55 @@ export type RequestBoardRow = {
   changesPending: number;
 };
 
+/**
+ * Students who have answered for every field their request asked about.
+ *
+ * "ANSWERED" USED TO MEAN "HAS ANY SUBMISSION", AND THAT WAS THE BUG. A card
+ * with one of two boxes filled writes a submission for the one box, so the
+ * child counted as fully answered and a class still missing six phone numbers
+ * rendered a green "46 of 46". Coverage of the whole field set is the only
+ * definition that survives a partly-filled card.
+ *
+ * Two details that are load-bearing:
+ *
+ *   - not_present writes one row per field (lib/submissions.ts), so a child the
+ *     teacher says is not in her class still covers everything and still
+ *     counts. That is right: she answered.
+ *   - the `= any(field_keys)` restriction stops a submission for a key the
+ *     request no longer asks about from counting toward coverage. Nothing
+ *     writes one today; a request whose field set was ever edited could.
+ *
+ * field_keys is text[], and array_length returns NULL rather than 0 for an
+ * empty array — hence the coalesce, without which a fieldless request would
+ * compare against NULL and count nobody.
+ */
+function coveredStudentsQuery(requestIds: string[]) {
+  return db
+    .select({
+      requestId: schema.submissions.requestId,
+      studentId: schema.submissions.studentId,
+    })
+    .from(schema.submissions)
+    .innerJoin(
+      schema.requests,
+      eq(schema.requests.id, schema.submissions.requestId),
+    )
+    .where(
+      and(
+        inArray(schema.submissions.requestId, requestIds),
+        sql`${schema.submissions.fieldKey} = any(${schema.requests.fieldKeys})`,
+      ),
+    )
+    .groupBy(
+      schema.submissions.requestId,
+      schema.submissions.studentId,
+      schema.requests.fieldKeys,
+    )
+    .having(
+      sql`count(distinct ${schema.submissions.fieldKey}) >= coalesce(array_length(${schema.requests.fieldKeys}, 1), 0)`,
+    );
+}
+
 /** The status board. Reads the request_progress view from plan section 4.3. */
 export async function listRequests(): Promise<RequestBoardRow[]> {
   const rows = await db
@@ -471,6 +520,11 @@ export async function listRequests(): Promise<RequestBoardRow[]> {
 
   const ids = rows.map((row) => row.id);
 
+  // One row per student who has answered for EVERY field their request asked
+  // about. See coveredStudentsQuery for why "answered" cannot mean "has any
+  // submission".
+  const covered = coveredStudentsQuery(ids).as("covered");
+
   // The counts behind "8 of 11 classes submitted". Three small aggregates beat
   // one clever join here — this board is read far more often than it is slow.
   const [rosterCounts, answered, pending] = await Promise.all([
@@ -483,13 +537,9 @@ export async function listRequests(): Promise<RequestBoardRow[]> {
       .where(inArray(schema.requestStudents.requestId, ids))
       .groupBy(schema.requestStudents.requestId),
     db
-      .select({
-        requestId: schema.submissions.requestId,
-        n: sql<number>`count(distinct ${schema.submissions.studentId})::int`,
-      })
-      .from(schema.submissions)
-      .where(inArray(schema.submissions.requestId, ids))
-      .groupBy(schema.submissions.requestId),
+      .select({ requestId: covered.requestId, n: sql<number>`count(*)::int` })
+      .from(covered)
+      .groupBy(covered.requestId),
     db
       .select({
         requestId: schema.submissions.requestId,
@@ -531,8 +581,12 @@ export async function listRequests(): Promise<RequestBoardRow[]> {
 /**
  * Who on this roster has not answered yet.
  *
- * Feeds the reminder builder. "Answered" means any submission at all — a
- * confirmation counts, because the teacher has done the work either way.
+ * Feeds the reminder builder, the "still waiting" list on the request page, and
+ * the warning before the office closes a request. "Answered" means answered for
+ * EVERY field the request asked about — a confirmation counts, because the
+ * teacher has done the work either way, but a card with one of two boxes filled
+ * does not. Getting that wrong drops a child off the very list the office uses
+ * to chase her. See coveredStudentsQuery.
  */
 export async function listNonResponders(requestId: string): Promise<
   { studentId: string; rollNo: number | null; name: string }[]
@@ -542,10 +596,7 @@ export async function listNonResponders(requestId: string): Promise<
       .select()
       .from(schema.requestStudents)
       .where(eq(schema.requestStudents.requestId, requestId)),
-    db
-      .selectDistinct({ studentId: schema.submissions.studentId })
-      .from(schema.submissions)
-      .where(eq(schema.submissions.requestId, requestId)),
+    coveredStudentsQuery([requestId]),
   ]);
 
   const done = new Set(answered.map((row) => row.studentId));

@@ -20,15 +20,25 @@
 export function ProgressRail({
   remaining,
   total,
+  reviewable,
   pending,
   sent,
   busy,
   online,
   onReview,
 }: {
-  /** Students with no answer yet. */
+  /** Students not finished yet — including ones with a box still empty. */
   remaining: number;
   total: number;
+  /**
+   * Rows with anything worth looking at on the receipt.
+   *
+   * Separate from `total - remaining` on purpose: a row that is half filled has
+   * been sent and is not done, so it must not move the bar, but locking her out
+   * of the receipt because none of her work is finished would be its own kind
+   * of lie.
+   */
+  reviewable: number;
   /** Answers made since the last successful send. */
   pending: number;
   /** Answers the school already has. */
@@ -101,10 +111,10 @@ export function ProgressRail({
       <button
         type="button"
         onClick={onReview}
-        disabled={done === 0}
+        disabled={reviewable === 0}
         className="mt-2 min-h-12 w-full rounded-lg bg-[var(--color-brand-600)] px-4 font-semibold text-white disabled:opacity-40"
       >
-        {done === 0 ? "पहले जवाब दें" : `देखें (${done})`}
+        {reviewable === 0 ? "पहले जवाब दें" : `देखें (${reviewable})`}
       </button>
       {pending > 0 && !online ? (
         <p className="mt-1 text-center text-xs text-[var(--color-ink-muted)]">

@@ -46,7 +46,7 @@ export function ReviewSummary({
   onBack: () => void;
   onSend: () => void;
 }) {
-  const { changed, confirmed, notPresent, untouched } = summary;
+  const { changed, confirmed, notPresent, partial, untouched } = summary;
 
   return (
     <section className="mt-4">
@@ -130,6 +130,39 @@ export function ReviewSummary({
         </div>
       ) : null}
 
+      {/* ==================================== sent, and still missing a box */}
+      {/* Above the unanswered block on purpose. These are the cards she has
+          already worked on, so they are the ones she is closest to finishing —
+          and unlike an unanswered row, part of this one has already gone. */}
+      {partial.length > 0 ? (
+        <div className="mt-4 rounded-[var(--radius-card)] border-2 border-[var(--color-partial-border)] bg-[var(--color-partial-bg)] px-4 py-3">
+          <h3 className="text-base font-semibold text-[var(--color-partial-fg)]">
+            {partial.length} बच्चों की एक जानकारी बाकी है
+          </h3>
+          <ul className="mt-2 space-y-1">
+            {partial.map((entry) => (
+              <li key={entry.studentId}>
+                <button
+                  type="button"
+                  onClick={() => onFix(entry.studentId)}
+                  className="min-h-12 text-left text-sm font-medium text-[var(--color-brand-600)] underline"
+                >
+                  {entry.name}
+                  {entry.missing.length > 0 ? (
+                    <span className="ml-1 font-normal text-[var(--color-partial-fg)] no-underline">
+                      — {entry.missing.join(", ")}
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
+            आपने जो भरा वह विद्यालय पहुँच चुका है। बाकी नाम दबाकर पूरा कर दें।
+          </p>
+        </div>
+      ) : null}
+
       {/* ======================================= what she has not answered */}
       {untouched.length > 0 ? (
         <div className="mt-4 rounded-[var(--radius-card)] border-2 border-dashed border-[var(--color-warning)] px-4 py-3">
@@ -158,7 +191,7 @@ export function ReviewSummary({
       {error ? (
         <p
           role="alert"
-          className="mt-4 rounded-[var(--radius-card)] border-2 border-[var(--color-danger)] bg-red-50 px-4 py-3 text-sm font-medium text-[var(--color-danger)]"
+          className="mt-4 rounded-[var(--radius-card)] border-2 border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm font-medium text-[var(--color-danger)]"
         >
           {error}
         </p>

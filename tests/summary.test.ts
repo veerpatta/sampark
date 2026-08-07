@@ -188,8 +188,59 @@ describe("summarise", () => {
       ...result.changed.map((entry) => entry.studentId),
       ...result.confirmed.map((entry) => entry.studentId),
       ...result.notPresent.map((entry) => entry.studentId),
+      ...result.partial.map((entry) => entry.studentId),
       ...result.untouched.map((entry) => entry.studentId),
     ]);
     assert.equal(students.size, roster.length);
+  });
+
+  it("lists a half-filled card as partial, not as unanswered", () => {
+    // Saying "जवाब बाकी है" about a child whose number the office already has
+    // is the same lie in the other direction — she would go looking for a value
+    // she has already given.
+    const roster = [student("s1", "Ravi")];
+    const result = summarise(roster, [PHONE, FATHER], {
+      s1: row("partial", { phone: "9000000001" }),
+    });
+
+    assert.equal(result.untouched.length, 0);
+    assert.equal(result.confirmed.length, 0);
+    assert.equal(result.partial.length, 1);
+    assert.equal(result.partial[0]!.studentId, "s1");
+  });
+
+  it("names the field a partial card is still waiting on, in Hindi", () => {
+    const roster = [student("s1", "Ravi")];
+    const result = summarise(roster, [PHONE, FATHER], {
+      s1: row("partial", { phone: "9000000001" }),
+    });
+
+    assert.deepEqual(result.partial[0]!.missing, ["पिता का नाम"]);
+  });
+
+  it("still shows what she DID type on a partial card", () => {
+    // It has gone to the office, so it belongs on the receipt like any other
+    // change — and she has to be able to tap it if the digit was wrong.
+    const roster = [student("s1", "Ravi")];
+    const result = summarise(roster, [PHONE, FATHER], {
+      s1: row("partial", { phone: "9000000001" }),
+    });
+
+    assert.equal(result.changed.length, 1);
+    assert.equal(result.changed[0]!.to, "9000000001");
+    assert.equal(result.empty, false);
+  });
+
+  it("never calls a partial card confirmed, even with nothing to diff", () => {
+    // She retyped the number we already held while the other box stayed empty:
+    // one entered field, no change. That is not "आपने सही बताई".
+    const roster = [student("s1", "Ravi", { phone: "9876543210" })];
+    const result = summarise(roster, [PHONE, FATHER], {
+      s1: row("partial", { phone: "9876543210" }),
+    });
+
+    assert.equal(result.changed.length, 0);
+    assert.equal(result.confirmed.length, 0);
+    assert.equal(result.partial.length, 1);
   });
 });

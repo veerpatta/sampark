@@ -135,9 +135,10 @@ export default async function RequestsPage() {
 
       {requests.length > 0 ? (
         <p className="text-xs text-[var(--color-ink-muted)]">
-          &ldquo;Answered&rdquo; counts students the teacher has responded for,
-          however she answered. &ldquo;To review&rdquo; counts only the answers
-          that differ from what she was sent.
+          &ldquo;Answered&rdquo; counts students the teacher has responded for on
+          every field this request asked about, however she answered. A card
+          left with one box empty is not counted. &ldquo;To review&rdquo; counts
+          only the answers that differ from what she was sent.
         </p>
       ) : null}
     </div>

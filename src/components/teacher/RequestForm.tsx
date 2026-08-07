@@ -16,16 +16,18 @@ import {
   type PendingBatch,
 } from "./draft";
 import {
+  judgeRow,
   pickBatch,
-  rowReady,
   shouldFlush,
   ROW_COMMIT_MS,
 } from "./autosave";
 import { suggestForRow } from "./suggest";
 import {
-  ANSWERED,
-  isBlankRow,
+  COMPLETE,
+  UPLOADABLE,
+  requiredKeys,
   type RowState,
+  type RowStatus,
   type TeacherField,
   type TeacherRosterRow,
 } from "./types";
@@ -90,19 +92,38 @@ export function RequestForm({
   const router = useRouter();
   const toast = useToast();
 
+  /**
+   * Which fields each student genuinely has to answer for.
+   *
+   * Computed once, here, because three separate things need it and none of them
+   * should be re-deriving what counts as a hole: the blanks/known split, the
+   * commit gate, and the row's own "what is still missing" line.
+   */
+  const requiredByStudent = useMemo(
+    () =>
+      new Map(
+        roster.map((student) => [
+          student.studentId,
+          requiredKeys(student, fields),
+        ]),
+      ),
+    [roster, fields],
+  );
+
   // Blanks first. Order within each group is the name order the server sent.
   const { blanks, known, blankIds } = useMemo(() => {
     const blanks: TeacherRosterRow[] = [];
     const known: TeacherRosterRow[] = [];
     for (const student of roster) {
-      (isBlankRow(student, fields) ? blanks : known).push(student);
+      const required = requiredByStudent.get(student.studentId) ?? [];
+      (required.length > 0 ? blanks : known).push(student);
     }
     return {
       blanks,
       known,
       blankIds: new Set(blanks.map((student) => student.studentId)),
     };
-  }, [roster, fields]);
+  }, [roster, requiredByStudent]);
 
   const [rows, setRows] = useState<Record<string, RowState>>(() =>
     Object.fromEntries(
@@ -191,16 +212,34 @@ export function RequestForm({
     return () => clearTimeout(timer);
   }, [token, rows, sentIds]);
 
+  /**
+   * Finished rows. COMPLETE, not UPLOADABLE — a partial row has been sent and
+   * is still not done, and this is the number the progress rail counts down and
+   * the number the "पूरा हुआ" card waits for.
+   */
   const done = useMemo(
-    () => Object.values(rows).filter((row) => ANSWERED.includes(row.status)).length,
+    () => Object.values(rows).filter((row) => COMPLETE.includes(row.status)).length,
     [rows],
   );
 
+  /**
+   * Anything she has touched enough to look at on the receipt.
+   *
+   * Separate from `done` so a teacher whose work so far is all partial is not
+   * locked out of the review screen by a button disabled on a count that
+   * deliberately excludes her.
+   */
+  const reviewable = useMemo(
+    () => Object.values(rows).filter((row) => UPLOADABLE.includes(row.status)).length,
+    [rows],
+  );
+
+  /** On the phone but not yet acknowledged. A partial row genuinely is in flight. */
   const unsent = useMemo(
     () =>
       roster.filter(
         (student) =>
-          ANSWERED.includes(rows[student.studentId]!.status) &&
+          UPLOADABLE.includes(rows[student.studentId]!.status) &&
           !sentIds.has(student.studentId),
       ),
     [roster, rows, sentIds],
@@ -213,10 +252,17 @@ export function RequestForm({
   );
 
   function update(studentId: string, patch: Partial<RowState>) {
-    setRows((current) => ({
-      ...current,
-      [studentId]: { ...current[studentId]!, ...patch },
-    }));
+    // The mirror is written synchronously here rather than left to the next
+    // render. Filling the last digit of a fixed-length field calls commitNow in
+    // the SAME event as this update, and a commit that judged the state from
+    // before the keystroke would refuse the row and clear its timer in one go —
+    // leaving it sitting uncommitted until she happened to blur it.
+    const next = {
+      ...rowsRef.current,
+      [studentId]: { ...rowsRef.current[studentId]!, ...patch },
+    };
+    rowsRef.current = next;
+    setRows(next);
     // Touching a row again un-sends it, so a correction after a send is not
     // silently dropped. It will go up again in the next batch, under a new key,
     // and the server supersedes what came before.
@@ -237,24 +283,44 @@ export function RequestForm({
    * This is what the "हो गया" button used to do — and that button never saved
    * anything, it only flipped this status, which is exactly why it could go.
    *
-   * A row that is not ready STAYS `editing` and is not counted as answered. A
-   * half-typed phone number is not an answer, and a timer must never be the
-   * thing that decides it was: rowReady refuses anything blank, invalid, or
-   * short of a fixed length.
+   * Three outcomes, not two. A row that is `unfinished` STAYS `editing` and is
+   * not counted as anything: a half-typed phone number is not an answer, and a
+   * timer must never be the thing that decides it was. A row that is settled but
+   * still has an empty box the school holds nothing for becomes `partial` — it
+   * goes to the school, it stays open on screen, and it is NOT done. Only a row
+   * with every hole filled becomes `edited`.
+   *
+   * The judging happens outside setRows, against the rowsRef mirror. An updater
+   * has to be pure — React double-invokes it in development — and tick() is a
+   * side effect that must fire once, on a genuine completion.
    */
   const commit = useCallback(
     (studentId: string) => {
-      setRows((current) => {
-        const row = current[studentId];
-        if (!row || row.status !== "editing") return current;
-        if (!rowReady(fields, row)) return current;
+      const row = rowsRef.current[studentId];
+      if (!row) return;
+      if (row.status !== "editing" && row.status !== "partial") return;
 
-        lastCommitAt.current = Date.now();
-        tick();
-        return { ...current, [studentId]: { ...row, status: "edited" } };
-      });
+      const verdict = judgeRow(
+        fields,
+        row,
+        requiredByStudent.get(studentId) ?? [],
+      );
+      if (verdict === "unfinished") return;
+
+      const status: RowStatus = verdict === "ready" ? "edited" : "partial";
+      if (row.status === status) return;
+
+      lastCommitAt.current = Date.now();
+      // A tick means "that is finished". A partial row is not finished, and
+      // buzzing at her would say it was — the colour and the "2 में से 1 भरा"
+      // line are what carry that case instead.
+      if (status === "edited") tick();
+      setRows((current) => ({
+        ...current,
+        [studentId]: { ...current[studentId]!, status },
+      }));
     },
-    [fields],
+    [fields, requiredByStudent],
   );
 
   /** Restart this row's timer. Typing in one row must not commit another. */
@@ -307,13 +373,15 @@ export function RequestForm({
       ]),
     );
 
-    setRows((current) => {
-      const next = { ...current };
-      for (const student of untouchedKnown) {
-        next[student.studentId] = { status: "confirmed", values: {} };
-      }
-      return next;
-    });
+    // Same mirror discipline as update(): one object, written to both, so
+    // nothing that reads rowsRef between now and the next render sees the
+    // forty rows as still untouched.
+    const next = { ...rowsRef.current };
+    for (const student of untouchedKnown) {
+      next[student.studentId] = { status: "confirmed", values: {} };
+    }
+    rowsRef.current = next;
+    setRows(next);
 
     // One tick for the whole action, not one per student. Forty buzzes from a
     // single tap would read as a fault, not as feedback.
@@ -389,11 +457,13 @@ export function RequestForm({
    * lie, and it would lose her scroll position every ten rows.
    */
   useEffect(() => {
+    // COMPLETE, not UPLOADABLE. A partial row must not unlock the next ten and
+    // scroll the screen on past the very box she still has to come back to.
     const batchDone = (group: TeacherRosterRow[], shown: number) =>
       shown < group.length &&
       group
         .slice(0, shown)
-        .every((student) => ANSWERED.includes(rows[student.studentId]!.status));
+        .every((student) => COMPLETE.includes(rows[student.studentId]!.status));
 
     if (batchDone(blanks, shownBlanks)) {
       setShownBlanks((current) => Math.min(current + BATCH, blanks.length));
@@ -611,6 +681,7 @@ export function RequestForm({
         ]),
       )}
       blank={blankIds.has(student.studentId)}
+      required={requiredByStudent.get(student.studentId) ?? []}
       sent={sentIds.has(student.studentId)}
       onConfirm={() => update(student.studentId, { status: "confirmed" })}
       onEdit={() => update(student.studentId, { status: "editing" })}
@@ -621,7 +692,7 @@ export function RequestForm({
       onChange={(fieldKey, value) => {
         update(student.studentId, {
           status: "editing",
-          values: { ...rows[student.studentId]!.values, [fieldKey]: value },
+          values: { ...rowsRef.current[student.studentId]!.values, [fieldKey]: value },
         });
         scheduleCommit(student.studentId);
       }}
@@ -717,7 +788,7 @@ export function RequestForm({
       {error ? (
         <p
           role="alert"
-          className="mt-4 rounded-[var(--radius-card)] border-2 border-[var(--color-danger)] bg-red-50 px-4 py-3 text-sm font-medium text-[var(--color-danger)]"
+          className="mt-4 rounded-[var(--radius-card)] border-2 border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm font-medium text-[var(--color-danger)]"
         >
           {error}
         </p>
@@ -748,6 +819,7 @@ export function RequestForm({
       <ProgressRail
         remaining={roster.length - done}
         total={roster.length}
+        reviewable={reviewable}
         pending={unsent.length}
         sent={sentIds.size}
         busy={busy}

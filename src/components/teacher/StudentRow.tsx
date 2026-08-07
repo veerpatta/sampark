@@ -7,7 +7,8 @@ import { houseOf } from "@/lib/houses";
 import { normalisePhone, PHONE_LENGTH } from "@/lib/phone";
 import { HouseChip } from "@/components/HouseChip";
 import { tick } from "./haptics";
-import { rowReady, rowTouched } from "./autosave";
+import { judgeRow, missingRequired, rowTouched } from "./autosave";
+import { COMPLETE, UPLOADABLE } from "./types";
 
 import type { RowState, TeacherField, TeacherRosterRow } from "./types";
 
@@ -26,12 +27,19 @@ import type { RowState, TeacherField, TeacherRosterRow } from "./types";
  * A BLANK row — one where the school holds nothing — skips the confirm step
  * entirely and opens its inputs straight away. There is nothing to confirm, so
  * asking for a tap to reveal a keyboard is a tap spent on nothing.
+ *
+ * A PARTIAL row — one where she answered some of what was asked and a box the
+ * school holds nothing for is still empty — STAYS OPEN. This is the fix for the
+ * bug that closed it: the card used to collapse into a read-only list a second
+ * after the first box was filled, so the empty one was never seen again by her
+ * or by anyone. The only thing that will fill that box is her, looking at it.
  */
 export function StudentRow({
   student,
   fields,
   state,
   blank,
+  required,
   sent,
   onConfirm,
   onEdit,
@@ -49,6 +57,8 @@ export function StudentRow({
   suggestions: Record<string, string | null>;
   /** The school holds nothing for this student — inputs open immediately. */
   blank: boolean;
+  /** Field keys the school holds nothing for. See requiredKeys in types.ts. */
+  required: string[];
   sent: boolean;
   onConfirm: () => void;
   onEdit: () => void;
@@ -67,16 +77,24 @@ export function StudentRow({
     fn();
   };
 
-  const editing = state.status === "editing" || (blank && state.status === "todo");
+  // Partial keeps the inputs on screen. showEntered stays tied to `edited`, so
+  // the read-only summary below is unreachable for a partial row and cannot
+  // hide the box that is still empty.
+  const open =
+    state.status === "editing" ||
+    state.status === "partial" ||
+    (blank && state.status === "todo");
   const showStored = state.status === "todo" && !blank;
   const showEntered = state.status === "edited";
-  const answered =
-    state.status === "confirmed" ||
-    state.status === "edited" ||
-    state.status === "absent";
+
+  // Two different questions, and a partial row answers them differently:
+  // its work HAS gone to the school, and it is NOT finished.
+  const uploaded = UPLOADABLE.includes(state.status);
+  const collapsed = COMPLETE.includes(state.status);
 
   const touched = rowTouched(state);
-  const ready = rowReady(fields, state);
+  const missing = missingRequired(state, required);
+  const verdict = judgeRow(fields, state, required);
 
   return (
     <li
@@ -95,16 +113,38 @@ export function StudentRow({
       // Motion on purpose: Motion cannot tween a var(), and the reduced-motion
       // rule in globals.css already neutralises transition-duration, so this
       // honours the OS setting without a second mechanism to remember.
-      className={`scroll-mt-24 rounded-[var(--radius-card)] border-2 p-4 transition-colors duration-200 ${
+      //
+      // COLOUR IS NEVER THE ONLY CHANNEL. Three carry the state: this pair, the
+      // 6px left bar, and a word in the header for everything except todo. A
+      // reader who cannot separate the green from the amber reads the word, and
+      // green-against-amber is exactly the pair that would otherwise fail.
+      //
+      // The bar's WIDTH is a constant, outside the map. transition-colors does
+      // not animate border-width, so a per-state width would snap while the hue
+      // crossfaded — and the reduced-motion rule would have nothing to say
+      // about it. Only the colours vary.
+      //
+      // These strings stay static literals. Building them from state.status
+      // would put a var() inside a template literal, which is precisely what
+      // Tailwind's scanner reads as a string and prunes — see the house chips
+      // note in tokens.css.
+      className={`scroll-mt-24 rounded-[var(--radius-card)] border-2 border-l-[6px] p-4 transition-colors duration-200 ${
         {
-          todo: "border-[var(--color-border)] bg-[var(--color-surface)]",
-          editing: "border-[var(--color-correct-border)] bg-[var(--color-surface)]",
+          todo:
+            "border-[var(--color-border)] border-l-[var(--color-border)] bg-[var(--color-surface)]",
+          // Brand blue, not amber: "I am working here". It used to share the
+          // correct-amber with `edited`, so a row being typed into and a row
+          // she had finished looked the same.
+          editing:
+            "border-[var(--color-brand-500)] border-l-[var(--color-brand-600)] bg-[var(--color-surface)]",
+          partial:
+            "border-[var(--color-partial-border)] border-l-[var(--color-partial-fg)] bg-[var(--color-partial-bg)]",
           confirmed:
-            "border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)]",
+            "border-[var(--color-confirm-border)] border-l-[var(--color-confirm-fg)] bg-[var(--color-confirm-bg)]",
           edited:
-            "border-[var(--color-correct-border)] bg-[var(--color-correct-bg)]",
+            "border-[var(--color-correct-border)] border-l-[var(--color-correct-fg)] bg-[var(--color-correct-bg)]",
           absent:
-            "border-[var(--color-absent-border)] bg-[var(--color-absent-bg)]",
+            "border-[var(--color-absent-border)] border-l-[var(--color-absent-border)] bg-[var(--color-absent-bg)]",
         }[state.status]
       }`}
     >
@@ -122,7 +162,7 @@ export function StudentRow({
               over", so the row has to carry it: grey while it is only on the
               phone, green once the school actually has it. On a bad signal the
               difference is the whole truth. */}
-          {answered ? (
+          {uploaded ? (
             sent ? (
               <span className="rounded bg-[var(--color-confirm-bg)] px-1.5 py-0.5 text-xs font-medium text-[var(--color-confirm-fg)]">
                 ✓ विद्यालय पहुँच गया
@@ -136,6 +176,13 @@ export function StudentRow({
           {state.status === "confirmed" ? (
             <span className="text-2xl text-[var(--color-confirm-fg)]" aria-label="सही है">
               ✓
+            </span>
+          ) : null}
+          {/* The word is the colour-blind channel, and it is also the only
+              thing that says "sent AND still not done" in one breath. */}
+          {state.status === "partial" ? (
+            <span className="text-sm font-medium text-[var(--color-partial-fg)]">
+              अधूरा
             </span>
           ) : null}
           {state.status === "edited" ? (
@@ -212,7 +259,7 @@ export function StudentRow({
       ) : null}
 
       {/* --------------------------------------------------------- the inputs */}
-      {editing ? (
+      {open ? (
         <div className="mt-3 space-y-3">
           {fields.map((field, index) => (
             <FieldInput
@@ -221,6 +268,11 @@ export function StudentRow({
               value={state.values[field.key] ?? student.values[field.key] ?? ""}
               onChange={(value) => onChange(field.key, value)}
               last={index === fields.length - 1}
+              // Gated on the row being partial, not merely on the box being
+              // empty. Highlighting every unfilled box the moment she starts
+              // typing into the first one would be the screen pointing at work
+              // she is in the middle of doing.
+              missing={state.status === "partial" && missing.includes(field.key)}
               // Auto-advance needs to know where to go next, and the row is the
               // only thing that knows the order.
               suggestion={suggestions[field.key] ?? null}
@@ -251,10 +303,23 @@ export function StudentRow({
             />
           ))}
 
-          {/* A row that will not commit has to say so. Otherwise the only
-              signal that a half-typed number was never counted is its absence
-              from a total she has no reason to be adding up. */}
-          {!ready && touched ? (
+          {/* A row that is not finished has to say so, and the two reasons it
+              might not be are different enough to need different words.
+
+              Partial: everything she typed is fine and has gone to the school,
+              and a box is still empty. She needs the count, because "one of
+              two" is the fact she cannot see for herself once the card is
+              taller than her thumb.
+
+              Unfinished: something is half-typed, so nothing has gone anywhere.
+              Otherwise the only signal that a four-digit phone number was never
+              counted is its absence from a total she has no reason to be
+              adding up. */}
+          {state.status === "partial" ? (
+            <p className="text-sm font-medium text-[var(--color-partial-fg)]">
+              {fields.length} में से {fields.length - missing.length} भरा — बाकी भी भर दें
+            </p>
+          ) : verdict === "unfinished" && touched ? (
             <p className="text-sm text-[var(--color-ink-muted)]">
               अभी पूरा नहीं हुआ
             </p>
@@ -284,7 +349,9 @@ export function StudentRow({
             </>
           ) : null}
 
-          {answered ? (
+          {/* Only a row that has CLOSED needs reopening. A partial row is
+              already open with its empty box on screen. */}
+          {collapsed ? (
             <button
               type="button"
               onClick={onReopen}
@@ -416,6 +483,7 @@ function FieldInput({
   onFilled,
   suggestion,
   sibling,
+  missing,
 }: {
   field: TeacherField;
   value: string;
@@ -428,12 +496,28 @@ function FieldInput({
   suggestion: string | null;
   /** A sibling's number, on a blank phone field only. */
   sibling: { name: string; phone: string } | null;
+  /** The row settled without this one, and the school holds nothing for it. */
+  missing: boolean;
 }) {
   const [touched, setTouched] = useState(false);
   const isNumeric = numeric(field);
   const check = validateField(field, value);
   const full = field.exactLen !== null && value.length >= field.exactLen;
   const bad = value !== "" && !check.ok && (touched || full);
+
+  // Never --color-danger for this. An empty box is unfinished, not wrong, and
+  // red belongs to "what you typed cannot be right".
+  const border = bad
+    ? "border-[var(--color-danger)]"
+    : missing
+      ? "border-[var(--color-partial-border)]"
+      : "border-[var(--color-border)]";
+
+  const askFor = missing ? (
+    <span className="mt-1 block text-sm font-medium text-[var(--color-partial-fg)]">
+      यह अभी भरना बाकी है
+    </span>
+  ) : null;
 
   // Two buttons, not a checkbox. A checkbox has one visible state and its
   // unticked state is indistinguishable from "nobody has looked at this" — the
@@ -466,6 +550,7 @@ function FieldInput({
             </button>
           ))}
         </div>
+        {askFor}
       </div>
     );
   }
@@ -492,11 +577,7 @@ function FieldInput({
             autoComplete="off"
             autoCapitalize="words"
             placeholder="टाइप करके ढूँढें"
-            className={`mt-1 min-h-12 w-full rounded-lg border-2 px-3 text-base ${
-              bad
-                ? "border-[var(--color-danger)]"
-                : "border-[var(--color-border)]"
-            }`}
+            className={`mt-1 min-h-12 w-full rounded-lg border-2 px-3 text-base ${border}`}
           />
           <datalist id={`options-${field.key}`}>
             {options.map((option) => (
@@ -510,7 +591,9 @@ function FieldInput({
             <span role="alert" className="mt-1 block text-sm text-[var(--color-danger)]">
               सूची में से चुनें
             </span>
-          ) : null}
+          ) : (
+            askFor
+          )}
         </label>
       );
     }
@@ -523,7 +606,7 @@ function FieldInput({
         <select
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="mt-1 min-h-12 w-full rounded-lg border-2 border-[var(--color-border)] px-3 text-base"
+          className={`mt-1 min-h-12 w-full rounded-lg border-2 px-3 text-base ${border}`}
         >
           <option value="">— चुनें —</option>
           {options.map((option) => (
@@ -535,6 +618,7 @@ function FieldInput({
         {suggestion && !value ? (
           <SuggestChip label={`पिछले जैसा: ${suggestion}`} onUse={onChange} value={suggestion} />
         ) : null}
+        {askFor}
       </label>
     );
   }
@@ -576,9 +660,9 @@ function FieldInput({
         // "+91 98765 43210" to its first ten CHARACTERS before clean() ever saw
         // it, leaving a mangled number. clean() caps the digits instead.
         maxLength={isNumeric ? undefined : (field.exactLen ?? undefined)}
-        className={`mt-1 min-h-12 w-full rounded-lg border-2 px-3 text-base ${
-          bad ? "border-[var(--color-danger)]" : "border-[var(--color-border)]"
-        } ${isNumeric ? "font-mono" : ""}`}
+        className={`mt-1 min-h-12 w-full rounded-lg border-2 px-3 text-base ${border} ${
+          isNumeric ? "font-mono" : ""
+        }`}
       />
       {/* Siblings share a parent's mobile — 134 numbers in this school already
           do. Offered as a tap on a blank field, never prefilled: she is the one
@@ -591,6 +675,8 @@ function FieldInput({
           onUse={onChange}
         />
       ) : null}
+
+      {!bad ? askFor : null}
 
       {bad ? (
         <span

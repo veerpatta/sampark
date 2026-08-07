@@ -1,9 +1,11 @@
 import {
-  ANSWERED,
+  COMPLETE,
+  requiredKeys,
   type RowState,
   type TeacherField,
   type TeacherRosterRow,
 } from "./types";
+import { missingRequired } from "./autosave";
 
 /**
  * What she is about to send, worked out before she sends it.
@@ -34,6 +36,12 @@ export type ChangedValue = {
 
 export type NamedStudent = { studentId: string; name: string };
 
+/** A row that went to the school with a box still empty. */
+export type PartialStudent = NamedStudent & {
+  /** The Hindi labels of the fields still waiting. */
+  missing: string[];
+};
+
 export type Summary = {
   /** Every field she actually altered, one entry each, oldest field order. */
   changed: ChangedValue[];
@@ -41,6 +49,16 @@ export type Summary = {
   confirmed: NamedStudent[];
   /** Rows she marked as not in this class. */
   notPresent: NamedStudent[];
+  /**
+   * Rows that went to the school with a box the school holds nothing for still
+   * empty.
+   *
+   * Its own bucket, and NOT folded into `untouched`. Saying "जवाब बाकी है"
+   * about a number the office already has is the same lie in the other
+   * direction, and she would go looking for a value she has already given.
+   * Whatever she DID type still appears under `changed`.
+   */
+  partial: PartialStudent[];
   /**
    * Rows with no answer at all, INCLUDING ones left mid-edit.
    *
@@ -60,13 +78,26 @@ export function summarise(
   const changed: ChangedValue[] = [];
   const confirmed: NamedStudent[] = [];
   const notPresent: NamedStudent[] = [];
+  const partial: PartialStudent[] = [];
   const untouched: NamedStudent[] = [];
+
+  const labelHi = new Map(fields.map((field) => [field.key, field.labelHi]));
 
   for (const student of roster) {
     const row = rows[student.studentId];
     const named = { studentId: student.studentId, name: student.name };
 
-    if (!row || !ANSWERED.includes(row.status)) {
+    if (row?.status === "partial") {
+      partial.push({
+        ...named,
+        missing: missingRequired(row, requiredKeys(student, fields)).map(
+          (key) => labelHi.get(key) ?? key,
+        ),
+      });
+      // Falls through to the edits below rather than continuing: what she DID
+      // type has gone to the office and belongs on the receipt like any other
+      // change.
+    } else if (!row || !COMPLETE.includes(row.status)) {
       untouched.push(named);
       continue;
     }
@@ -97,14 +128,23 @@ export function summarise(
       }));
 
     if (edits.length > 0) changed.push(...edits);
-    else confirmed.push(named);
+    // A partial row is never "confirmed". She can reach this line by retyping a
+    // value we already held while another box stayed empty — one entered field,
+    // no diff — and listing that under "आपने सही बताई" would tell her the card
+    // was finished, which is the whole thing being fixed.
+    else if (row.status !== "partial") confirmed.push(named);
   }
 
   return {
     changed,
     confirmed,
     notPresent,
+    partial,
     untouched,
-    empty: changed.length === 0 && confirmed.length === 0 && notPresent.length === 0,
+    empty:
+      changed.length === 0 &&
+      confirmed.length === 0 &&
+      notPresent.length === 0 &&
+      partial.length === 0,
   };
 }

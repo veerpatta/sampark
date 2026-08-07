@@ -209,6 +209,68 @@ describe("deriving the action from the frozen snapshot", () => {
     assert.ok(rows.every((row) => row.newValue === null));
     assert.ok(rows.every((row) => row.reviewStatus === "pending"));
   });
+
+  test("a field we held nothing for and she did not answer writes NO row", async () => {
+    // The half-filled card, at the server. Child Two has no phone on record; she
+    // corrects the father's name and leaves the phone box empty. Writing
+    // "confirmed, old = new = null" for that phone would assert she had checked
+    // an empty box nobody looked at, and it is what let the status board count
+    // the child as fully answered and render a green "46 of 46".
+    const scenario = await createScenario();
+    const second = scenario.resolved.roster[1]!;
+    assert.equal(second.values.phone, null, "fixture must hold no phone here");
+
+    const result = await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: second.studentId, values: { father_name: "Test Father New" } }],
+      null,
+    );
+
+    assert.equal(result.recorded, 1);
+    const rows = await submissionsFor(scenario.requestId);
+    assert.deepEqual(
+      rows.map((row) => row.fieldKey),
+      ["father_name"],
+    );
+    assert.equal(rows[0]!.action, "changed");
+  });
+
+  test("but a field we DO hold is still confirmed when she leaves it alone", async () => {
+    // The other half of the same rule, and the one that must not move: leaving a
+    // value we hold alone is a real answer — "she checked it and it was right"
+    // is the single most useful fact this system collects.
+    const scenario = await createScenario();
+    const second = scenario.resolved.roster[1]!;
+
+    await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: second.studentId, values: { phone: "9444444444" } }],
+      null,
+    );
+
+    const rows = await submissionsFor(scenario.requestId);
+    const father = rows.find((row) => row.fieldKey === "father_name")!;
+    assert.equal(father.action, "confirmed");
+    assert.equal(father.reviewStatus, "auto");
+    assert.equal(father.newValue, "Test Father Two");
+  });
+
+  test("a card with nothing on record and nothing answered writes nothing at all", async () => {
+    // Reachable only from a stale tab now that the client refuses to send it.
+    // Benign either way: no rows, and the child stays uncounted rather than
+    // being reported as answered.
+    const scenario = await createScenario({ fieldKeys: ["mother_name"] });
+    const second = scenario.resolved.roster[1]!;
+
+    const result = await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: second.studentId, values: {} }],
+      null,
+    );
+
+    assert.equal(result.recorded, 0);
+    assert.equal((await submissionsFor(scenario.requestId)).length, 0);
+  });
 });
 
 describe("the approval transaction", () => {

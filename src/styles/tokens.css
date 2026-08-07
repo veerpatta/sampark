@@ -31,9 +31,20 @@
   --color-absent-bg: #f8fafc;
   --color-absent-fg: #64748b;
   --color-absent-border: #cbd5e1;
+  /* अधूरा — she answered part of a card and a box the school holds nothing for
+     is still empty. Orange rather than red, and deliberately: the row is
+     unfinished, not wrong, and red would be the screen scolding her for a box
+     she has not reached yet. It has to be distinct from correct's amber, which
+     means "she changed this and it is done". */
+  --color-partial-bg: #fff7ed;
+  --color-partial-fg: #c2410c;
+  --color-partial-border: #fb923c;
 
   /* --- state --- */
   --color-danger: #dc2626;
+  /* The ground under an error message. Was a raw bg-red-50 in three places,
+     which is the one colour in the app that had no name. */
+  --color-danger-bg: #fef2f2;
   --color-warning: #d97706;
   /* Darker cut for warning text on white. --color-warning is tuned for a
      border or an icon; at 14-16px on a cheap screen in daylight it is thin.

@@ -24,7 +24,40 @@ import { shareOrWhatsApp } from "@/components/ui/share";
  * The ones that have NOT submitted come first, overdue first within that,
  * because those are the rows that need a person to do something. Each carries
  * its own reminder button so nudging a teacher is one tap and no navigation.
+ *
+ * EVERY ROW SAYS ITS STATE IN A WORD as well as a colour. This screen gets read
+ * on a phone in a corridor between periods, and a office worker who cannot
+ * separate the amber from the red still has to know which teacher to chase.
  */
+
+type Tone = "waiting" | "progress" | "overdue" | "done";
+
+const TONE: Record<Tone, { label: string; pill: string; bar: string; rail: string }> = {
+  waiting: {
+    label: "not started",
+    pill: "bg-[var(--color-surface-muted)] text-[var(--color-ink-muted)]",
+    bar: "bg-[var(--color-border)]",
+    rail: "border-l-[var(--color-border)]",
+  },
+  progress: {
+    label: "in progress",
+    pill: "bg-[var(--color-correct-bg)] text-[var(--color-correct-fg)]",
+    bar: "bg-[var(--color-warning)]",
+    rail: "border-l-[var(--color-warning)]",
+  },
+  overdue: {
+    label: "overdue",
+    pill: "bg-[var(--color-danger-bg)] text-[var(--color-danger)]",
+    bar: "bg-[var(--color-danger)]",
+    rail: "border-l-[var(--color-danger)]",
+  },
+  done: {
+    label: "complete",
+    pill: "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]",
+    bar: "bg-[var(--color-success)]",
+    rail: "border-l-[var(--color-success)]",
+  },
+};
 export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
   const toast = useToast();
   const today = new Date().toISOString().slice(0, 10);
@@ -41,8 +74,23 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
   const open = [...newestPerGroup.values()];
   if (open.length === 0) return null;
 
+  // studentsAnswered now means "answered for every field asked about" — see
+  // coveredStudentsQuery in lib/requests.ts. This predicate did not have to
+  // change when a half-filled card stopped counting, which is the reason that
+  // definition lives in the query rather than in each reader.
   const done = (request: RequestBoardRow) =>
     request.rosterSize > 0 && request.studentsAnswered >= request.rosterSize;
+
+  // Overdue outranks in-progress: it is the row that needs a person to do
+  // something today, and how far along it is does not change that.
+  const toneOf = (request: RequestBoardRow): Tone =>
+    done(request)
+      ? "done"
+      : request.dueDate < today
+        ? "overdue"
+        : request.studentsAnswered > 0
+          ? "progress"
+          : "waiting";
 
   const submitted = open.filter(done);
   const waiting = open
@@ -83,7 +131,7 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
       {waiting.length > 0 ? (
         <ul className="mt-4 divide-y divide-[var(--color-border)]">
           {waiting.map((request) => {
-            const late = request.dueDate < today;
+            const tone = TONE[toneOf(request)];
             const percent =
               request.rosterSize === 0
                 ? 0
@@ -93,7 +141,7 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
             return (
               <li
                 key={request.id}
-                className="flex items-center gap-3 py-3 first:pt-0"
+                className={`flex items-center gap-3 border-l-[4px] py-3 pl-3 first:pt-0 ${tone.rail}`}
               >
                 <div className="min-w-0 flex-1">
                   <Link
@@ -105,21 +153,28 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
                   <span className="ml-2 text-sm text-[var(--color-ink-muted)]">
                     {request.teacher}
                   </span>
+                  {/* The word, next to the teacher whose row it is. This is what
+                      makes the colour redundant rather than load-bearing, and
+                      it folds in the standalone "overdue" label that used to
+                      sit apart from everything else that said the same. */}
+                  <span
+                    className={`ml-2 rounded-[var(--radius-chip)] px-2 py-0.5 text-xs font-medium ${tone.pill}`}
+                  >
+                    {tone.label}
+                  </span>
                   <div className="mt-1 flex items-center gap-2">
                     <div className="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--color-surface-muted)]">
+                      {/* Takes the row's tone, not a fixed green. A green bar
+                          sitting at 40% tells the office the opposite of what
+                          the number beside it says. */}
                       <div
-                        className="h-full rounded-full bg-[var(--color-success)] transition-[width] duration-300"
+                        className={`h-full rounded-full transition-[width] duration-300 ${tone.bar}`}
                         style={{ width: `${percent}%` }}
                       />
                     </div>
                     <span className="font-mono text-xs text-[var(--color-ink-muted)]">
                       {request.studentsAnswered} of {request.rosterSize}
                     </span>
-                    {late ? (
-                      <span className="text-xs font-medium text-[var(--color-danger)]">
-                        overdue
-                      </span>
-                    ) : null}
                   </div>
                 </div>
                 <button

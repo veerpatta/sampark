@@ -1,6 +1,11 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { isBlankRow, type TeacherField, type TeacherRosterRow } from "../src/components/teacher/types";
+import {
+  isBlankRow,
+  requiredKeys,
+  type TeacherField,
+  type TeacherRosterRow,
+} from "../src/components/teacher/types";
 
 /**
  * The split that the teacher screen is built on.
@@ -78,5 +83,57 @@ describe("isBlankRow", () => {
 
   test("a collect-mode field is always blank — we hold nothing anywhere", () => {
     assert.equal(isBlankRow(row({ village: "Somewhere" }), [village]), true);
+  });
+});
+
+/**
+ * The same predicate, asked the other question.
+ *
+ * The screen splits on "are there any holes"; the commit gate needs "which
+ * ones", so that a card asking for two things and given one is not allowed to
+ * call itself finished. If these two ever disagree about what a hole is, one of
+ * the two lies — either she hunts for blanks among 46 identical cards, or a
+ * half-filled card counts as done again.
+ */
+describe("requiredKeys", () => {
+  test("skips a field the school already holds, keeps every collect-mode one", () => {
+    assert.deepEqual(
+      requiredKeys(row({ phone: "9000000000", village: "Somewhere" }), [
+        phone,
+        village,
+      ]),
+      ["village"],
+    );
+  });
+
+  test("null, empty string and a missing key are all holes", () => {
+    assert.deepEqual(requiredKeys(row({ phone: null }), [phone]), ["phone"]);
+    assert.deepEqual(requiredKeys(row({ phone: "" }), [phone]), ["phone"]);
+    assert.deepEqual(requiredKeys(row({}), [phone]), ["phone"]);
+  });
+
+  test("keeps the order the request asked in", () => {
+    assert.deepEqual(requiredKeys(row({}), [phone, altPhone, village]), [
+      "phone",
+      "alt_phone",
+      "village",
+    ]);
+  });
+
+  test("isBlankRow is exactly 'are there any', and cannot drift from it", () => {
+    const cases: Record<string, string | null>[] = [
+      {},
+      { phone: "9000000000" },
+      { phone: null },
+      { phone: "9000000000", alt_phone: "9000000001" },
+      { phone: "", alt_phone: "9000000001" },
+    ];
+    for (const values of cases) {
+      assert.equal(
+        isBlankRow(row(values), [phone, altPhone]),
+        requiredKeys(row(values), [phone, altPhone]).length > 0,
+        `disagreed on ${JSON.stringify(values)}`,
+      );
+    }
   });
 });

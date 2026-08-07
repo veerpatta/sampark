@@ -94,7 +94,18 @@ export async function recordSubmissions(
       const supplied = answer.values?.[field.key];
       // An absent key means the teacher left the row alone: that is a
       // confirmation of what we showed her, not a blank.
+      //
+      // UNLESS WE SHOWED HER NOTHING. "Confirmed, old = new = null" about a
+      // field that was empty on her screen and empty in master asserts that she
+      // checked something nobody has looked at — and once it is in this table
+      // the office cannot tell it from a real confirmation. It is also what let
+      // a half-filled card count as fully answered on the status board. Say
+      // nothing instead; silence is the honest record of a box left empty.
+      //
+      // This is the server's own copy of requiredKeys() in the teacher types:
+      // it skips exactly the fields she had to answer and did not.
       if (supplied === undefined) {
+        if (frozen === null) continue;
         rows.push(confirmation(request, student.studentId, field, frozen, clientHash));
         continue;
       }
@@ -115,6 +126,10 @@ export async function recordSubmissions(
       // silently emptying a parent's phone number because a field was cleared
       // by accident is not a mistake we can detect later.
       if (checked.value === null) {
+        // Same exception as above: blank over nothing is not a confirmation of
+        // anything. The rule below it — blank never erases a value we DO hold —
+        // is untouched.
+        if (frozen === null) continue;
         rows.push(confirmation(request, student.studentId, field, frozen, clientHash));
         continue;
       }
@@ -138,6 +153,10 @@ export async function recordSubmissions(
   }
 
   if (failures.length > 0) throw new SubmissionValidationError(failures);
+  // Reachable a second way since the guards above: a payload naming a student
+  // whose every field was empty on her screen and left empty by her. Nothing to
+  // record, and nothing lost — the teacher surface will not produce one, and a
+  // stale tab that does simply writes nothing and stays uncounted.
   if (rows.length === 0) {
     return { recorded: 0, changed: 0, confirmed: 0, notPresent: 0 };
   }

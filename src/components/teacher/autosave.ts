@@ -1,5 +1,5 @@
 import { validateField } from "@/lib/fields";
-import { ANSWERED, type RowState, type TeacherField } from "./types";
+import { UPLOADABLE, type RowState, type TeacherField } from "./types";
 
 /**
  * The decisions behind saving as she types.
@@ -29,34 +29,78 @@ export const FLUSH_AT_ROWS = 5;
  */
 export const MIN_FLUSH_INTERVAL_MS = 4000;
 
+const filled = (row: RowState, key: string) => {
+  const value = row.values[key];
+  return value !== undefined && value !== "";
+};
+
+export type RowVerdict = "unfinished" | "partial" | "ready";
+
 /**
- * Is this row safe to commit on its own?
+ * How far has this row got?
  *
- * Three things have to be true, and the last is the one that matters:
+ *   unfinished — nothing typed, or something typed is invalid or half-typed.
+ *                Goes nowhere and counts as nothing. A row she opened and left
+ *                alone is not an answer, and committing it would tell the
+ *                office it had been checked when nobody looked. A fixed-length
+ *                field with four of ten digits is not invalid yet — it is
+ *                unfinished — and a timer must never decide that an unfinished
+ *                number is her answer.
+ *   partial    — everything she typed is settled, but `required` is not
+ *                covered. Send what she typed; never call it done.
+ *   ready      — settled and complete.
  *
- *   - she has actually entered something. A row she opened and left alone is
- *     not an answer, and committing it would tell the office it had been
- *     checked when nobody looked.
- *   - every value she HAS entered validates.
- *   - nothing is half-typed. A fixed-length field with four of ten digits is
- *     not invalid yet — it is unfinished — and a timer must never decide that
- *     an unfinished number is her answer.
+ * `required` is the list from requiredKeys() in types.ts: the fields the school
+ * holds nothing for, precomputed by the caller. Taking the keys rather than the
+ * roster row keeps this a pure function over two plain arrays, and a rule that
+ * can be tested without a DOM is a rule that gets tested.
+ *
+ * It DEFAULTS TO EMPTY, and that default is not laziness — it is the old rule,
+ * which is still the right one for a row where the school already holds
+ * everything. Untouched there means "unchanged, still right". Making the
+ * argument mandatory would turn every untouched verify field into a hole, which
+ * is the opposite failure and a louder one.
  */
-export function rowReady(fields: TeacherField[], row: RowState): boolean {
-  const entered = fields.filter((field) => {
-    const value = row.values[field.key];
-    return value !== undefined && value !== "";
-  });
+export function judgeRow(
+  fields: TeacherField[],
+  row: RowState,
+  required: string[] = [],
+): RowVerdict {
+  const entered = fields.filter((field) => filled(row, field.key));
+  if (entered.length === 0) return "unfinished";
 
-  if (entered.length === 0) return false;
-
-  return entered.every((field) => {
+  for (const field of entered) {
     const value = row.values[field.key]!;
     if (field.exactLen && value.replace(/\D/g, "").length < field.exactLen) {
-      return false;
+      return "unfinished";
     }
-    return validateField(field, value).ok;
-  });
+    if (!validateField(field, value).ok) return "unfinished";
+  }
+
+  return required.every((key) => filled(row, key)) ? "ready" : "partial";
+}
+
+/** Settled and complete — every hole filled. */
+export function rowReady(
+  fields: TeacherField[],
+  row: RowState,
+  required: string[] = [],
+): boolean {
+  return judgeRow(fields, row, required) === "ready";
+}
+
+/** Settled, sendable, and still missing something the school asked for. */
+export function rowPartial(
+  fields: TeacherField[],
+  row: RowState,
+  required: string[] = [],
+): boolean {
+  return judgeRow(fields, row, required) === "partial";
+}
+
+/** The holes still open. Drives the highlight and the "2 में से 1 भरा" line. */
+export function missingRequired(row: RowState, required: string[]): string[] {
+  return required.filter((key) => !filled(row, key));
 }
 
 /** Whether anything at all has been typed into this row. */
@@ -67,10 +111,14 @@ export function rowTouched(row: RowState): boolean {
 /**
  * Which students belong in the next upload.
  *
- * Answered, not already acknowledged by the server, and not part of the request
- * currently in the air. Excluding the in-flight ones is what stops a row she
- * corrects mid-upload from being written under a key that has already been used
- * for it — see the idempotency note in RequestForm.
+ * Uploadable, not already acknowledged by the server, and not part of the
+ * request currently in the air. Excluding the in-flight ones is what stops a row
+ * she corrects mid-upload from being written under a key that has already been
+ * used for it — see the idempotency note in RequestForm.
+ *
+ * UPLOADABLE and not COMPLETE: a partial row is not done, but it is not nothing
+ * either, and a real phone number should not sit on the phone waiting for a
+ * second box she may fill tomorrow.
  */
 export function pickBatch(
   order: { studentId: string }[],
@@ -84,7 +132,7 @@ export function pickBatch(
       const row = rows[id];
       if (!row) return false;
       return (
-        ANSWERED.includes(row.status) &&
+        UPLOADABLE.includes(row.status) &&
         !sentIds.has(id) &&
         !inFlight.has(id)
       );
