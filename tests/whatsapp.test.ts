@@ -125,3 +125,36 @@ describe("buildWhatsAppLink", () => {
     assert.ok(link.includes("a%26b%0Ac"));
   });
 });
+
+describe("the link carries the recipient, not just the text", () => {
+  /**
+   * The office reported sending as "it just copies the text". The cause was the
+   * OS share sheet: navigator.share takes `{ text }` and has no field for WHO,
+   * so it handed over the message and asked her to find the teacher herself —
+   * forty times in a marks round, with the number sitting right there on the
+   * teacher's row. Every send surface is a wa.me link now, and these assert the
+   * two halves that makes it work.
+   */
+  it("puts the number in the path, so WhatsApp opens on her chat", () => {
+    const link = buildWhatsAppLink("9876543210", "नमस्ते");
+    assert.equal(new URL(link).pathname, "/919876543210");
+  });
+
+  it("carries the whole Hindi body, newlines and all", () => {
+    const message = buildRequestMessage({
+      ...base,
+      audience: { kind: "class", label: "Class 8" },
+    });
+    const link = buildWhatsAppLink("9876543210", message);
+    assert.equal(new URL(link).searchParams.get("text"), message);
+  });
+
+  it("still opens the contact picker when no number is saved", () => {
+    // Should not happen — the fan-out blocks a group whose teacher has none —
+    // but a link with an empty path is WhatsApp's own picker with the message
+    // attached, which beats a dead button.
+    const link = buildWhatsAppLink("", "hello");
+    assert.equal(new URL(link).pathname, "/");
+    assert.equal(new URL(link).searchParams.get("text"), "hello");
+  });
+});

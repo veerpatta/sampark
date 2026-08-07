@@ -6,8 +6,6 @@ import {
   buildReminderMessage,
   buildWhatsAppLink,
 } from "@/lib/whatsapp";
-import { useToast } from "@/components/ui/Toast";
-import { shareOrWhatsApp } from "@/components/ui/share";
 
 /**
  * "8 of 11 classes submitted", readable at a glance on a phone.
@@ -59,7 +57,6 @@ const TONE: Record<Tone, { label: string; pill: string; bar: string; rail: strin
   },
 };
 export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
-  const toast = useToast();
   const today = new Date().toISOString().slice(0, 10);
 
   // One row per group: the newest open request for it. Keyed by kind as well as
@@ -103,26 +100,33 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
         b.studentsAnswered / (b.rosterSize || 1);
     });
 
-  async function remind(request: RequestBoardRow) {
-    const url = `${window.location.origin}/r/${request.token}`;
-    const message = buildReminderMessage({
-      teacherName: request.teacher,
-      audience: {
-        kind: request.audienceKind,
-        label: request.audienceLabel,
-        fieldKeys: request.fieldKeys,
-      },
-      title: request.title,
-      dueDate: request.dueDate,
-      url,
-    });
-    const outcome = await shareOrWhatsApp({
-      message,
-      waUrl: buildWhatsAppLink(request.teacherPhone, message),
-    });
-    if (outcome === "shared") {
-      toast({ message: `Reminded ${request.teacher}.`, tone: "success" });
-    }
+  /**
+   * The nudge, addressed to her.
+   *
+   * A real link rather than a handler, so the tap goes straight to that
+   * teacher's WhatsApp chat. It used to open the OS share sheet, which carries
+   * text and no recipient — one tap became "now find Gourisha in your
+   * contacts", eleven times down an overdue list.
+   *
+   * `origin` comes from the window because this is a client component and the
+   * board is rendered for whatever host the office is actually on.
+   */
+  function remindHref(request: RequestBoardRow) {
+    const origin = typeof window === "undefined" ? "" : window.location.origin;
+    return buildWhatsAppLink(
+      request.teacherPhone,
+      buildReminderMessage({
+        teacherName: request.teacher,
+        audience: {
+          kind: request.audienceKind,
+          label: request.audienceLabel,
+          fieldKeys: request.fieldKeys,
+        },
+        title: request.title,
+        dueDate: request.dueDate,
+        url: `${origin}/r/${request.token}`,
+      }),
+    );
   }
 
   return (
@@ -184,13 +188,14 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
                     </span>
                   </div>
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => void remind(request)}
-                  className="min-h-[var(--tap-min)] shrink-0 rounded-lg border border-[var(--color-border)] px-3 text-sm font-medium transition-transform active:scale-[0.98]"
+                <a
+                  href={remindHref(request)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="flex min-h-[var(--tap-min)] shrink-0 items-center rounded-lg border border-[var(--color-border)] px-3 text-sm font-medium transition-transform active:scale-[0.98]"
                 >
                   Remind
-                </button>
+                </a>
               </li>
             );
           })}

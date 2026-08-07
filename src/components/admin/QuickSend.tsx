@@ -6,12 +6,11 @@ import { useRouter } from "next/navigation";
 import type { Template } from "@/lib/templates";
 import {
   buildRequestMessage,
-  buildWhatsAppLink,
 } from "@/lib/whatsapp";
 import { chooseTeacherForClass, type TeacherLike } from "@/lib/teachers";
 import { hasPhone } from "@/lib/phone";
 import { useToast } from "@/components/ui/Toast";
-import { shareOrWhatsApp } from "@/components/ui/share";
+import { openWhatsApp } from "@/components/ui/share";
 
 type ClassOption = { label: string; students: number };
 type TeacherOption = TeacherLike & { phone: string };
@@ -100,18 +99,20 @@ export function QuickSend({
         url,
       });
 
-      const outcome = await shareOrWhatsApp({
-        message,
-        waUrl: buildWhatsAppLink(teacher.phone, message),
-      });
+      // Straight to her chat. The only call site that cannot be a plain <a>:
+      // the token does not exist until the POST above returns, so there is no
+      // href to render. If the browser blocks the tab because the tap is no
+      // longer "recent" we leave this page for WhatsApp instead, and the
+      // request is already created either way.
+      const outcome = openWhatsApp({ phone: teacher.phone, message });
 
-      if (outcome === "cancelled") {
-        toast({
-          message: `Request created for ${classLabel} but not sent yet.`,
-          undoLabel: "Open it",
-          undo: () => router.push(`/requests/${payload.id}`),
-        });
-      }
+      if (outcome === "navigated") return;
+
+      toast({
+        message: `Sent to ${teacher.name} for ${classLabel}.`,
+        undoLabel: "Open it",
+        undo: () => router.push(`/requests/${payload.id}`),
+      });
       router.refresh();
       setTemplate(null);
       setClassLabel("");

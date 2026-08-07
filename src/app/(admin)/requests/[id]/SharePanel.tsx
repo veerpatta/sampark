@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { shareOrWhatsApp } from "@/components/ui/share";
-import { useToast } from "@/components/ui/Toast";
 
 /**
  * The share panel.
@@ -32,7 +30,6 @@ export function SharePanel({
   reminder: boolean;
 }) {
   const [copied, setCopied] = useState<"link" | "message" | null>(null);
-  const toast = useToast();
 
   async function copy(text: string, which: "link" | "message") {
     try {
@@ -83,30 +80,18 @@ export function SharePanel({
         {message}
       </pre>
 
-      {/* Share sheet first: on Android it puts WhatsApp one tap away with the
-          Hindi body already in it, and she picks the contact in an interface
-          she uses all day. The wa.me link stays as the second option and as
-          the whole story on a desktop. */}
+      {/* One button, and it goes to HER chat. There used to be a "Share" above
+          this that opened the OS share sheet — which takes text and no
+          recipient, so it handed over the message and asked the office to find
+          the teacher herself, when her number is right there in the link. */}
       <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={async () => {
-            const outcome = await shareOrWhatsApp({ message, waUrl: whatsappUrl });
-            if (outcome === "shared") {
-              toast({ message: `Sent to ${teacherName}.`, tone: "success" });
-            }
-          }}
-          className="min-h-[var(--tap-min)] flex-1 rounded-lg bg-[var(--color-success)] px-3 text-sm font-medium text-white transition-transform active:scale-[0.98] hover:opacity-90 sm:flex-none"
-        >
-          Share
-        </button>
         <a
           href={whatsappUrl}
           target="_blank"
           rel="noreferrer noopener"
-          className="flex min-h-[var(--tap-min)] items-center rounded-lg border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
+          className="flex min-h-[var(--tap-min)] flex-1 items-center justify-center rounded-lg bg-[var(--color-success)] px-3 text-sm font-medium text-white transition-transform active:scale-[0.98] hover:opacity-90 sm:flex-none"
         >
-          Open in WhatsApp
+          Send on WhatsApp
         </a>
         <button
           type="button"

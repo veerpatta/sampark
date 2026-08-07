@@ -3,7 +3,7 @@
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { buildRequestMessage, buildWhatsAppLink } from "@/lib/whatsapp";
-import { shareOrWhatsApp } from "@/components/ui/share";
+
 import { useToast } from "@/components/ui/Toast";
 import { resume, setSent } from "./actions";
 
@@ -66,28 +66,32 @@ export function SendQueue({
   // The one she should do next: highlighted so the queue reads as a queue.
   const next = rows.find((row) => !row.sent);
 
-  async function handOver(link: QueueLink) {
-    const message = buildRequestMessage({
-      teacherName: link.teacherName,
-      audience: {
-        kind: link.audienceKind,
-        label: link.audienceLabel,
-        fieldKeys: link.fieldKeys,
-      },
-      title,
-      dueDate,
-      url: `${origin}/r/${link.token}`,
-    });
+  /**
+   * The link WhatsApp opens for one row: that teacher's chat, message ready.
+   *
+   * Built at render so the button can be a real anchor. A browser never blocks
+   * a genuine link, this page stays alive to record the tick, and — the point —
+   * it goes to HER number rather than to a share sheet that has no idea who
+   * she is.
+   */
+  function chatHref(link: QueueLink) {
+    return buildWhatsAppLink(
+      link.teacherPhone,
+      buildRequestMessage({
+        teacherName: link.teacherName,
+        audience: {
+          kind: link.audienceKind,
+          label: link.audienceLabel,
+          fieldKeys: link.fieldKeys,
+        },
+        title,
+        dueDate,
+        url: `${origin}/r/${link.token}`,
+      }),
+    );
+  }
 
-    const outcome = await shareOrWhatsApp({
-      message,
-      waUrl: buildWhatsAppLink(link.teacherPhone, message),
-    });
-
-    // Cancelled means she backed out of the share sheet without sending. Mark
-    // nothing — a tick she did not earn is worse than no tick.
-    if (outcome === "cancelled") return;
-
+  function handOver(link: QueueLink) {
     startTransition(async () => {
       markOptimistic({ requestId: link.requestId, sent: true });
       await setSent(link.requestId, batchId, true);
@@ -191,17 +195,19 @@ export function SendQueue({
                     ✓ sent
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => void handOver(link)}
-                    className={`min-h-[var(--tap-min)] shrink-0 rounded-lg px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] ${
+                  <a
+                    href={chatHref(link)}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    onClick={() => handOver(link)}
+                    className={`flex min-h-[var(--tap-min)] shrink-0 items-center rounded-lg px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] ${
                       isNext
                         ? "bg-[var(--color-success)]"
                         : "bg-[var(--color-brand-600)]"
                     }`}
                   >
                     Send
-                  </button>
+                  </a>
                 )}
               </div>
             </li>
