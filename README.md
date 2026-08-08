@@ -22,7 +22,7 @@ agent, start from **[PROMPTS.md](./PROMPTS.md)**.
 
 - **No login for teachers.** A tokenised link opened from WhatsApp is the entire
   onboarding.
-- **Scoped links.** One link opens exactly one class and exactly the fields
+- **Scoped links.** A request link opens exactly one group and exactly the fields
   requested.
 - **Nothing overwrites master silently.** Every submission is a *proposed*
   change in a review queue.
@@ -247,9 +247,31 @@ Plan section 5 offers an optional 4-digit PIN on `/r/*`. It was removed on
 request, so a link is now a pure bearer token. The plan's threat model already
 accepted forwarding as proportionate — the same teacher carries a paper register
 with the same data — and what remains is the short expiry, the three-day grace
-cut-off, **close/reopen**, and the fact that no link reaches more than one
-class. Closing a request is now the fastest way to kill a link that has gone
+cut-off, **close/reopen**, and the fact that a request link reaches only one
+group. Closing a request is now the fastest way to kill a link that has gone
 somewhere it should not. Worth revisiting before an Aadhaar collection round.
+
+### The durable teacher link
+
+`/t/<token>` is a page listing whatever is currently open for one teacher. It
+exists so a marks round costs no WhatsApp messages at all: she saves the link
+once and the next round simply appears on it.
+
+It is the one place a token reaches more than one group, so:
+
+- **Revocation is nulling the column.** There is no `revoked_at` — a second
+  column somebody has to remember to check is a link that outlives its own kill
+  switch. Rotating overwrites it in the same UPDATE, so the old URL dies the
+  instant the new one is born.
+- **Revoke-all in Settings → Teachers is the global switch**, not an
+  environment variable: env changes need a redeploy, and a kill switch whose
+  latency is a build is not one. Afterwards, sends fall back to the grouped
+  queue — one message per teacher — which is why that path is never removed.
+- **`NEVER_ON_TEACHER_PAGE`** in `lib/auth/token.ts` keeps Aadhaar, Jan Aadhaar
+  and date-of-birth rounds off every durable page. Nothing to remember and
+  nothing to tick.
+- **The service worker deliberately does not cache `/t/`.** A cached copy would
+  survive revocation and keep handing out working request links from disk.
 
 ### Backups
 

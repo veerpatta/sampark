@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "../db";
 import { compareStudentNames } from "../classes";
 import type { RosterSnapshot } from "../snapshots";
@@ -15,8 +15,13 @@ import type { FieldDef } from "../../../drizzle/schema";
  * file is the expensive kind. It gets tests (Phase 6) and it gets reviewed
  * carefully. See SAMPARK_BUILD_PLAN.md sections 3 and 5.
  *
- * A token resolves to exactly one request -> one class -> one field set.
- * There is no menu, no navigation, and no way to reach another class.
+ * A REQUEST token resolves to exactly one request -> one group -> one field
+ * set. There is no navigation past it and no way to reach another group.
+ *
+ * A TEACHER token resolves to a list of that one teacher's currently-open
+ * requests and to nothing else — a menu of her own work. Every entry on it is
+ * re-checked by checkRequestAccess, the same predicate a request token goes
+ * through. Neither kind can reach another teacher's requests.
  */
 
 /** Grace period after due_date during which a link still opens. */
@@ -200,5 +205,172 @@ export async function resolveToken(
         };
       })
       .sort((a, b) => compareStudentNames(a.name, b.name)),
+  };
+}
+
+/* ========================================================================== */
+/*                        THE DURABLE TEACHER LINK                            */
+/* ========================================================================== */
+
+/**
+ * Fields a durable menu must never advertise.
+ *
+ * A round asking for these is exactly the round the plan flags as needing more
+ * than a bearer token — "worth revisiting before an Aadhaar collection round".
+ * Its own /r/ link still works and the office still hands it over one message
+ * at a time; it simply never appears on a page that outlives the round.
+ *
+ * A SET IN CODE, not a column and not an office decision at send time. A
+ * checkbox someone forgets to tick is a checkbox that has already failed.
+ */
+const NEVER_ON_TEACHER_PAGE = new Set(["aadhaar", "jan_aadhaar", "dob"]);
+
+/** Pure, so the rule can be tested without a database. */
+export function isListableOnTeacherPage(fieldKeys: string[]): boolean {
+  return !fieldKeys.some((key) => NEVER_ON_TEACHER_PAGE.has(key));
+}
+
+/** One row on her durable page. A summary — the roster stays behind /r/. */
+export type TeacherPageItem = {
+  /** The per-request token. Tapping goes to /r/<token>, entirely unchanged. */
+  token: string;
+  title: string;
+  audienceKind: string;
+  audienceLabel: string;
+  fieldKeys: string[];
+  period: string | null;
+  dueDate: string;
+  rosterSize: number;
+  /** How many of that roster she has already answered for. */
+  answered: number;
+};
+
+export type ResolvedTeacherPage = {
+  teacherName: string;
+  items: TeacherPageItem[];
+};
+
+/** The IST calendar date `days` before `now`, as YYYY-MM-DD. */
+function isoDaysBefore(now: Date, days: number): string {
+  const shifted = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(
+    shifted,
+  );
+}
+
+/**
+ * Resolve a durable teacher token to whatever is currently open for her.
+ *
+ * Returns null for EVERY rejection — malformed, unknown, revoked, teacher
+ * deactivated — exactly as resolveToken does, and the caller renders the same
+ * 404. Nothing here may distinguish them.
+ *
+ * IT DOES NOT RETURN NULL FOR "SHE HAS NOTHING OPEN", and that is the one place
+ * this deliberately differs. With resolveToken, "no such token" and "nothing
+ * here" are the same fact about one request. Here they are different facts, and
+ * 404-ing a teacher on a quiet week would teach her that her saved link is
+ * broken — after which the whole point of the durable link is gone. It leaks
+ * nothing: reaching a 200 already requires holding a live 16-character token.
+ *
+ * EVERY ACCEPT AND REJECT IS checkRequestAccess. The SQL below narrows only on
+ * things authorization does not depend on — whose requests they are, whether
+ * the office is still watching them, and a deliberately LOOSE date floor that
+ * can only ever admit rows the pure predicate then re-checks.
+ */
+export async function resolveTeacherToken(
+  token: string,
+  now: Date = new Date(),
+): Promise<ResolvedTeacherPage | null> {
+  // The same shape guard as resolveToken, before any query runs.
+  if (!/^[A-Za-z0-9_-]{16}$/.test(token)) return null;
+
+  const [teacher] = await db
+    .select({
+      id: schema.teachers.id,
+      name: schema.teachers.name,
+      active: schema.teachers.active,
+    })
+    .from(schema.teachers)
+    .where(eq(schema.teachers.linkToken, token))
+    .limit(1);
+
+  // A revoked link is a NULL column, so it cannot match a 16-character token
+  // and we never reach here. An inactive teacher can, and is refused the same.
+  if (!teacher || !teacher.active) return null;
+
+  const rows = await db
+    .select({
+      id: schema.requests.id,
+      token: schema.requests.token,
+      title: schema.requests.title,
+      audienceKind: schema.requests.audienceKind,
+      audienceLabel: schema.requests.audienceLabel,
+      fieldKeys: schema.requests.fieldKeys,
+      period: schema.requests.period,
+      dueDate: schema.requests.dueDate,
+      status: schema.requests.status,
+    })
+    .from(schema.requests)
+    .where(
+      and(
+        eq(schema.requests.teacherId, teacher.id),
+        // Archived means the office has stopped looking at it. Its own /r/ link
+        // still opens — that is unchanged — but a MENU should only offer what
+        // somebody is still watching. This page is stricter than /r/ on purpose.
+        isNull(schema.requests.archivedAt),
+        // A LOOSE floor, and the direction matters. checkRequestAccess accepts
+        // until dueDate 23:59:59 IST + GRACE_DAYS; taking an extra day here
+        // guarantees this filter can only admit rows the pure predicate then
+        // re-checks, never reject one it would have accepted. Tighten it and an
+        // authorization decision has quietly moved into SQL.
+        gte(schema.requests.dueDate, isoDaysBefore(now, GRACE_DAYS + 1)),
+      ),
+    )
+    .orderBy(asc(schema.requests.dueDate), asc(schema.requests.createdAt));
+
+  const open = rows.filter(
+    (row) =>
+      checkRequestAccess({ status: row.status, dueDate: row.dueDate }, now).ok &&
+      isListableOnTeacherPage(row.fieldKeys),
+  );
+
+  if (open.length === 0) return { teacherName: teacher.name, items: [] };
+
+  const ids = open.map((row) => row.id);
+  const [sizes, answered] = await Promise.all([
+    db
+      .select({
+        requestId: schema.requestStudents.requestId,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(schema.requestStudents)
+      .where(inArray(schema.requestStudents.requestId, ids))
+      .groupBy(schema.requestStudents.requestId),
+    db
+      .select({
+        requestId: schema.submissions.requestId,
+        n: sql<number>`count(distinct ${schema.submissions.studentId})::int`,
+      })
+      .from(schema.submissions)
+      .where(inArray(schema.submissions.requestId, ids))
+      .groupBy(schema.submissions.requestId),
+  ]);
+
+  const sizeBy = new Map(sizes.map((row) => [row.requestId, row.n]));
+  const answeredBy = new Map(answered.map((row) => [row.requestId, row.n]));
+
+  return {
+    teacherName: teacher.name,
+    items: open.map((row) => ({
+      token: row.token,
+      title: row.title,
+      audienceKind: row.audienceKind,
+      audienceLabel: row.audienceLabel,
+      fieldKeys: row.fieldKeys,
+      period: row.period,
+      dueDate: row.dueDate,
+      rosterSize: sizeBy.get(row.id) ?? 0,
+      answered: answeredBy.get(row.id) ?? 0,
+    })),
   };
 }

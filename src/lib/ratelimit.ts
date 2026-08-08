@@ -66,6 +66,20 @@ export function limitByToken(token: string): Promise<RateLimitResult> {
   return hit(`token:${token}`, limit, windowMs);
 }
 
+/**
+ * A SEPARATE BUCKET NAMESPACE from limitByToken.
+ *
+ * A request token and a teacher link token are different credentials living in
+ * different columns. Sharing the `token:` prefix would let a burst against one
+ * spend the other's budget — and worse, would let somebody probing request
+ * tokens lock a teacher out of her own page. Same 30/min; only the prefix
+ * differs.
+ */
+export function limitByTeacherToken(token: string): Promise<RateLimitResult> {
+  const { limit, windowMs } = LIMITS.perToken;
+  return hit(`tlink:${token}`, limit, windowMs);
+}
+
 export function limitByIp(ip: string): Promise<RateLimitResult> {
   const { limit, windowMs } = LIMITS.perIp;
   return hit(`ip:${ip}`, limit, windowMs);

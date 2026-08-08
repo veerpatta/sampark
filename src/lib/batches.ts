@@ -572,8 +572,14 @@ export type BatchLink = {
   audienceLabel: string;
   /** What this one link asks for. A subject link asks for exactly one. */
   fieldKeys: string[];
+  teacherId: string;
   teacherName: string;
+  /** Where it is going: her saved number, or the per-request override. */
   teacherPhone: string;
+  /** Set only when the office overrode the number for THIS request. */
+  contactPhone: string | null;
+  /** Her durable page, when she has one. Rides along with the round's message. */
+  teacherLinkToken: string | null;
   rosterSize: number;
   sentAt: Date | null;
 };
@@ -601,8 +607,14 @@ export async function getBatch(batchId: string): Promise<BatchDetail | null> {
       audienceKind: schema.requests.audienceKind,
       audienceLabel: schema.requests.audienceLabel,
       fieldKeys: schema.requests.fieldKeys,
+      teacherId: schema.requests.teacherId,
       teacherName: schema.teachers.name,
       teacherPhone: sql<string>`coalesce(nullif(${schema.requests.contactPhone}, ''), ${schema.teachers.phone})`,
+      // Kept SEPARATE from the coalesced number above. The send queue groups by
+      // recipient, and an overridden link must not merge into her saved-number
+      // card — that would send it to the wrong phone.
+      contactPhone: schema.requests.contactPhone,
+      teacherLinkToken: schema.teachers.linkToken,
       sentAt: schema.requests.sentAt,
       createdAt: schema.requests.createdAt,
     })
@@ -619,8 +631,11 @@ export async function getBatch(batchId: string): Promise<BatchDetail | null> {
     audienceKind: row.audienceKind,
     audienceLabel: row.audienceLabel,
     fieldKeys: row.fieldKeys,
+    teacherId: row.teacherId,
     teacherName: row.teacherName,
     teacherPhone: row.teacherPhone,
+    contactPhone: row.contactPhone,
+    teacherLinkToken: row.teacherLinkToken,
     rosterSize: sizes.get(row.requestId) ?? 0,
     sentAt: row.sentAt,
   }));
@@ -666,6 +681,32 @@ export async function markSent(
         : { sentAt: null, sentBy: null },
     )
     .where(eq(schema.requests.id, requestId));
+}
+
+/**
+ * Tick — or untick — every link the office handed over in ONE message.
+ *
+ * The grouped queue sends a teacher all of her links at once, so all of them
+ * are equally sent; ticking one and not the others would be a state the message
+ * itself cannot produce. Reversible for the same reason the single tick is.
+ *
+ * One statement rather than N, because a teacher with three links should not
+ * cost three round trips to acknowledge.
+ */
+export async function markGroupSent(
+  requestIds: string[],
+  userId: string,
+  sent: boolean,
+): Promise<void> {
+  if (requestIds.length === 0) return;
+  await db
+    .update(schema.requests)
+    .set(
+      sent
+        ? { sentAt: new Date(), sentBy: userId }
+        : { sentAt: null, sentBy: null },
+    )
+    .where(inArray(schema.requests.id, requestIds));
 }
 
 /** Batches for the board, newest first, with how far each has been sent. */

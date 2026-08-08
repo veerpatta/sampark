@@ -113,6 +113,12 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
    */
   function remindHref(request: RequestBoardRow) {
     const origin = typeof window === "undefined" ? "" : window.location.origin;
+    // Her durable page when she has one, the single request otherwise. A nudge
+    // is exactly the moment to reinforce the page she should be checking, and
+    // it means the office never has to think about which link to send.
+    const url = request.teacherLinkToken
+      ? `${origin}/t/${request.teacherLinkToken}`
+      : `${origin}/r/${request.token}`;
     return buildWhatsAppLink(
       request.teacherPhone,
       buildReminderMessage({
@@ -124,7 +130,7 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
         },
         title: request.title,
         dueDate: request.dueDate,
-        url: `${origin}/r/${request.token}`,
+        url,
       }),
     );
   }

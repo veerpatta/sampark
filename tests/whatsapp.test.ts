@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   buildReminderMessage,
   buildRequestMessage,
+  buildRoundMessage,
   buildWhatsAppLink,
   describeAudienceHi,
+  describeAudienceLineHi,
 } from "../src/lib/whatsapp";
 
 /**
@@ -156,5 +158,128 @@ describe("the link carries the recipient, not just the text", () => {
     const link = buildWhatsAppLink("", "hello");
     assert.equal(new URL(link).pathname, "/");
     assert.equal(new URL(link).searchParams.get("text"), "hello");
+  });
+});
+
+describe("buildRoundMessage", () => {
+  /**
+   * One message carrying everything a teacher has to do this round.
+   *
+   * A marks round is thirty-eight links across sixteen teachers. This is what
+   * makes it sixteen conversations — but thirteen of those teachers have a
+   * single link and must not notice anything changed.
+   */
+  const one = { audience: { kind: "class" as const, label: "Class 8" }, url: "https://x.invalid/r/a" };
+
+  it("delegates to buildRequestMessage, byte for byte, for a single link", () => {
+    // The compatibility contract. If this breaks, most of the staff receive a
+    // message shape nobody reviewed.
+    assert.equal(
+      buildRoundMessage({
+        teacherName: "Sunita",
+        title: "फ़ोन नंबर",
+        dueDate: "2026-08-20",
+        links: [one],
+      }),
+      buildRequestMessage({ ...base, audience: one.audience, url: one.url }),
+    );
+  });
+
+  it("carries every URL when there are several", () => {
+    const message = buildRoundMessage({
+      teacherName: "Prateek",
+      title: "FA-1 अंक",
+      dueDate: "2026-08-20",
+      links: [
+        { audience: { kind: "subject", label: "Maths — Prateek", fieldKeys: ["fa_maths"] }, url: "https://x.invalid/r/a" },
+        { audience: { kind: "subject", label: "Physics — Prateek", fieldKeys: ["fa_physics"] }, url: "https://x.invalid/r/b" },
+        { audience: { kind: "subject", label: "Science — Prateek", fieldKeys: ["fa_science"] }, url: "https://x.invalid/r/c" },
+      ],
+    });
+
+    for (const url of ["https://x.invalid/r/a", "https://x.invalid/r/b", "https://x.invalid/r/c"]) {
+      assert.ok(message.includes(url), `${url} is missing`);
+    }
+    assert.ok(message.includes("गणित"));
+    assert.ok(message.includes("भौतिक विज्ञान"));
+    assert.ok(message.includes("विज्ञान"));
+    assert.ok(message.includes("1)") && message.includes("2)") && message.includes("3)"));
+  });
+
+  it("says the how-to ONCE, not per link", () => {
+    // The checkable form of "three links must not become a wall". Counted on
+    // the tail of the instruction, because the sentence itself legitimately
+    // says सही है twice — जो सही है उस पर "सही है" दबाएँ.
+    const message = buildRoundMessage({
+      teacherName: "Prateek",
+      title: "FA-1 अंक",
+      dueDate: "2026-08-20",
+      links: [
+        { audience: { kind: "class", label: "Class 8" }, url: "https://x.invalid/r/a" },
+        { audience: { kind: "class", label: "Class 9" }, url: "https://x.invalid/r/b" },
+      ],
+    });
+    assert.equal(message.split("दबाकर ठीक कर दें").length - 1, 1);
+  });
+
+  it("keeps Latin digits, like every other teacher-facing string", () => {
+    const message = buildRoundMessage({
+      teacherName: "Prateek",
+      title: "FA-1 अंक",
+      dueDate: "2026-08-20",
+      links: [
+        { audience: { kind: "class", label: "Class 8" }, url: "https://x.invalid/r/a" },
+        { audience: { kind: "class", label: "Class 9" }, url: "https://x.invalid/r/b" },
+      ],
+    });
+    assert.ok(!/[०-९]/.test(message), "Devanagari numerals reached a teacher");
+  });
+
+  it("appends her durable page only when there is one, and once", () => {
+    const withPage = buildRoundMessage({
+      teacherName: "Sunita",
+      title: "फ़ोन नंबर",
+      dueDate: "2026-08-20",
+      links: [one],
+      teacherPageUrl: "https://x.invalid/t/zzzz",
+    });
+    assert.equal(withPage.split("https://x.invalid/t/zzzz").length - 1, 1);
+    assert.ok(!buildRoundMessage({
+      teacherName: "Sunita", title: "फ़ोन नंबर", dueDate: "2026-08-20", links: [one],
+    }).includes("/t/"));
+  });
+
+  it("survives the round trip into a wa.me link", () => {
+    const message = buildRoundMessage({
+      teacherName: "Prateek",
+      title: "FA-1 अंक",
+      dueDate: "2026-08-20",
+      links: [
+        { audience: { kind: "subject", label: "Maths — Prateek", fieldKeys: ["fa_maths"] }, url: "https://x.invalid/r/a" },
+        { audience: { kind: "subject", label: "Physics — Prateek", fieldKeys: ["fa_physics"] }, url: "https://x.invalid/r/b" },
+      ],
+    });
+    const link = buildWhatsAppLink("9876543210", message);
+    assert.equal(new URL(link).searchParams.get("text"), message);
+  });
+});
+
+describe("describeAudienceLineHi", () => {
+  it("drops the qualifier a subject line does not need", () => {
+    // "(आपकी कक्षाएँ)" disambiguates a lone link; among three of hers it is
+    // three redundant words per line.
+    const audience = { kind: "subject", label: "Maths — X", fieldKeys: ["fa_maths"] };
+    assert.equal(describeAudienceLineHi(audience), "गणित");
+    assert.equal(describeAudienceHi(audience), "गणित (आपकी कक्षाएँ)");
+  });
+
+  it("is identical to describeAudienceHi for every other kind", () => {
+    for (const audience of [
+      { kind: "class", label: "Class 8" },
+      { kind: "house", label: "Rana Pratap" },
+      { kind: "route", label: "Amet City" },
+    ]) {
+      assert.equal(describeAudienceLineHi(audience), describeAudienceHi(audience));
+    }
   });
 });

@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { asc } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
@@ -6,6 +7,8 @@ import { CLASS_LABELS } from "@/lib/classes";
 import { HOUSES } from "@/lib/houses";
 import { BUS_ROUTES } from "@/lib/routes";
 import { saveTeacher, setTeacherActive } from "./actions";
+import { TeacherLinkPanel } from "./TeacherLinkPanel";
+import { RevokeAllLinks } from "./RevokeAllLinks";
 
 export const metadata = { title: "Teachers — Sampark" };
 export const dynamic = "force-dynamic";
@@ -35,6 +38,12 @@ export default async function TeachersPage() {
     .select()
     .from(schema.teachers)
     .orderBy(asc(schema.teachers.name));
+
+  // The host the office is actually on, so the link she copies is the link that
+  // works. Same approach as the batch send queue.
+  const host = (await headers()).get("host") ?? "";
+  const origin = `${host.startsWith("localhost") ? "http" : "https"}://${host}`;
+  const withLinks = teachers.filter((teacher) => teacher.linkToken).length;
 
   return (
     <div className="space-y-8">
@@ -156,6 +165,15 @@ export default async function TeachersPage() {
                     </button>
                   </form>
 
+                  <TeacherLinkPanel
+                    teacherId={teacher.id}
+                    teacherName={teacher.name}
+                    phone={teacher.phone}
+                    origin={origin}
+                    token={teacher.linkToken}
+                    issuedAt={teacher.linkIssuedAt}
+                  />
+
                   {/* Deactivate rather than delete: requests reference
                       teacher_id, and a teacher who left mid-year must not take
                       her class's request history with her. */}
@@ -182,6 +200,8 @@ export default async function TeachersPage() {
           ))}
         </ul>
       )}
+
+      <RevokeAllLinks count={withLinks} />
     </div>
   );
 }

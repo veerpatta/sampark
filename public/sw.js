@@ -52,6 +52,13 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // /r/ ONLY, and /t/ is excluded on purpose — do not "improve" this.
+  //
+  // networkFirst writes the page HTML into Cache Storage despite its no-store
+  // header, which is right for a roster she needs on a dead signal. A durable
+  // teacher page lists every request token she currently holds, so a cached
+  // copy would SURVIVE REVOCATION: nulling her link kills /t/, and the phone
+  // would still be handing out working /r/ URLs from disk.
   if (request.mode === "navigate" && url.pathname.startsWith("/r/")) {
     event.respondWith(networkFirst(request, PAGES));
   }

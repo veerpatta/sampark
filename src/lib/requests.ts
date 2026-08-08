@@ -443,6 +443,8 @@ export type RequestBoardRow = {
   teacherPhone: string;
   /** What this request asks for — names the subject in a subject link's message. */
   fieldKeys: string[];
+  /** Her durable page, when she has one. The nudge prefers it. */
+  teacherLinkToken: string | null;
   rosterSize: number;
   studentsAnswered: number;
   changesPending: number;
@@ -524,6 +526,7 @@ export async function listRequests(
       // number otherwise. One extra projection on a join that already exists.
       teacherPhone: sql<string>`coalesce(nullif(${schema.requests.contactPhone}, ''), ${schema.teachers.phone})`,
       fieldKeys: schema.requests.fieldKeys,
+      teacherLinkToken: schema.teachers.linkToken,
       archivedAt: schema.requests.archivedAt,
       createdAt: schema.requests.createdAt,
     })
@@ -593,6 +596,7 @@ export async function listRequests(
     token: row.token,
     teacherPhone: row.teacherPhone,
     fieldKeys: row.fieldKeys,
+    teacherLinkToken: row.teacherLinkToken,
     rosterSize: sizes.get(row.id) ?? 0,
     studentsAnswered: answers.get(row.id) ?? 0,
     changesPending: changes.get(row.id) ?? 0,

@@ -31,7 +31,7 @@ Sampark is a **collection and reconciliation layer** that sits beside PSP. PSP s
 | # | Principle | Why |
 |---|---|---|
 | 1 | **No login for teachers** | Passwords are the single biggest adoption killer. A tokenised link, opened from WhatsApp, is the entire onboarding. |
-| 2 | **Scoped links** | A link opens exactly one class and exactly the fields requested. No menu, no navigation, no way to see or damage anything else. |
+| 2 | **Scoped links** | A request link opens exactly one group and exactly the fields requested. A teacher's durable link is a menu of *her own* open requests and nothing else — no other teacher's work, no navigation past it, and nothing archived or closed. |
 | 3 | **Nothing overwrites master silently** | Every teacher submission is a *proposed change* in a review queue. Master data moves only on explicit approval. Same philosophy as the Fee App: append-only, corrections via review. |
 | 4 | **Student ID is the key** | Never match by name. Student ID first, SR number as fallback. |
 | 5 | **Validate at entry** | A 9-digit phone number or 30 marks out of 25 must be impossible to submit, not cleaned up later. |
@@ -291,7 +291,7 @@ Everything hinges on the token. Treat it as a bearer credential.
 | Control | Implementation |
 |---|---|
 | Token generation | `crypto.randomBytes(12).toString('base64url')` — 16 chars, ~96 bits |
-| Token scope | Resolves to exactly one `request` → one class → one field set. Enforced server-side in `lib/auth/token.ts` |
+| Token scope | A request token resolves to exactly one `request` → one group → one field set. A teacher token resolves to that one teacher's currently-open requests and nothing else. Both enforced server-side in `lib/auth/token.ts` |
 | Expiry | Rejected after `due_date + 3 days` grace, or once `status = 'closed'` |
 | Re-submission | Allowed until admin closes the request. Later submissions append; they never overwrite |
 | Optional PIN | Last 4 digits of the teacher's registered mobile. Off by default; on for Aadhaar/DOB collection |
@@ -304,7 +304,7 @@ Everything hinges on the token. Treat it as a bearer credential.
 | Admin session | Auth.js JWT session, 8-hour expiry, secure httpOnly cookie |
 | Approval rights | `office` role cannot approve into master. Only `admin` / `owner` |
 
-**Threat we accept:** a teacher forwards their link to someone else, who then sees that class's names and phone numbers. Mitigations are the short expiry, the optional PIN, and the fact that no link exposes more than one class. This is proportionate — the same teacher already has a paper register with the same data.
+**Threat we accept:** a teacher forwards a link. A request link (`/r/`) exposes one group's names and numbers; a durable teacher link (`/t/`) exposes the list of whatever is currently open for that one teacher, and through it those groups' rosters. It never reaches another teacher's work. This is proportionate for the same reason it always was — the same teacher already carries a paper register with the same data — but it is a larger blast radius than a single request link, and it is bounded by four things rather than by scope alone: `/r/` links still expire on `due_date + 3 days`; the durable link lists only what is open, so it shrinks to nothing between rounds; the owner can rotate one teacher's link or revoke every link from Settings, instantly and without a deploy; and a round collecting Aadhaar, Jan Aadhaar or date of birth never appears on a durable page at all — it goes out one message at a time, the way every round did before.
 
 **Threat we do not accept:** token enumeration. 96 bits of entropy plus rate limiting makes guessing infeasible.
 

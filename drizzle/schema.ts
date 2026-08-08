@@ -222,24 +222,51 @@ export const studentRecords = pgTable(
  * for the rule that turns these into a recipient, which is deliberately allowed
  * to answer "more than one" and "nobody" rather than guess.
  */
-export const teachers = pgTable("teachers", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  phone: text("phone").notNull(),
-  classes: text("classes")
-    .array()
-    .notNull()
-    .default(sql`'{}'`),
-  houses: text("houses")
-    .array()
-    .notNull()
-    .default(sql`'{}'`),
-  routes: text("routes")
-    .array()
-    .notNull()
-    .default(sql`'{}'`),
-  active: boolean("active").notNull().default(true),
-});
+export const teachers = pgTable(
+  "teachers",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    phone: text("phone").notNull(),
+    classes: text("classes")
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    houses: text("houses")
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    routes: text("routes")
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    active: boolean("active").notNull().default(true),
+    /**
+     * Her durable link, or NULL for a teacher who has none.
+     *
+     * Same shape and entropy as requests.token — 16 base64url characters from
+     * generateToken() — but a DIFFERENT NAMESPACE, resolved by a different
+     * column and a different function. Called link_token rather than token so
+     * no call site can read `teacher.token` and reach for resolveToken.
+     *
+     * THERE IS DELIBERATELY NO revoked_at. NULL is the revocation, and it is
+     * the only representation that cannot be got wrong: a revoked_at sitting
+     * beside a token that is still present means every future reader has to
+     * remember to check a second column, and the one that forgets is a link
+     * that outlived its own kill switch. Rotation overwrites this column in the
+     * same UPDATE, so there is no instant where the old and new URLs both work.
+     */
+    linkToken: text("link_token"),
+    /**
+     * When it was issued. NEVER READ BY THE RESOLVER — this column has no say
+     * in whether a link opens. It exists so the office screen can say "issued 3
+     * Aug", which is how somebody tells whether the link in front of her
+     * predates the last time everything was revoked.
+     */
+    linkIssuedAt: timestamp("link_issued_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("teachers_link_token_idx").on(t.linkToken)],
+);
 
 /**
  * Who teaches what, to which class.
