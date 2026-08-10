@@ -15,6 +15,7 @@ import { tick } from "./haptics";
 import { judgeRow, missingRequired, rowTouched } from "./autosave";
 import { COMPLETE, UPLOADABLE } from "./types";
 import { Bi } from "./Bi";
+import { TEACHER_INPUT, focusNext, keepInView, nextInput } from "./focus";
 import { PhotoField } from "./PhotoField";
 import { T } from "./strings";
 
@@ -344,20 +345,68 @@ export function StudentRow({
               // Auto-advance needs to know where to go next, and the row is the
               // only thing that knows the order.
               suggestion={suggestions[field.key] ?? null}
-              onFilled={() => {
-                const inputs = document.querySelectorAll<HTMLInputElement>(
-                  `#student-${CSS.escape(student.studentId)} input`,
-                );
-                const next = inputs[index + 1];
+              onFilled={(from) => {
+                /*
+                 * A fixed-length field just reached its length, so she is done
+                 * with it whether or not she says so. Carry the caret on.
+                 *
+                 * THE WALK IS OVER MARKED INPUTS, NOT OVER `input`. It used to
+                 * query every input inside the card, and a photo field's file
+                 * inputs are inputs — sr-only ones, so the moment a round asked
+                 * for a photograph as well as a number this focused something
+                 * invisible and the keyboard vanished mid-row.
+                 */
+                const next = nextInput(from);
+                const inThisRow =
+                  next?.closest("li")?.id ===
+                  `student-${student.studentId}`;
+
                 // Never jump onto a field she has already filled — she did not
                 // ask to revisit it, and moving the caret there loses her place.
-                if (next && next.value === "") {
+                if (next && inThisRow && next.value === "") {
                   next.focus();
+                  keepInView(next);
                   return;
                 }
-                // Nothing left to fill in this row, so there is nothing to wait
-                // for either. Commit it now rather than after the timer.
+
+                // Nothing left to type in this row, so there is nothing to wait
+                // for either. Commit it now rather than after the timer — and
+                // then carry on into the next child, because a class of
+                // forty-six is the same ten digits forty-six times and stopping
+                // to find the next box is the work this screen exists to remove.
                 onFilledLast();
+
+                /*
+                 * WHETHER TO MOVE ON IS READ, NOT PREDICTED.
+                 *
+                 * The obvious test — "is this row's verdict ready?" — is wrong,
+                 * and quietly: `verdict` was computed for the render that is
+                 * still on screen, so at this instant it describes the row as it
+                 * was BEFORE the digit that just landed. It says "unfinished"
+                 * for a row that has this moment become finished, and the caret
+                 * never moves.
+                 *
+                 * So wait for the re-render and look. A row that still has a box
+                 * in it is partial — a child whose number is in but whose
+                 * photograph is not — and she must be left standing in front of
+                 * it. A row with no box left has collapsed, and the next child
+                 * is where she was going anyway.
+                 *
+                 * A timeout and NOT requestAnimationFrame. rAF does not run
+                 * while the page is not painting, so a phone locked or switched
+                 * away from mid-row would hold the callback and then move her
+                 * caret whenever she came back — minutes later, into a child she
+                 * is no longer looking at.
+                 */
+                setTimeout(() => {
+                  const row = document.getElementById(
+                    `student-${student.studentId}`,
+                  );
+                  if (row?.querySelector(`[${TEACHER_INPUT}]`)) return;
+                  if (!next || !next.isConnected) return;
+                  next.focus();
+                  keepInView(next);
+                }, 0);
               }}
             />
             ),
@@ -592,7 +641,8 @@ function FieldInput({
   /** Last field in the row, so the keyboard offers Done rather than Next. */
   last: boolean;
   /** A fixed-length field just reached its length by growing. */
-  onFilled: () => void;
+  /** A fixed-length field grew into a complete value. Carries the box it happened in. */
+  onFilled: (from: HTMLInputElement) => void;
   /** What the row above answered for this field, when carrying down is safe. */
   suggestion: string | null;
   /** The row settled without this one, and the school holds nothing for it. */
@@ -611,6 +661,22 @@ function FieldInput({
     : missing
       ? "border-[var(--color-partial-border)]"
       : "border-[var(--color-border)]";
+
+  /*
+   * Enter moves on rather than doing nothing.
+   *
+   * preventDefault because the browser's own answer to Enter in a text field is
+   * to submit the form it is in, and on a page with no form that is silence —
+   * which is exactly what she was getting. `enterKeyHint` has been telling her
+   * the key says "next" for a while; this is the half that makes it true.
+   */
+  const onEnterGoNext = (
+    event: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
+  ) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    focusNext(event.currentTarget);
+  };
 
   const askFor = missing ? (
     <span className="mt-1 block text-sm font-medium text-[var(--color-partial-fg)]">
@@ -671,6 +737,9 @@ function FieldInput({
             value={value}
             onChange={(event) => onChange(event.target.value)}
             onBlur={() => setTouched(true)}
+            onFocus={(event) => keepInView(event.currentTarget)}
+            onKeyDown={onEnterGoNext}
+            {...{ [TEACHER_INPUT]: "" }}
             list={`options-${field.key}`}
             enterKeyHint={last ? "done" : "next"}
             autoComplete="off"
@@ -705,6 +774,9 @@ function FieldInput({
         <select
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          onFocus={(event) => keepInView(event.currentTarget)}
+          onKeyDown={onEnterGoNext}
+          {...{ [TEACHER_INPUT]: "" }}
           className={`mt-2 min-h-14 w-full rounded-lg border bg-white px-3 text-base outline-none transition-shadow focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] ${border}`}
         >
           {/* An <option> cannot hold two lines, so this one carries both
@@ -751,10 +823,13 @@ function FieldInput({
               next.length === field.exactLen &&
               next.length > value.length
             ) {
-              onFilled();
+              onFilled(event.currentTarget);
             }
           }}
           onBlur={() => setTouched(true)}
+          onFocus={(event) => keepInView(event.currentTarget)}
+          onKeyDown={onEnterGoNext}
+          {...{ [TEACHER_INPUT]: "" }}
           type={field.inputType === "date" ? "date" : "text"}
           inputMode={isNumeric ? "numeric" : "text"}
           enterKeyHint={last ? "done" : "next"}

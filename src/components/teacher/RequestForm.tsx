@@ -24,6 +24,7 @@ import {
 } from "./autosave";
 import { suggestForRow } from "./suggest";
 import { Bi } from "./Bi";
+import { watchKeyboard } from "./focus";
 import { PhotoProvider } from "./photo-context";
 import { T, type Phrase } from "./strings";
 import {
@@ -197,6 +198,16 @@ export function RequestForm({
     }
     setOnline(navigator.onLine);
   }, [token, roster]);
+
+  /*
+   * Keep the box she is typing into above the keyboard.
+   *
+   * Mounted once for the whole list rather than per field: the keyboard opens,
+   * changes height when she switches to the number pad, and the page reflows
+   * under it every time a row commits and collapses. A scroll fired on focus
+   * catches only the first of those. See components/teacher/focus.ts.
+   */
+  useEffect(() => watchKeyboard(), []);
 
   /* --------------------------------------------------- save as she types */
   //
