@@ -112,6 +112,33 @@ export function StudentRow({
   const touched = rowTouched(state);
   const missing = missingRequired(state, required);
   const verdict = judgeRow(fields, state, required);
+
+  /*
+   * WHAT A TAP ON THE CARD DOES.
+   *
+   * It used to do nothing. A closed row carried a caret at the far right and
+   * that 48px circle was the only way in — so a teacher tapped the child's
+   * name, got no response, and tapped again harder. On a list where every child
+   * is blank that is the entire interaction, and it read as a broken screen.
+   *
+   * The card is the target now, and the caret stays as the thing that says so.
+   * Only where there is exactly ONE sensible action, though:
+   *
+   *   blank and unanswered  -> open the inputs
+   *   already answered      -> reopen it
+   *
+   * A row the school HOLDS values for is deliberately left alone. Its two
+   * actions — Correct and Change — are equally valid, and a card-wide tap would
+   * have to guess between them; guessing "Correct" would file an answer nobody
+   * gave, and guessing "Change" would throw up a keyboard mid-scroll. Two named
+   * buttons filling the width are already the clearest thing on that card.
+   */
+  const cardAction =
+    state.status === "todo" && blank && !open
+      ? onEdit
+      : collapsed
+        ? onReopen
+        : null;
   const siblingField = fields.find(
     (field) =>
       field.exactLen === PHONE_LENGTH && !student.values[field.key],
@@ -143,7 +170,10 @@ export function StudentRow({
           : "border-[var(--color-border)] bg-[var(--color-surface)]"
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
+      <Header
+        action={cardAction}
+        label={`${collapsed ? T.lookAgain.en : T.fillDetails.en}: ${titleCaseName(student.name)}`}
+      >
         <div className="flex min-w-0 items-start gap-3">
           <span
             aria-hidden
@@ -216,18 +246,19 @@ export function StudentRow({
               <Bi t={T.missingCount(missing.length)} />
             </span>
           ) : null}
+          {/* Decoration now, not a control. It still says "this opens", which
+              is the job it was always doing; the tap target is the whole card
+              around it. Nesting a real button inside one is invalid anyway. */}
           {state.status === "todo" && blank && !open ? (
-            <button
-              type="button"
-              onClick={onEdit}
-              aria-label={`${T.fillDetails.en}: ${titleCaseName(student.name)}`}
-              className="flex h-12 w-12 items-center justify-center rounded-full text-[var(--color-brand-600)] transition-transform active:scale-[0.94]"
+            <span
+              aria-hidden
+              className="flex h-12 w-12 items-center justify-center rounded-full text-[var(--color-brand-600)]"
             >
-              <CaretRight aria-hidden size={24} weight="bold" />
-            </button>
+              <CaretRight size={24} weight="bold" />
+            </span>
           ) : null}
         </div>
-      </div>
+      </Header>
 
       {/* ------------------------------------------- what the school holds now */}
       {showStored ? (
@@ -413,6 +444,44 @@ export function StudentRow({
         </div>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * The child's name, badge and status — and, when there is one thing to do, the
+ * control that does it.
+ *
+ * A real <button> rather than an onClick on a div, so it is reachable by
+ * keyboard and announces itself, and so the press state comes for free. Where
+ * there is nothing unambiguous to do it stays a plain row and the named buttons
+ * below the card are the only targets. See cardAction above for which is which.
+ */
+function Header({
+  action,
+  label,
+  children,
+}: {
+  action: (() => void) | null;
+  label: string;
+  children: React.ReactNode;
+}) {
+  if (!action) {
+    return (
+      <div className="flex items-start justify-between gap-3">{children}</div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={action}
+      aria-label={label}
+      // `text-left` because a button centres its content by default and this
+      // one is a row of a checklist, not a label on a control.
+      className="flex w-full items-start justify-between gap-3 text-left transition-transform active:scale-[0.99]"
+    >
+      {children}
+    </button>
   );
 }
 
