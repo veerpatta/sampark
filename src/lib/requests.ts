@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import { generateToken } from "./auth/token";
 import {
+  compareClassLabels,
   compareStudentNames,
   isClassLabel,
   normaliseClassLabel,
@@ -776,4 +777,45 @@ export async function getRequestDetail(id: string) {
     rosterSize: roster.length,
     submissionCount: recorded[0]?.n ?? 0,
   };
+}
+
+/**
+ * Which classes each of these requests actually covers.
+ *
+ * A CLASS LINK ANSWERS THIS FROM ITS OWN LABEL. A subject link does not: one
+ * link per (teacher, subject) merges every class that teacher takes for it, so
+ * Hemlata's Chemistry link is one screen of eighty-four children drawn from
+ * three classes — and until this existed, neither the WhatsApp message nor the
+ * screen said so anywhere. She was asked to enter marks for eighty-four names
+ * with no way to tell which register any of them came from.
+ *
+ * Read from the FROZEN ROSTER rather than from the fan-out that built the link.
+ * The roster is what she will actually be shown; a class that has since moved a
+ * child cannot make the message disagree with the list under it.
+ */
+export async function classesByRequest(
+  ids: string[],
+): Promise<Map<string, string[]>> {
+  if (ids.length === 0) return new Map();
+
+  const rows = await db
+    .selectDistinct({
+      requestId: schema.requestStudents.requestId,
+      classLabel: schema.students.classLabel,
+    })
+    .from(schema.requestStudents)
+    .innerJoin(
+      schema.students,
+      eq(schema.students.id, schema.requestStudents.studentId),
+    )
+    .where(inArray(schema.requestStudents.requestId, ids));
+
+  const byRequest = new Map<string, string[]>();
+  for (const row of rows) {
+    const list = byRequest.get(row.requestId) ?? [];
+    list.push(row.classLabel);
+    byRequest.set(row.requestId, list);
+  }
+  for (const list of byRequest.values()) list.sort(compareClassLabels);
+  return byRequest;
 }

@@ -2,6 +2,7 @@
 
 import { CaretRight, CheckSquare, CloudCheck } from "@phosphor-icons/react";
 import { Bi } from "./Bi";
+import { useTyping } from "./focus";
 import { T } from "./strings";
 
 /**
@@ -30,9 +31,40 @@ export function ProgressRail({
 }) {
   const done = total - remaining;
   const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+  const typing = useTyping();
 
+  /*
+   * WHILE SHE IS TYPING THIS IS A THIN LINE AND NOTHING ELSE.
+   *
+   * The bar and the header were taking about a third of a 667px phone between
+   * them, and the third that hurts is this one: it sits directly above the
+   * keyboard, so the space it costs comes out of the two or three cards left
+   * visible between the two. Nothing on it can be used mid-word — the review
+   * button opens another screen, the counts are the same counts she can read on
+   * the cards — so while the keyboard is up it collapses to the progress line,
+   * which is the one thing worth a few pixels: how much is left.
+   *
+   * It comes straight back when she stops. See useTyping in focus.ts for why
+   * focus rather than a viewport measurement answers "is the keyboard up".
+   */
   return (
-    <div className="sticky bottom-0 z-20 -mx-4 mt-6 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-6px_20px_rgba(15,23,42,0.09)] backdrop-blur-sm">
+    <div className="sticky bottom-0 z-20 -mx-4 mt-6 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,0.09)] backdrop-blur-sm">
+      {typing ? (
+        <div
+          role="progressbar"
+          aria-valuenow={percent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={T.remainingShort(remaining).en}
+          className="h-1.5 overflow-hidden rounded-full bg-[var(--color-border)]"
+        >
+          <div
+            className="h-full rounded-full bg-[var(--color-brand-600)] transition-[width] duration-300 ease-out"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      ) : (
+      <>
       <div className="grid grid-cols-[0.72fr_1fr_1.25fr] items-start gap-3 text-sm">
         <div>
           <p
@@ -110,6 +142,8 @@ export function ProgressRail({
           <Bi t={T.offlineKeepGoing} />
         </p>
       ) : null}
+      </>
+      )}
     </div>
   );
 }

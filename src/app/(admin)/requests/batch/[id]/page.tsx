@@ -38,6 +38,7 @@ export default async function BatchPage({
       audienceKind: link.audienceKind,
       audienceLabel: link.audienceLabel,
       fieldKeys: link.fieldKeys,
+      classLabels: link.classLabels,
       teacherId: link.teacherId,
       teacherName: link.teacherName,
       teacherPhone: link.teacherPhone,

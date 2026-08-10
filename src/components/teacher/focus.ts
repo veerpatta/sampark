@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 /**
  * Where the caret goes next, and keeping it out from under the keyboard.
  *
@@ -120,4 +124,48 @@ export function watchKeyboard(): () => void {
 
   viewport.addEventListener("resize", onResize);
   return () => viewport.removeEventListener("resize", onResize);
+}
+
+/**
+ * Is she typing right now?
+ *
+ * WHICH IS THE SAME QUESTION AS "is the keyboard up", asked in the one way
+ * that does not need a heuristic. Measuring the viewport does not work here:
+ * the root layout sets `interactiveWidget: resizes-content`, so the layout
+ * viewport shrinks WITH the visual one and the difference the usual trick
+ * looks for is gone. Focus is the honest signal, and it is the thing actually
+ * being asked about — the bottom rail is useless while a keyboard covers it.
+ *
+ * `focusin` and `focusout` rather than focus/blur: those do not bubble, and the
+ * controls come and go as rows open and collapse under her.
+ *
+ * The viewport is watched as well, and not for belt and braces: a keyboard
+ * opening, closing or changing height resizes it, and that catches the cases
+ * focus alone does not — a phone that restores an already-focused field when
+ * she comes back to the tab, or a browser that defers focus events while the
+ * document is in the background. Both listeners ask the same question of the
+ * same source of truth, so a duplicate answer costs one no-op setState.
+ */
+export function useTyping(): boolean {
+  const [typing, setTyping] = useState(false);
+
+  useEffect(() => {
+    const check = () =>
+      setTyping(
+        document.activeElement instanceof HTMLElement &&
+          document.activeElement.hasAttribute(TEACHER_INPUT),
+      );
+
+    document.addEventListener("focusin", check);
+    document.addEventListener("focusout", check);
+    window.visualViewport?.addEventListener("resize", check);
+    check();
+    return () => {
+      document.removeEventListener("focusin", check);
+      document.removeEventListener("focusout", check);
+      window.visualViewport?.removeEventListener("resize", check);
+    };
+  }, []);
+
+  return typing;
 }

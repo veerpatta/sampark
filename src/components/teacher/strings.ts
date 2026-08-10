@@ -107,6 +107,12 @@ export const T = {
     p(`Check ${n} existing details`, `${n} जानकारी जाँचें`),
   savedAutomatically: p("Saved automatically", "अपने-आप सहेजा गया"),
   missingCount: (n: number) => p(`Missing ${n}`, `${n} बाकी`),
+  /** The divider above each class, on a link that carries more than one. */
+  classHeading: (label: string, n: number) =>
+    p(`${label} · ${n} children`, `${label} · ${n} बच्चे`),
+  /** Named on the header of a link that spans registers. */
+  classesInThisList: (labels: string[]) =>
+    p(labels.join(" · "), labels.join(" · ")),
   allSet: p("All set", "पूरा"),
   knownHeading: (n: number) =>
     p(

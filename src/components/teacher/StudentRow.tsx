@@ -57,6 +57,7 @@ export function StudentRow({
   sent,
   position,
   active,
+  showClass,
   onConfirm,
   onEdit,
   onChange,
@@ -79,6 +80,14 @@ export function StudentRow({
   position: number;
   /** The first unfinished student receives the only emphasized surface. */
   active: boolean;
+  /**
+   * Name the child's class on the row.
+   *
+   * True only when the link carries more than one — a subject link merges a
+   * teacher's classes into one list. On a class link the header already says it
+   * and repeating it under every name is noise.
+   */
+  showClass: boolean;
   onConfirm: () => void;
   onEdit: () => void;
   onChange: (fieldKey: string, value: string) => void;
@@ -190,7 +199,11 @@ export function StudentRow({
           {/* Stored ALL CAPS, rendered title case. A screen shouting a child's
               name reads as an error message. */}
             <span className="text-name font-semibold">{titleCaseName(student.name)}</span>
-            <Recognition student={student} fields={fields} />
+            <Recognition
+              student={student}
+              fields={fields}
+              showClass={showClass}
+            />
           </div>
         </div>
 
@@ -547,9 +560,11 @@ function Header({
 function Recognition({
   student,
   fields,
+  showClass,
 }: {
   student: TeacherRosterRow;
   fields: TeacherField[];
+  showClass: boolean;
 }) {
   const asked = new Set(fields.map((field) => field.key));
   const house = houseOf(student.house);
@@ -558,13 +573,26 @@ function Recognition({
   const showFather = student.fatherName && !asked.has("father_name");
   const showHouse = house && !asked.has("house");
 
-  if (!student.srNo && !showRoute && !showFather && !showHouse) return null;
+  const classLabel = showClass ? student.classLabel : null;
+
+  if (!classLabel && !student.srNo && !showRoute && !showFather && !showHouse) {
+    return null;
+  }
 
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--color-ink-muted)]">
       {/* English only, on purpose. This line exists so she can tell one child
           from another in a glance; a Hindi second line under each fragment
           would double the height of the very thing that has to be skimmed. */}
+      {/* FIRST, and the only thing here that is not just recognition. On a
+          subject link this is the register the name came from, and without it
+          eighty-four children read as one undifferentiated list. */}
+      {classLabel ? (
+        <span className="rounded bg-[var(--color-brand-50)] px-1.5 py-0.5 text-xs font-semibold text-[var(--color-brand-700)]">
+          {classLabel}
+        </span>
+      ) : null}
+
       {student.srNo ? (
         <span className="font-mono text-xs">SR {student.srNo}</span>
       ) : null}

@@ -16,6 +16,7 @@ const link = (over: Partial<QueueLink> = {}): QueueLink => ({
   audienceKind: "subject",
   audienceLabel: "Maths — Prakash Bunkar",
   fieldKeys: ["fa_maths"],
+  classLabels: ["Class 11 Science"],
   teacherId: "T20",
   teacherName: "Prakash Bunkar",
   teacherPhone: "9000000001",

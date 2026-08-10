@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "../db";
-import { compareStudentNames } from "../classes";
+import { compareClassLabels, compareStudentNames } from "../classes";
 import type { RosterSnapshot } from "../snapshots";
 import type { FieldDef } from "../../../drizzle/schema";
 
@@ -116,6 +116,16 @@ export type ResolvedRequest = {
   teacherName: string;
   fields: FieldDef[];
   roster: ResolvedRosterRow[];
+  /**
+   * Every class this link covers, in timetable order.
+   *
+   * One entry for a class link. SEVERAL for a subject link, which merges every
+   * class a teacher takes that subject for — Hemlata's Chemistry link is
+   * eighty-four children from three registers — and for a house or route link,
+   * whose roster spans the school by definition. The screen needs it to say
+   * which register a name came from; nothing else can tell her.
+   */
+  classLabels: string[];
 };
 
 /**
@@ -183,10 +193,20 @@ export async function resolveToken(
     status: row.request.status,
     teacherName: row.teacher.name,
     fields: ordered,
-    // Name order. The roster used to come back ordered by roll number, which is
-    // null for every one of the 504 real students — so a class arrived in
-    // whatever order Postgres happened to return and matched nothing on her
-    // paper register.
+    /*
+     * CLASS FIRST, THEN NAME.
+     *
+     * Name order alone is right for a class link and wrong for every link that
+     * spans more than one. A subject link interleaved three registers into one
+     * alphabetical run of eighty-four children, so no stretch of the screen
+     * matched any list she had in front of her. Sorting by class first makes
+     * the screen read the way her registers do; within a class the order is
+     * unchanged.
+     *
+     * Not roll number: it is null for every one of the 504 real students, so
+     * ordering by it left a class in whatever order Postgres happened to
+     * return.
+     */
     roster: roster
       .map((entry) => {
         // Every field is optional and defaulted: snapshots frozen before a
@@ -204,7 +224,18 @@ export async function resolveToken(
           siblingPhone: snapshot.siblingPhone ?? null,
         };
       })
-      .sort((a, b) => compareStudentNames(a.name, b.name)),
+      .sort(
+        (a, b) =>
+          compareClassLabels(a.classLabel ?? "", b.classLabel ?? "") ||
+          compareStudentNames(a.name, b.name),
+      ),
+    classLabels: [
+      ...new Set(
+        roster
+          .map((entry) => (entry.snapshot as Partial<RosterSnapshot>).classLabel)
+          .filter((label): label is string => Boolean(label)),
+      ),
+    ].sort(compareClassLabels),
   };
 }
 

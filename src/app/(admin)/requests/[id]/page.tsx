@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { getRequestDetail, listNonResponders } from "@/lib/requests";
+import {
+  classesByRequest,
+  getRequestDetail,
+  listNonResponders,
+} from "@/lib/requests";
 import {
   buildReminderMessage,
   buildRequestMessage,
@@ -23,10 +27,13 @@ export default async function RequestDetailPage({
 
   // None of the three needs an answer from the others — only the id, which we
   // already have. Run them together rather than paying the round trip thrice.
-  const [detail, waiting, origin] = await Promise.all([
+  const [detail, waiting, origin, classes] = await Promise.all([
     getRequestDetail(id),
     listNonResponders(id),
     baseUrl(),
+    // Which registers this link actually covers. A subject link merges a
+    // teacher's classes into one screen, and the message has to say so.
+    classesByRequest([id]),
   ]);
   if (!detail) notFound();
 
@@ -42,6 +49,7 @@ export default async function RequestDetailPage({
       kind: request.audienceKind,
       label: request.audienceLabel,
       fieldKeys: request.fieldKeys,
+      classLabels: classes.get(id) ?? [],
     },
     title: request.title,
     dueDate: request.dueDate,

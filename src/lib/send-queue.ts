@@ -19,6 +19,8 @@ export type QueueLink = {
   audienceKind: string;
   audienceLabel: string;
   fieldKeys: string[];
+  /** Classes the frozen roster covers. Named in the message when there is >1. */
+  classLabels: string[];
   teacherId: string;
   teacherName: string;
   /** The number this link is going to: her saved one, or the override. */

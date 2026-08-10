@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle, CloudCheck } from "@phosphor-icons/react";
 import { StudentRow } from "./StudentRow";
@@ -738,10 +738,53 @@ export function RequestForm({
     };
   }, [token, roster]);
 
-  const renderRow = (student: TeacherRosterRow, index: number, group: TeacherRosterRow[]) => (
-    <StudentRow
-      key={student.studentId}
-      student={student}
+  /*
+   * DOES THIS LINK CARRY MORE THAN ONE REGISTER?
+   *
+   * A class link does not, and saying "Class 8" above every child on a Class 8
+   * list is noise. A SUBJECT link does: one link per (teacher, subject) merges
+   * every class that teacher takes it for, so Chemistry arrived as eighty-four
+   * names in one alphabetical run with nothing anywhere to say which register
+   * any of them came from. Same for a house or a route.
+   */
+  const spansClasses = useMemo(
+    () => new Set(roster.map((student) => student.classLabel)).size > 1,
+    [roster],
+  );
+
+  const renderRow = (
+    student: TeacherRosterRow,
+    index: number,
+    group: TeacherRosterRow[],
+  ) => {
+    // The roster is sorted class-first (see resolveToken), so a change of class
+    // between one row and the last is the start of a new register.
+    const startsClass =
+      spansClasses && student.classLabel !== (group[index - 1]?.classLabel ?? null);
+
+    return (
+      <Fragment key={student.studentId}>
+        {startsClass && student.classLabel ? (
+          /* Not sticky. It was, against a CSS variable nothing sets, so it
+             pinned to the very top and slid under the page header — which sits
+             above it — and vanished. A divider does not need to stick anyway:
+             the class chip on every row is what answers "which register is
+             this" once the heading has scrolled past. */
+          <li className="-mx-4 mt-2 bg-[var(--color-surface-muted)] px-4 py-2">
+            <h3 className="text-sm font-semibold text-[var(--color-ink)]">
+              <Bi
+                t={T.classHeading(
+                  student.classLabel,
+                  group.filter((row) => row.classLabel === student.classLabel)
+                    .length,
+                )}
+              />
+            </h3>
+          </li>
+        ) : null}
+        <StudentRow
+          student={student}
+          showClass={spansClasses}
       fields={fields}
       state={rows[student.studentId]!}
       // Within the group she is looking at, not across both: the blanks and the
@@ -770,8 +813,10 @@ export function RequestForm({
         });
         scheduleCommit(student.studentId);
       }}
-    />
-  );
+        />
+      </Fragment>
+    );
+  };
 
   if (stage === "review") {
     return (

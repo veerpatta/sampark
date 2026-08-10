@@ -36,7 +36,48 @@ export type MessageAudience = {
    * for a teacher — and the teacher's message is the delivery mechanism.
    */
   fieldKeys?: string[];
+  /**
+   * Every class the link's roster actually covers, in timetable order.
+   *
+   * A class link needs none — its label already is the class. A SUBJECT link
+   * does: one link per (teacher, subject) merges every class that teacher takes
+   * it for, so Hemlata opened "Chemistry" and found eighty-four children with
+   * nothing to say which of her three registers any of them came from. Same for
+   * a house or a route, which span the school by definition.
+   *
+   * Read off the frozen roster, so the message cannot name a class the screen
+   * does not show. See classesByRequest in lib/requests.ts.
+   */
+  classLabels?: string[];
 };
+
+/**
+ * The classes worth naming out loud.
+ *
+ * Nothing for a class link — repeating "Class 8" inside a message titled
+ * "Class 8" is noise. Nothing for one class either, for the same reason the
+ * label already carries it. Two or more is the case that was silently broken.
+ */
+function spannedClasses(audience: MessageAudience): string[] {
+  if (audience.kind === "class") return [];
+  const labels = audience.classLabels ?? [];
+  return labels.length > 1 ? labels : [];
+}
+
+/**
+ * Beyond a handful, the count is more use than the list.
+ *
+ * A subject link is two to four classes and naming them is the whole point. A
+ * house link is most of the school, and nineteen class names in a WhatsApp
+ * message is a wall she will scroll past to reach the URL.
+ */
+const MAX_NAMED_CLASSES = 5;
+
+function describeClasses(labels: string[], word: string): string {
+  return labels.length <= MAX_NAMED_CLASSES
+    ? labels.join(", ")
+    : `${labels.length} ${word}`;
+}
 
 export type RequestMessageInput = {
   teacherName: string;
@@ -74,9 +115,11 @@ export function describeAudienceHi(audience: MessageAudience): string {
     const subject = audience.fieldKeys
       ?.map((key) => subjectByFieldKey(key))
       .find(Boolean);
-    // She already knows which classes she teaches; the subject is the fact that
-    // tells her which of her three links this one is.
-    return subject ? `${subject.hi} (आपकी कक्षाएँ)` : audience.label;
+    if (!subject) return audience.label;
+    const classes = spannedClasses(audience);
+    return classes.length > 0
+      ? `${subject.hi} — ${describeClasses(classes, "कक्षाएँ")}`
+      : `${subject.hi} (आपकी कक्षाएँ)`;
   }
   return audience.label;
 }
@@ -91,13 +134,24 @@ export function describeAudienceHi(audience: MessageAudience): string {
  */
 export function describeAudienceEn(audience: MessageAudience): string {
   if (audience.kind === "class") return audience.label;
-  if (audience.kind === "house") return `${audience.label} House`;
-  if (audience.kind === "route") return `${audience.label} route`;
+  if (audience.kind === "house" || audience.kind === "route") {
+    const noun = audience.kind === "house" ? "House" : "route";
+    const classes = spannedClasses(audience);
+    return classes.length > 0
+      ? `${audience.label} ${noun} — ${describeClasses(classes, "classes")}`
+      : `${audience.label} ${noun}`;
+  }
   if (audience.kind === "subject") {
     const subject = audience.fieldKeys
       ?.map((key) => subjectByFieldKey(key))
       .find(Boolean);
-    return subject ? `${subject.en} (your classes)` : audience.label;
+    if (!subject) return audience.label;
+    // "(your classes)" was true and useless — it told her the link was hers and
+    // not which registers to fetch. Name them when there is more than one.
+    const classes = spannedClasses(audience);
+    return classes.length > 0
+      ? `${subject.en} — ${describeClasses(classes, "classes")}`
+      : `${subject.en} (your classes)`;
   }
   return audience.label;
 }

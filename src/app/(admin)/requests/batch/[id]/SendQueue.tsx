@@ -86,6 +86,7 @@ export function SendQueue({
             kind: link.audienceKind,
             label: link.audienceLabel,
             fieldKeys: link.fieldKeys,
+            classLabels: link.classLabels,
           },
           url: `${origin}/r/${link.token}`,
         })),

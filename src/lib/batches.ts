@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import {
+  classesByRequest,
   createOneRequest,
   loadPriorRecords,
   normaliseFieldKeys,
@@ -581,6 +582,11 @@ export type BatchLink = {
   /** Her durable page, when she has one. Rides along with the round's message. */
   teacherLinkToken: string | null;
   rosterSize: number;
+  /**
+   * Every class the frozen roster covers. Named in the message when there is
+   * more than one — a subject link merges a teacher's classes into one screen.
+   */
+  classLabels: string[];
   sentAt: Date | null;
   /** open | submitted | closed | expired. What the LINK is doing. */
   status: string;
@@ -634,7 +640,11 @@ export async function getBatch(batchId: string): Promise<BatchDetail | null> {
     .where(eq(schema.requests.batchId, batchId))
     .orderBy(asc(schema.requests.createdAt));
 
-  const sizes = await rosterSizes(rows.map((row) => row.requestId));
+  const ids = rows.map((row) => row.requestId);
+  const [sizes, classes] = await Promise.all([
+    rosterSizes(ids),
+    classesByRequest(ids),
+  ]);
 
   const links = rows.map((row) => ({
     requestId: row.requestId,
@@ -648,6 +658,7 @@ export async function getBatch(batchId: string): Promise<BatchDetail | null> {
     contactPhone: row.contactPhone,
     teacherLinkToken: row.teacherLinkToken,
     rosterSize: sizes.get(row.requestId) ?? 0,
+    classLabels: classes.get(row.requestId) ?? [],
     sentAt: row.sentAt,
     status: row.status,
     archivedAt: row.archivedAt,

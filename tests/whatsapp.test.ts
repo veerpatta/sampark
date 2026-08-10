@@ -5,6 +5,7 @@ import {
   buildRequestMessage,
   buildRoundMessage,
   buildWhatsAppLink,
+  describeAudienceEn,
   describeAudienceHi,
   describeAudienceLineHi,
 } from "../src/lib/whatsapp";
@@ -261,6 +262,74 @@ describe("buildRoundMessage", () => {
     });
     const link = buildWhatsAppLink("9876543210", message);
     assert.equal(new URL(link).searchParams.get("text"), message);
+  });
+});
+
+describe("a link that spans registers says which ones", () => {
+  /**
+   * THE ONE THAT WENT WRONG IN THE FIELD. A subject link is one link per
+   * (teacher, subject) merging every class that teacher takes it for, so
+   * Hemlata opened "Chemistry" and found eighty-four children with nothing —
+   * not in the message, not on the screen — to say which of her three
+   * registers any of them came from.
+   */
+  const chemistry = {
+    kind: "subject" as const,
+    label: "Chemistry — Hemlata",
+    fieldKeys: ["fa_chemistry"],
+  };
+
+  it("names the classes instead of saying '(your classes)'", () => {
+    const spanning = {
+      ...chemistry,
+      classLabels: ["Class 10", "Class 11 Science", "Class 12 Science"],
+    };
+    assert.equal(
+      describeAudienceEn(spanning),
+      "Chemistry — Class 10, Class 11 Science, Class 12 Science",
+    );
+    assert.match(describeAudienceHi(spanning), /Class 10, Class 11 Science/);
+  });
+
+  it("says nothing extra for a single class — the label already carries it", () => {
+    assert.equal(
+      describeAudienceEn({ ...chemistry, classLabels: ["Class 10"] }),
+      "Chemistry (your classes)",
+    );
+  });
+
+  it("counts them past a handful rather than listing nineteen", () => {
+    // A house link is most of the school. Nineteen class names in a WhatsApp
+    // bubble is a wall she scrolls past to reach the URL.
+    const house = {
+      kind: "house" as const,
+      label: "Rana Pratap",
+      classLabels: ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6"],
+    };
+    assert.equal(describeAudienceEn(house), "Rana Pratap House — 6 classes");
+  });
+
+  it("leaves a class link alone", () => {
+    // Repeating "Class 8" inside a message titled "Class 8" is noise.
+    assert.equal(
+      describeAudienceEn({
+        kind: "class",
+        label: "Class 8",
+        classLabels: ["Class 8"],
+      }),
+      "Class 8",
+    );
+  });
+
+  it("carries the classes into the message she actually receives", () => {
+    const message = buildRequestMessage({
+      ...base,
+      audience: {
+        ...chemistry,
+        classLabels: ["Class 11 Science", "Class 12 Science"],
+      },
+    });
+    assert.ok(message.includes("Class 11 Science, Class 12 Science"));
   });
 });
 

@@ -188,6 +188,7 @@ export async function createScenario(options?: {
       status: "open",
       teacherName: "Test Teacher",
       fields: ordered,
+      classLabels: [TEST_CLASS],
       // Read back off the same snapshots that were frozen above, so what a test
       // hands to recordSubmissions is exactly what the teacher would have seen.
       roster: students.map((student) => {
