@@ -152,11 +152,20 @@ export async function GET(
     headers: {
       "content-type": "image/jpeg",
       "x-content-type-options": "nosniff",
-      // `private`, never `public`: whatever wins between this and the
-      // no-store rule next.config.ts puts on the whole /api/r/* prefix, no
-      // shared cache is allowed to keep a child's photograph. If the prefix
-      // rule does win, the cost is a re-fetch, which is the safe direction.
-      "cache-control": "private, max-age=300",
+      // Immutable, for the reason /api/photos is: a retake mints a new pathname
+      // and never overwrites, so the bytes behind this URL cannot change.
+      //
+      // WHETHER IT TAKES EFFECT IS DECIDED IN next.config.ts, not here. That
+      // file puts `no-store` on the whole /api/r/* prefix so a page carrying a
+      // bearer token is never cached, and a rule there beats a header set in a
+      // route handler. An immutable image is the one thing under that prefix
+      // the rule should not apply to, so the prefix was narrowed rather than
+      // this header being written and quietly ignored.
+      //
+      // `private`, never `public`: no shared cache may hold a photograph of a
+      // child, and the URL carries a token that must not become a cache key
+      // anyone else can hit.
+      "cache-control": "private, max-age=31536000, immutable",
     },
   });
 }

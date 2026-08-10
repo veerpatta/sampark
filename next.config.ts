@@ -15,32 +15,35 @@ import type { NextConfig } from "next";
  *
  * See SAMPARK_BUILD_PLAN.md section 5.
  */
-const teacherSurfaceHeaders = [
+/**
+ * The two that apply to EVERY teacher-facing URL, with no exception.
+ *
+ * A token in a URL must never be indexed and must never ride the Referer to a
+ * third party. Nothing about what a route returns changes either of those.
+ */
+const tokenSafetyHeaders = [
   { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
   { key: "Referrer-Policy", value: "no-referrer" },
-  { key: "Cache-Control", value: "no-store, max-age=0" },
 ];
+
+/**
+ * And the third, which applies to everything that carries roster data or
+ * renders a token — but NOT to an immutable image.
+ *
+ * A rule here beats a header set in a route handler, so `no-store` on the whole
+ * `/api/r/*` prefix silently overrode the photo route's cache header and made a
+ * browser re-fetch every face it had already been shown. Rather than write a
+ * header that does nothing, the prefix is narrowed: the wildcard keeps the two
+ * headers that must never be missed, and no-store is attached to the endpoints
+ * that actually return a roster.
+ */
+const noStore = { key: "Cache-Control", value: "no-store, max-age=0" };
+
+const teacherSurfaceHeaders = [...tokenSafetyHeaders, noStore];
 
 const baseHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
-];
-
-/**
- * The office's photo proxy.
- *
- * NOT teacher-facing — there is no token in its URL, it is guarded by the admin
- * session — so it does not belong in the list above and must not get no-store,
- * which would make a students board re-fetch a hundred faces on every scroll.
- * It does need noindex: it serves photographs of children, and a URL that ends
- * in a bare `?p=` is exactly the shape a crawler will follow if it finds one.
- *
- * The teacher's own photo route needs nothing here — it lives under
- * `/api/r/:path*` and inherits that rule, which is why it was put there.
- */
-const photoHeaders = [
-  { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
-  { key: "Referrer-Policy", value: "no-referrer" },
 ];
 
 const nextConfig: NextConfig = {
@@ -48,9 +51,21 @@ const nextConfig: NextConfig = {
     return [
       { source: "/:path*", headers: baseHeaders },
       { source: "/r/:path*", headers: teacherSurfaceHeaders },
-      { source: "/api/r/:path*", headers: teacherSurfaceHeaders },
       { source: "/t/:path*", headers: teacherSurfaceHeaders },
-      { source: "/api/photos", headers: photoHeaders },
+
+      // Everything under the teacher API, whatever it returns.
+      { source: "/api/r/:path*", headers: tokenSafetyHeaders },
+      // The answers endpoint specifically. `:token` is ONE segment, so this
+      // matches /api/r/<token> and deliberately not /api/r/<token>/photo.
+      { source: "/api/r/:token", headers: [noStore] },
+
+      /**
+       * The office's photo proxy. Not teacher-facing — no token in its URL, an
+       * admin session instead — but it serves photographs of children, and a
+       * URL ending in a bare `?p=` is exactly what a crawler follows. Its
+       * caching is decided in the route handler, where the reasoning lives.
+       */
+      { source: "/api/photos", headers: tokenSafetyHeaders },
     ];
   },
 };

@@ -36,10 +36,25 @@ export async function GET(request: Request) {
     headers: {
       "content-type": "image/jpeg",
       "x-content-type-options": "nosniff",
-      // Five minutes in the browser, and `private` so nothing in between keeps
-      // it. Long enough that scrolling a hundred-row students board does not
-      // re-fetch every face; short enough that revoking an account matters.
-      "cache-control": "private, max-age=300",
+      // A YEAR, AND IMMUTABLE, BECAUSE THE PATHNAME IS.
+      //
+      // A retake mints a new pathname and never overwrites — see lib/photos.ts
+      // — so the bytes behind any one of these URLs can never change. Replacing
+      // a child's photo changes students.photo_path, which changes the URL, so
+      // there is no stale image to serve.
+      //
+      // This was five minutes, which meant a browser re-fetched every face on a
+      // hundred-row board four times an hour. Private delivery costs a Function
+      // round trip plus Blob Data Transfer plus Fast Origin Transfer plus Fast
+      // Data Transfer on every miss, and the Hobby plan cuts Blob off rather
+      // than billing when a limit is passed. Repeat transfer is now nil.
+      //
+      // `private` and not `public`: a shared cache must never hold a photograph
+      // of a child, and this response is only correct for the session that
+      // asked for it. The cost of the long life is that a browser which has
+      // already downloaded a face keeps it after the account is revoked — which
+      // is true of anything it has already been shown.
+      "cache-control": "private, max-age=31536000, immutable",
       "x-robots-tag": "noindex, nofollow, noarchive",
     },
   });

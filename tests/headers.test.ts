@@ -15,7 +15,30 @@ import config from "../next.config";
  * easy mistake, and nothing else would catch it.
  */
 const TEACHER_FACING = ["/r/:path*", "/api/r/:path*", "/t/:path*"];
-const REQUIRED = ["X-Robots-Tag", "Referrer-Policy", "Cache-Control"];
+const REQUIRED = ["X-Robots-Tag", "Referrer-Policy"];
+
+/** Every rule whose source matches this concrete URL, in declaration order. */
+function rulesFor(
+  rules: Awaited<ReturnType<NonNullable<typeof config.headers>>>,
+  url: string,
+) {
+  return rules.filter((entry) => {
+    const pattern = entry.source
+      .replace(/\/:path\*/g, "(?:/.*)?")
+      .replace(/:[a-zA-Z]+/g, "[^/]+");
+    return new RegExp(`^${pattern}$`).test(url);
+  });
+}
+
+const headerOn = (
+  rules: Awaited<ReturnType<NonNullable<typeof config.headers>>>,
+  url: string,
+  key: string,
+) =>
+  rulesFor(rules, url)
+    .flatMap((rule) => rule.headers)
+    .filter((header) => header.key === key)
+    .at(-1)?.value;
 
 describe("security headers", () => {
   it("covers every teacher-facing prefix", async () => {
@@ -32,6 +55,41 @@ describe("security headers", () => {
           rule.headers.some((header) => header.key === key),
           `${source} is missing ${key}`,
         );
+      }
+    }
+  });
+
+  /**
+   * no-store is no longer on the whole /api/r/* prefix, because a rule there
+   * beats a route handler's own header and it was silently overriding the photo
+   * proxy's cache — making a browser re-fetch every face it had already seen.
+   *
+   * These pin the narrowing in both directions. Losing the first means a roster
+   * becomes cacheable; losing the second means the photo header goes back to
+   * doing nothing, which is exactly the kind of change that looks harmless.
+   */
+  it("keeps roster responses out of every cache", async () => {
+    const rules = await config.headers!();
+    for (const url of ["/r/abc123", "/t/abc123", "/api/r/abc123"]) {
+      assert.match(
+        headerOn(rules, url, "Cache-Control") ?? "",
+        /no-store/,
+        `${url} may be cached — it carries a roster or a token`,
+      );
+    }
+  });
+
+  it("lets the photo routes set their own cache header", async () => {
+    const rules = await config.headers!();
+    for (const url of ["/api/r/abc123/photo", "/api/photos"]) {
+      assert.equal(
+        headerOn(rules, url, "Cache-Control"),
+        undefined,
+        `${url} is overridden by a config rule, so its own header does nothing`,
+      );
+      // The two that are never negotiable, image or not.
+      for (const key of REQUIRED) {
+        assert.ok(headerOn(rules, url, key), `${url} is missing ${key}`);
       }
     }
   });

@@ -187,6 +187,35 @@ async function main() {
     return "byte-identical";
   });
 
+  /*
+   * ON THE WIRE, NOT IN THE CONFIG. tests/headers.test.ts models how Next
+   * merges header rules; only a real response proves the model right. The photo
+   * header spent its first version being silently overridden by the no-store
+   * rule on the whole /api/r/* prefix, and nothing anywhere said so.
+   */
+  await step("the photo is cached, and the roster still is not", async () => {
+    const [photo, answers, page] = await Promise.all([
+      fetch(`${BASE}/api/r/${token}/photo?p=${encodeURIComponent(uploaded)}`),
+      fetch(`${BASE}/api/r/${token}`),
+      fetch(`${BASE}/r/${token}`),
+    ]);
+
+    const cache = photo.headers.get("cache-control") ?? "";
+    assert.match(cache, /immutable/, `the photo says: ${cache || "(nothing)"}`);
+    assert.match(cache, /private/, "a shared cache may hold a child's photograph");
+    assert.doesNotMatch(cache, /no-store/, "the config rule is still overriding it");
+
+    for (const [what, response] of [["answers", answers], ["form page", page]] as const) {
+      const value = response.headers.get("cache-control") ?? "";
+      assert.match(value, /no-store/, `the ${what} became cacheable: ${value}`);
+    }
+
+    // Never lost, image or not.
+    assert.match(photo.headers.get("x-robots-tag") ?? "", /noindex/);
+    assert.equal(photo.headers.get("referrer-policy"), "no-referrer");
+    return cache;
+  });
+
   await step("a pathname outside her roster is a 404", async () => {
     const elsewhere = photoPathname("SOMEONE-ELSE");
     const response = await fetch(
