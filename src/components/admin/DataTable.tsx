@@ -29,12 +29,32 @@ export type Column<T> = {
   cellClassName?: string;
 };
 
+/**
+ * Row selection, for the bulk bar.
+ *
+ * A plain checkbox with a name and a value, so the selection is ordinary form
+ * state and this component stays a server component — its `columns` carry
+ * render functions and could never cross to the client anyway.
+ *
+ * On a card the checkbox sits OUTSIDE the link rather than in it. A checkbox
+ * nested inside an anchor is invalid, and in practice the tap either navigates
+ * or ticks depending on which pixel the thumb lands on.
+ */
+export type Selection<T> = {
+  /** Form field name. Every row shares it; the action reads getAll(). */
+  name: string;
+  value: (row: T) => string;
+  /** Rows the bulk action cannot act on. Rendered without a checkbox. */
+  disabled?: (row: T) => boolean;
+};
+
 export function DataTable<T>({
   columns,
   rows,
   rowKey,
   href,
   empty,
+  select,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -42,6 +62,7 @@ export function DataTable<T>({
   /** When given, the whole card is a link and the primary cell is too. */
   href?: (row: T) => string;
   empty?: React.ReactNode;
+  select?: Selection<T>;
 }) {
   if (rows.length === 0 && empty) {
     return (
@@ -69,6 +90,7 @@ export function DataTable<T>({
       <table className="hidden w-full text-sm md:table">
         <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
           <tr>
+            {select ? <th className="w-10 px-4 py-3" /> : null}
             {columns.map((column) => (
               <th key={column.key} className="px-4 py-3 font-medium">
                 {column.header}
@@ -82,6 +104,19 @@ export function DataTable<T>({
               key={rowKey(row)}
               className="border-b border-[var(--color-border)] last:border-0"
             >
+              {select ? (
+                <td className="px-4 py-3">
+                  {select.disabled?.(row) ? null : (
+                    <input
+                      type="checkbox"
+                      name={select.name}
+                      value={select.value(row)}
+                      className="h-5 w-5"
+                      aria-label="Select this row"
+                    />
+                  )}
+                </td>
+              ) : null}
               {columns.map((column) => (
                 <td
                   key={column.key}
@@ -140,20 +175,37 @@ export function DataTable<T>({
             </>
           );
 
+          const body = href ? (
+            // The whole card is the target, not a link buried in it —
+            // a 48px-tall card is a better tap target than six words.
+            <Link
+              href={href(row)}
+              className="block px-4 py-4 active:bg-[var(--color-surface-muted)]"
+            >
+              {card}
+            </Link>
+          ) : (
+            <div className="px-4 py-4">{card}</div>
+          );
+
+          if (!select) return <li key={rowKey(row)}>{body}</li>;
+
           return (
-            <li key={rowKey(row)}>
-              {href ? (
-                // The whole card is the target, not a link buried in it —
-                // a 48px-tall card is a better tap target than six words.
-                <Link
-                  href={href(row)}
-                  className="block px-4 py-4 active:bg-[var(--color-surface-muted)]"
-                >
-                  {card}
-                </Link>
-              ) : (
-                <div className="px-4 py-4">{card}</div>
-              )}
+            <li key={rowKey(row)} className="flex items-start">
+              <span className="flex min-h-[var(--tap-min)] shrink-0 items-center pl-4 pt-4">
+                {select.disabled?.(row) ? (
+                  <span className="h-5 w-5" />
+                ) : (
+                  <input
+                    type="checkbox"
+                    name={select.name}
+                    value={select.value(row)}
+                    className="h-5 w-5"
+                    aria-label="Select this row"
+                  />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">{body}</div>
             </li>
           );
         })}

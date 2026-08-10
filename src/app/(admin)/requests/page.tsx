@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listRequests } from "@/lib/requests";
 import { DataTable, type Column } from "@/components/admin/DataTable";
+import { RequestBulkBar } from "./RequestBulkBar";
 
 export const metadata = { title: "Requests — Sampark" };
 export const dynamic = "force-dynamic";
@@ -145,13 +146,18 @@ export default async function RequestsPage({
         </div>
       </header>
 
-      <DataTable
-        columns={columns}
-        rows={requests}
-        rowKey={(request) => request.id}
-        href={(request) => `/requests/${request.id}`}
-        empty="No requests yet. Create one and you get a link to send on WhatsApp."
-      />
+      {/* Selection lives in the form, not in React state, because DataTable is
+          a server component. See components/admin/BulkBar. */}
+      <RequestBulkBar showArchived={showArchived}>
+        <DataTable
+          columns={columns}
+          rows={requests}
+          rowKey={(request) => request.id}
+          href={(request) => `/requests/${request.id}`}
+          empty="No requests yet. Create one and you get a link to send on WhatsApp."
+          select={{ name: "id", value: (request) => request.id }}
+        />
+      </RequestBulkBar>
 
       {requests.length > 0 ? (
         <p className="text-xs text-[var(--color-ink-muted)]">

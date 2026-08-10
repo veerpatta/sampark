@@ -582,6 +582,10 @@ export type BatchLink = {
   teacherLinkToken: string | null;
   rosterSize: number;
   sentAt: Date | null;
+  /** open | submitted | closed | expired. What the LINK is doing. */
+  status: string;
+  /** Whether the office has already swept this one off the boards. */
+  archivedAt: Date | null;
 };
 
 export type BatchDetail = {
@@ -617,6 +621,13 @@ export async function getBatch(batchId: string): Promise<BatchDetail | null> {
       teacherLinkToken: schema.teachers.linkToken,
       sentAt: schema.requests.sentAt,
       createdAt: schema.requests.createdAt,
+      // Carried so the batch page can offer the same clear-up the requests
+      // board does. A round is worked through here, and it is here that
+      // somebody wants to sweep it away afterwards — sending them back to a
+      // nineteen-row table to tick the same nineteen rows again is the reason
+      // finished rounds sit on the board for months.
+      status: schema.requests.status,
+      archivedAt: schema.requests.archivedAt,
     })
     .from(schema.requests)
     .innerJoin(schema.teachers, eq(schema.teachers.id, schema.requests.teacherId))
@@ -638,6 +649,8 @@ export async function getBatch(batchId: string): Promise<BatchDetail | null> {
     teacherLinkToken: row.teacherLinkToken,
     rosterSize: sizes.get(row.requestId) ?? 0,
     sentAt: row.sentAt,
+    status: row.status,
+    archivedAt: row.archivedAt,
   }));
 
   return {
