@@ -38,19 +38,33 @@ import { db, schema } from "../src/lib/db";
  *    a Neon PITR window that is six hours long.
  */
 
-/** Bundle header -> `students` property. `Student ID` is absent on purpose. */
-const HEADER_TO_COLUMN: Record<string, StudentColumn> = {
-  "SR no": "srNo",
-  Student: "name",
-  Class: "classLabel",
-  Status: "status",
-  Route: "busRoute",
-  "Father name": "fatherName",
-  "Mother name": "motherName",
-  "Father phone": "phone",
-  "Mother phone": "altPhone",
-  "Date of birth": "dob",
-};
+/**
+ * `students` property <- the bundle headers that may carry it, best first.
+ *
+ * A LIST, NOT ONE NAME, because the fee app renames its columns. One export
+ * called the bus route "Route"; the next called it "Transport" and grew from 45
+ * columns to 71. Naming only the current spelling means the next rename stops
+ * an import dead — which is what the guard below did, correctly, and it is
+ * still an evening lost to a column heading.
+ *
+ * Both spellings are kept rather than the old one replaced: a bundle saved
+ * before the rename has to keep importing, and there is no telling which file
+ * the office will reach for.
+ *
+ * `Student ID` is absent from every list on purpose — see the header note.
+ */
+const MAPPINGS: { column: StudentColumn; headers: string[] }[] = [
+  { column: "srNo", headers: ["SR no"] },
+  { column: "name", headers: ["Student"] },
+  { column: "classLabel", headers: ["Class"] },
+  { column: "status", headers: ["Status"] },
+  { column: "busRoute", headers: ["Transport", "Route"] },
+  { column: "fatherName", headers: ["Father name"] },
+  { column: "motherName", headers: ["Mother name"] },
+  { column: "phone", headers: ["Father phone"] },
+  { column: "altPhone", headers: ["Mother phone"] },
+  { column: "dob", headers: ["Date of birth"] },
+];
 
 /**
  * The fee app writes this in the route column for a child who does not take the
@@ -98,9 +112,24 @@ async function main() {
   console.log(`${path}`);
   console.log(`  sheet "${table.sheet}" of ${table.sheets?.length ?? 0}: ${table.rows.length} rows`);
 
-  const unmappable = Object.keys(HEADER_TO_COLUMN).filter(
-    (header) => !table.headers.includes(header),
-  );
+  // Which header actually carries each column in THIS file.
+  const headerFor = new Map<StudentColumn, string>();
+  const unmappable: string[] = [];
+  for (const mapping of MAPPINGS) {
+    const found = mapping.headers.find((name) => table.headers.includes(name));
+    if (found) headerFor.set(mapping.column, found);
+    else unmappable.push(mapping.headers.join(" / "));
+  }
+
+  // Say so when a file uses a name other than the first one listed. A rename
+  // that goes through silently is one nobody notices until the NEXT rename.
+  for (const mapping of MAPPINGS) {
+    const used = headerFor.get(mapping.column);
+    if (used && used !== mapping.headers[0]) {
+      console.log(`  note: reading "${used}" as ${mapping.column}`);
+    }
+  }
+
   if (unmappable.length > 0) {
     console.error(
       `\nThis is not a students bundle — missing columns: ${unmappable.join(", ")}`,
@@ -108,7 +137,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { rows, problems } = readBundle(table.rows);
+  const { rows, problems } = readBundle(table.rows, headerFor);
   console.log(`  usable rows: ${rows.length}`);
   for (const problem of problems) console.log(`  ! ${problem}`);
 
@@ -199,7 +228,10 @@ async function main() {
 }
 
 /** Map, normalise and validate the sheet. Bad cells warn; bad rows are dropped. */
-function readBundle(raw: Record<string, string>[]): {
+function readBundle(
+  raw: Record<string, string>[],
+  headerFor: Map<StudentColumn, string>,
+): {
   rows: BundleRow[];
   problems: string[];
 } {
@@ -213,7 +245,7 @@ function readBundle(raw: Record<string, string>[]): {
     const values: Record<string, string | null> = {};
     const warnings: string[] = [];
 
-    for (const [header, property] of Object.entries(HEADER_TO_COLUMN)) {
+    for (const [property, header] of headerFor) {
       let cell = (source[header] ?? "").trim();
       // A blank cell means "the fee app has nothing to say", never "erase".
       if (!cell) continue;
