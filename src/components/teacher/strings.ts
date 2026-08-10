@@ -57,6 +57,7 @@ export const T = {
   useThis: p("Use this", "लगाएँ"),
   sameAsLast: (value: string) => `Same as last: ${value}`,
   siblingNumber: (name: string, phone: string) => `${name}'s number: ${phone}`,
+  numericHint: (n: number) => p(`Only numbers · ${n} digits`, `केवल नंबर · ${n} अंक`),
 
   /* ---------------------------------------------------------- the photo */
   photoLabel: p("Student photo", "बच्चे की फ़ोटो"),
@@ -100,11 +101,21 @@ export const T = {
       `${n} children have nothing on record — these matter most`,
       `${n} बच्चों की जानकारी नहीं है — ये सबसे ज़रूरी हैं`,
     ),
+  fillMissingFirst: (n: number) =>
+    p(`Fill ${n} missing details first`, `पहले ${n} जानकारी भरें`),
+  checkExistingFirst: (n: number) =>
+    p(`Check ${n} existing details`, `${n} जानकारी जाँचें`),
+  savedAutomatically: p("Saved automatically", "अपने-आप सहेजा गया"),
+  missingCount: (n: number) => p(`Missing ${n}`, `${n} बाकी`),
+  allSet: p("All set", "पूरा"),
+  fillDetails: p("Fill details", "जानकारी भरें"),
   knownHeading: (n: number) =>
     p(
       `${n} children already have details — please check and confirm`,
       `${n} बच्चों की जानकारी पहले से है — देखकर बता दें कि सही है`,
     ),
+  knownHeadingShort: (n: number) =>
+    p(`Check existing details (${n})`, `मौजूदा जानकारी जाँचें (${n})`),
   confirmAll: (n: number) => p(`All ${n} are correct`, `सब सही हैं (${n})`),
   everyoneSent: (n: number) =>
     p(
@@ -118,8 +129,10 @@ export const T = {
   /* ---------------------------------------------------------- the rail */
   allDone: p("All done", "सब पूरे हैं"),
   remaining: (n: number) => p(`${n} left`, `अभी ${n} बाकी हैं`),
+  remainingShort: (n: number) => p(`${n} left`, `${n} बाकी`),
   sentCount: (n: number) =>
     p(`${n} reached the school`, `${n} विद्यालय पहुँच गए`),
+  sentShort: (n: number) => p(`${n} at school`, `${n} विद्यालय में`),
   sending: p("Sending…", "भेजा जा रहा है…"),
   savedGoing: (n: number) =>
     p(
@@ -128,6 +141,11 @@ export const T = {
     ),
   answerFirst: p("Answer something first", "पहले जवाब दें"),
   review: (n: number) => p(`Check what you sent (${n})`, `देखें (${n})`),
+  reviewAnswers: p("Review answers", "जवाब जाँचें"),
+  onPhoneWillSend: p(
+    "On phone · Sends online",
+    "फ़ोन में · ऑनलाइन जाएगा",
+  ),
   offlineKeepGoing: p(
     "No internet — keep working, it goes by itself when you reconnect.",
     "इंटरनेट नहीं है — काम करती रहें, जुड़ते ही अपने आप चला जाएगा।",
@@ -153,15 +171,20 @@ export const T = {
     p(`${n} are not in this class`, `${n} बच्चे इस कक्षा में नहीं हैं`),
   partialCount: (n: number) =>
     p(
-      `${n} children still have a box empty`,
-      `${n} बच्चों की एक जानकारी बाकी है`,
+      n === 1
+        ? "1 child still has a box empty"
+        : `${n} children still have a box empty`,
+      n === 1 ? "1 बच्चे की एक जानकारी बाकी है" : `${n} बच्चों की एक जानकारी बाकी है`,
     ),
   partialNote: p(
     "What you filled has already reached the school. Tap a name to finish the rest.",
     "आपने जो भरा वह विद्यालय पहुँच चुका है। बाकी नाम दबाकर पूरा कर दें।",
   ),
   untouchedCount: (n: number) =>
-    p(`${n} children not answered yet`, `${n} बच्चों का जवाब बाकी है`),
+    p(
+      n === 1 ? "1 child not answered yet" : `${n} children not answered yet`,
+      n === 1 ? "1 बच्चे का जवाब बाकी है" : `${n} बच्चों का जवाब बाकी है`,
+    ),
   untouchedNote: p(
     "You can still send the rest. Fill these in later.",
     "बाकी को अभी भी भेज सकती हैं। जो बचे हैं, बाद में भर दें।",
@@ -173,6 +196,10 @@ export const T = {
   ),
   nothingFilledYet: p("Nothing filled yet", "अभी कुछ भरा नहीं है"),
   allReached: p("Everything reached the school", "सब विद्यालय पहुँच गया"),
+  filledAnswersReached: p(
+    "All filled answers reached the school",
+    "भरे हुए सभी जवाब विद्यालय पहुँच गए",
+  ),
   offlineSafe: p(
     "No internet — everything is safe on the phone and goes when you reconnect.",
     "इंटरनेट नहीं है — सब फ़ोन में सुरक्षित है और जुड़ते ही चला जाएगा।",

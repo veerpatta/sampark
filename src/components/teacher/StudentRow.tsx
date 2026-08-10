@@ -1,6 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import {
+  CaretRight,
+  CheckCircle,
+  DeviceMobile,
+} from "@phosphor-icons/react";
 import { validateField } from "@/lib/fields";
 import { titleCaseName } from "@/lib/classes";
 import { houseOf } from "@/lib/houses";
@@ -49,6 +54,8 @@ export function StudentRow({
   blank,
   required,
   sent,
+  position,
+  active,
   onConfirm,
   onEdit,
   onChange,
@@ -67,6 +74,10 @@ export function StudentRow({
   /** Field keys the school holds nothing for. See requiredKeys in types.ts. */
   required: string[];
   sent: boolean;
+  /** Position in the blanks-first list, shown as a stable visual anchor. */
+  position: number;
+  /** The first unfinished student receives the only emphasized surface. */
+  active: boolean;
   onConfirm: () => void;
   onEdit: () => void;
   onChange: (fieldKey: string, value: string) => void;
@@ -89,7 +100,7 @@ export function StudentRow({
   const open =
     state.status === "editing" ||
     state.status === "partial" ||
-    (blank && state.status === "todo");
+    (blank && state.status === "todo" && active);
   const showStored = state.status === "todo" && !blank;
   const showEntered = state.status === "edited";
 
@@ -101,6 +112,13 @@ export function StudentRow({
   const touched = rowTouched(state);
   const missing = missingRequired(state, required);
   const verdict = judgeRow(fields, state, required);
+  const siblingField = fields.find(
+    (field) =>
+      field.exactLen === PHONE_LENGTH && !student.values[field.key],
+  );
+  const siblingValue = siblingField
+    ? (state.values[siblingField.key] ?? student.values[siblingField.key] ?? "")
+    : "";
 
   return (
     <li
@@ -114,52 +132,35 @@ export function StudentRow({
           onLeave();
         }
       }}
-      // The state colour crossfades over 200ms rather than snapping, which is
-      // how the row says "yes, that registered". A plain CSS transition and not
-      // Motion on purpose: Motion cannot tween a var(), and the reduced-motion
-      // rule in globals.css already neutralises transition-duration, so this
-      // honours the OS setting without a second mechanism to remember.
-      //
-      // COLOUR IS NEVER THE ONLY CHANNEL. Three carry the state: this pair, the
-      // 6px left bar, and a word in the header for everything except todo. A
-      // reader who cannot separate the green from the amber reads the word, and
-      // green-against-amber is exactly the pair that would otherwise fail.
-      //
-      // The bar's WIDTH is a constant, outside the map. transition-colors does
-      // not animate border-width, so a per-state width would snap while the hue
-      // crossfaded — and the reduced-motion rule would have nothing to say
-      // about it. Only the colours vary.
-      //
-      // These strings stay static literals. Building them from state.status
-      // would put a var() inside a template literal, which is precisely what
-      // Tailwind's scanner reads as a string and prunes — see the house chips
-      // note in tokens.css.
-      className={`scroll-mt-24 rounded-[var(--radius-card)] border-2 border-l-[6px] p-4 transition-colors duration-200 ${
-        {
-          todo:
-            "border-[var(--color-border)] border-l-[var(--color-border)] bg-[var(--color-surface)]",
-          // Brand blue, not amber: "I am working here". It used to share the
-          // correct-amber with `edited`, so a row being typed into and a row
-          // she had finished looked the same.
-          editing:
-            "border-[var(--color-brand-500)] border-l-[var(--color-brand-600)] bg-[var(--color-surface)]",
-          partial:
-            "border-[var(--color-partial-border)] border-l-[var(--color-partial-fg)] bg-[var(--color-partial-bg)]",
-          confirmed:
-            "border-[var(--color-confirm-border)] border-l-[var(--color-confirm-fg)] bg-[var(--color-confirm-bg)]",
-          edited:
-            "border-[var(--color-correct-border)] border-l-[var(--color-correct-fg)] bg-[var(--color-correct-bg)]",
-          absent:
-            "border-[var(--color-absent-border)] border-l-[var(--color-absent-border)] bg-[var(--color-absent-bg)]",
-        }[state.status]
+      // Rows now read as one checklist rather than a stack of nested cards.
+      // The active student keeps the only emphasized divider treatment; its
+      // numbered badge, readable status, and focused input carry state without
+      // relying on colour alone. The global reduced-motion rule still governs
+      // this short surface transition.
+      className={`scroll-mt-28 border-b px-0 py-5 transition-colors duration-200 ${
+        active
+          ? "-mx-4 border-y border-[var(--color-brand-100)] bg-[var(--color-surface)] px-4"
+          : "border-[var(--color-border)] bg-[var(--color-surface)]"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            aria-hidden
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-semibold ${
+              active
+                ? "bg-[var(--color-brand-600)] text-white shadow-[0_4px_12px_rgba(37,99,235,0.2)]"
+                : "bg-[var(--color-surface-muted)] text-[var(--color-ink-muted)]"
+            }`}
+          >
+            {position}
+          </span>
+          <div className="min-w-0">
           {/* Stored ALL CAPS, rendered title case. A screen shouting a child's
               name reads as an error message. */}
-          <span className="text-name font-medium">{titleCaseName(student.name)}</span>
-          <Recognition student={student} fields={fields} />
+            <span className="text-name font-semibold">{titleCaseName(student.name)}</span>
+            <Recognition student={student} fields={fields} />
+          </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -173,10 +174,11 @@ export function StudentRow({
               card's colour and its left bar, and the same words appear in full
               — with their Hindi — on the rail and on the receipt. A two-line
               chip beside a child's name costs more than it says. */}
-          {uploaded ? (
+          {uploaded && !open ? (
             sent ? (
-              <span className="rounded bg-[var(--color-confirm-bg)] px-1.5 py-0.5 text-xs font-medium text-[var(--color-confirm-fg)]">
-                ✓ {T.reachedSchool.en}
+              <span className="flex items-center gap-1 rounded bg-[var(--color-confirm-bg)] px-1.5 py-0.5 text-xs font-medium text-[var(--color-confirm-fg)]">
+                <CheckCircle aria-hidden size={14} weight="fill" />
+                {T.reachedSchool.en}
               </span>
             ) : (
               <span className="rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-xs text-[var(--color-ink-muted)]">
@@ -185,16 +187,16 @@ export function StudentRow({
             )
           ) : null}
           {state.status === "confirmed" ? (
-            <span
-              className="text-2xl text-[var(--color-confirm-fg)]"
+            <CheckCircle
               aria-label={T.correct.en}
-            >
-              ✓
-            </span>
+              size={24}
+              weight="fill"
+              className="text-[var(--color-confirm-fg)]"
+            />
           ) : null}
           {/* The word is the colour-blind channel, and it is also the only
               thing that says "sent AND still not done" in one breath. */}
-          {state.status === "partial" ? (
+          {state.status === "partial" && !open ? (
             <span className="text-sm font-medium text-[var(--color-partial-fg)]">
               {T.statusPartial.en}
             </span>
@@ -209,12 +211,27 @@ export function StudentRow({
               {T.statusAbsent.en}
             </span>
           ) : null}
+          {blank && missing.length > 0 ? (
+            <span className="rounded-xl bg-[var(--color-correct-bg)] px-2.5 py-1 text-center text-sm font-medium text-[var(--color-correct-fg)]">
+              <Bi t={T.missingCount(missing.length)} />
+            </span>
+          ) : null}
+          {state.status === "todo" && blank && !open ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              aria-label={`${T.fillDetails.en}: ${titleCaseName(student.name)}`}
+              className="flex h-12 w-12 items-center justify-center rounded-full text-[var(--color-brand-600)] transition-transform active:scale-[0.94]"
+            >
+              <CaretRight aria-hidden size={24} weight="bold" />
+            </button>
+          ) : null}
         </div>
       </div>
 
       {/* ------------------------------------------- what the school holds now */}
       {showStored ? (
-        <dl className="mt-3 space-y-2">
+        <dl className="ml-[52px] mt-3 space-y-2">
           {fields.map((field) => (
             <div
               key={field.key}
@@ -235,7 +252,7 @@ export function StudentRow({
 
       {/* ------------------------------------------------- what she just typed */}
       {showEntered ? (
-        <dl className="mt-3 space-y-2">
+        <dl className="ml-[52px] mt-3 space-y-2">
           {fields.map((field) => {
             const entered = state.values[field.key];
             const stored = student.values[field.key];
@@ -274,7 +291,7 @@ export function StudentRow({
 
       {/* --------------------------------------------------------- the inputs */}
       {open ? (
-        <div className="mt-3 space-y-3">
+        <div className="ml-[52px] mt-4 space-y-4">
           {fields.map((field, index) =>
             // A photo is not a box she types in, so it does not go through
             // FieldInput's keyboard machinery at all — no auto-advance, no
@@ -307,15 +324,6 @@ export function StudentRow({
               // Auto-advance needs to know where to go next, and the row is the
               // only thing that knows the order.
               suggestion={suggestions[field.key] ?? null}
-              // Only on a phone field the school holds nothing for. A child who
-              // already has a number is not asking a question.
-              sibling={
-                field.exactLen === PHONE_LENGTH &&
-                !student.values[field.key] &&
-                student.siblingPhone
-                  ? student.siblingPhone
-                  : null
-              }
               onFilled={() => {
                 const inputs = document.querySelectorAll<HTMLInputElement>(
                   `#student-${CSS.escape(student.studentId)} input`,
@@ -335,6 +343,17 @@ export function StudentRow({
             ),
           )}
 
+          {student.siblingPhone && siblingField && !siblingValue ? (
+            <SuggestChip
+              label={T.siblingNumber(
+                student.siblingPhone.name,
+                student.siblingPhone.phone,
+              )}
+              value={student.siblingPhone.phone}
+              onUse={(value) => onChange(siblingField.key, value)}
+            />
+          ) : null}
+
           {/* A row that is not finished has to say so, and the two reasons it
               might not be are different enough to need different words.
 
@@ -347,11 +366,7 @@ export function StudentRow({
               Otherwise the only signal that a four-digit phone number was never
               counted is its absence from a total she has no reason to be
               adding up. */}
-          {state.status === "partial" ? (
-            <p className="text-sm font-medium text-[var(--color-partial-fg)]">
-              <Bi t={T.filled(fields.length, fields.length - missing.length)} />
-            </p>
-          ) : verdict === "unfinished" && touched ? (
+          {verdict === "unfinished" && touched ? (
             <p className="text-sm text-[var(--color-ink-muted)]">
               <Bi t={T.notFinished} />
             </p>
@@ -360,21 +375,22 @@ export function StudentRow({
       ) : null}
 
       {/* -------------------------------------------------------- the actions */}
-      <div className="mt-4">
-        <div className="flex flex-wrap items-center gap-2">
+      {(state.status === "todo" && !blank) || collapsed ? (
+        <div className="ml-[52px] mt-4">
+          <div className="flex flex-wrap items-center gap-2">
           {state.status === "todo" && !blank ? (
             <>
               <button
                 type="button"
                 onClick={answer(onConfirm)}
-                className="min-h-12 flex-1 rounded-lg transition-transform active:scale-[0.98] border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-2 font-semibold text-[var(--color-confirm-fg)]"
+                className="min-h-12 flex-1 rounded-lg border border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-2 font-semibold text-[var(--color-confirm-fg)] transition-transform active:scale-[0.98]"
               >
                 <Bi t={T.correct} />
               </button>
               <button
                 type="button"
                 onClick={onEdit}
-                className="min-h-12 flex-1 rounded-lg transition-transform active:scale-[0.98] border-2 border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-2 font-semibold text-[var(--color-correct-fg)]"
+                className="min-h-12 flex-1 rounded-lg border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-2 font-semibold text-[var(--color-correct-fg)] transition-transform active:scale-[0.98]"
               >
                 <Bi t={T.change} />
               </button>
@@ -387,13 +403,15 @@ export function StudentRow({
             <button
               type="button"
               onClick={onReopen}
-              className="min-h-12 rounded-lg border-2 border-[var(--color-border)] px-4 py-2 text-sm transition-transform active:scale-[0.98] font-medium text-[var(--color-ink-muted)]"
+              className="flex min-h-12 w-full items-center justify-between rounded-lg px-2 py-2 text-sm font-medium text-[var(--color-brand-600)] transition-transform active:scale-[0.98]"
             >
               <Bi t={T.lookAgain} />
+              <CaretRight aria-hidden size={22} weight="bold" />
             </button>
           ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
     </li>
   );
 }
@@ -475,12 +493,14 @@ function SuggestChip({
         tick();
         onUse(value);
       }}
-      className="mt-2 min-h-12 w-full rounded-lg border-2 border-dashed border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-3 py-2 text-sm font-medium text-[var(--color-correct-fg)] transition-transform active:scale-[0.98]"
+      className="mt-3 flex min-h-12 w-full items-center justify-between gap-3 border-t border-[var(--color-border)] px-1 pt-3 text-left text-sm font-medium text-[var(--color-ink)] transition-transform active:scale-[0.98]"
     >
       {/* The label is a value she is reading (a number, a route), so it stays
           as it is; only the instruction attached to it is bilingual. */}
-      <span>{label}</span>
-      <Bi t={T.useThis} className="ml-1 underline underline-offset-2" />
+      <span className="min-w-0 text-[var(--color-ink-muted)]">{label}</span>
+      <span className="shrink-0 rounded-lg border border-[var(--color-brand-500)] px-3 py-2 text-center text-[var(--color-brand-600)]">
+        <Bi t={T.useThis} />
+      </span>
     </button>
   );
 }
@@ -506,7 +526,6 @@ function FieldInput({
   last,
   onFilled,
   suggestion,
-  sibling,
   missing,
 }: {
   field: TeacherField;
@@ -518,8 +537,6 @@ function FieldInput({
   onFilled: () => void;
   /** What the row above answered for this field, when carrying down is safe. */
   suggestion: string | null;
-  /** A sibling's number, on a blank phone field only. */
-  sibling: { name: string; phone: string } | null;
   /** The row settled without this one, and the school holds nothing for it. */
   missing: boolean;
 }) {
@@ -549,7 +566,7 @@ function FieldInput({
   if (field.inputType === "boolean") {
     return (
       <div>
-        <span className="block text-label text-[var(--color-ink-muted)]">
+        <span className="block text-sm font-medium text-[var(--color-ink)]">
           <Bi t={label(field)} />
         </span>
         <div className="mt-1 flex gap-2">
@@ -564,7 +581,7 @@ function FieldInput({
                 tick();
                 onChange(option.value);
               }}
-              className={`min-h-12 flex-1 rounded-lg border-2 px-4 py-2 font-semibold transition-transform active:scale-[0.98] ${
+              className={`min-h-12 flex-1 rounded-lg border px-4 py-2 font-semibold transition-transform active:scale-[0.98] ${
                 value === option.value
                   ? "border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
                   : "border-[var(--color-border)]"
@@ -589,7 +606,7 @@ function FieldInput({
     if (options.length > 12) {
       return (
         <label className="block">
-          <span className="block text-label text-[var(--color-ink-muted)]">
+          <span className="block text-sm font-medium text-[var(--color-ink)]">
             <Bi t={label(field)} />
           </span>
           <input
@@ -601,7 +618,7 @@ function FieldInput({
             autoComplete="off"
             autoCapitalize="words"
             placeholder={T.typeToSearch}
-            className={`mt-1 min-h-12 w-full rounded-lg border-2 px-3 text-base ${border}`}
+            className={`mt-2 min-h-14 w-full rounded-lg border bg-white px-3 text-base outline-none transition-shadow focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] ${border}`}
           />
           <datalist id={`options-${field.key}`}>
             {options.map((option) => (
@@ -624,13 +641,13 @@ function FieldInput({
 
     return (
       <label className="block">
-        <span className="block text-label text-[var(--color-ink-muted)]">
+        <span className="block text-sm font-medium text-[var(--color-ink)]">
           <Bi t={label(field)} />
         </span>
         <select
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className={`mt-1 min-h-12 w-full rounded-lg border-2 px-3 text-base ${border}`}
+          className={`mt-2 min-h-14 w-full rounded-lg border bg-white px-3 text-base outline-none transition-shadow focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] ${border}`}
         >
           {/* An <option> cannot hold two lines, so this one carries both
               languages on one, separated. It is the only string on the surface
@@ -652,7 +669,7 @@ function FieldInput({
 
   return (
     <label className="block">
-      <span className="flex items-baseline justify-between gap-2 text-label text-[var(--color-ink-muted)]">
+      <span className="flex items-baseline justify-between gap-2 text-sm font-medium text-[var(--color-ink)]">
         <span className="min-w-0">
           <Bi t={label(field)} />
         </span>
@@ -662,47 +679,58 @@ function FieldInput({
           </span>
         ) : null}
       </span>
-      <input
-        value={value}
-        onChange={(event) => {
-          const next = clean(field, event.target.value);
-          onChange(next);
-          // Move on only when the field GREW into a complete value. Doing it on
-          // any change would yank the caret away the moment she backspaces to
-          // correct the last digit, which is exactly when she needs to stay.
-          if (
-            field.exactLen !== null &&
-            next.length === field.exactLen &&
-            next.length > value.length
-          ) {
-            onFilled();
+      <div className="relative mt-2">
+        <input
+          value={value}
+          onChange={(event) => {
+            const next = clean(field, event.target.value);
+            onChange(next);
+            // Move on only when the field GREW into a complete value. Doing it on
+            // any change would yank the caret away the moment she backspaces to
+            // correct the last digit, which is exactly when she needs to stay.
+            if (
+              field.exactLen !== null &&
+              next.length === field.exactLen &&
+              next.length > value.length
+            ) {
+              onFilled();
+            }
+          }}
+          onBlur={() => setTouched(true)}
+          type={field.inputType === "date" ? "date" : "text"}
+          inputMode={isNumeric ? "numeric" : "text"}
+          enterKeyHint={last ? "done" : "next"}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize={isNumeric ? "off" : "words"}
+          placeholder={
+            field.inputType === "tel" && field.exactLen
+              ? `Enter ${field.exactLen}-digit number`
+              : field.key === "father_name"
+                ? "Enter father's full name"
+                : `Enter ${field.labelEn.toLowerCase()}`
           }
-        }}
-        onBlur={() => setTouched(true)}
-        type={field.inputType === "date" ? "date" : "text"}
-        inputMode={isNumeric ? "numeric" : "text"}
-        enterKeyHint={last ? "done" : "next"}
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize={isNumeric ? "off" : "words"}
-        // No maxLength on a numeric field: it would truncate a pasted
-        // "+91 98765 43210" to its first ten CHARACTERS before clean() ever saw
-        // it, leaving a mangled number. clean() caps the digits instead.
-        maxLength={isNumeric ? undefined : (field.exactLen ?? undefined)}
-        className={`mt-1 min-h-12 w-full rounded-lg border-2 px-3 text-base ${border} ${
-          isNumeric ? "font-mono" : ""
-        }`}
-      />
-      {/* Siblings share a parent's mobile — 134 numbers in this school already
-          do. Offered as a tap on a blank field, never prefilled: she is the one
-          who knows whether these two children really are brother and sister,
-          and the answer still goes through the office review queue. */}
-      {sibling && !value ? (
-        <SuggestChip
-          label={T.siblingNumber(sibling.name, sibling.phone)}
-          value={sibling.phone}
-          onUse={onChange}
+          // No maxLength on a numeric field: it would truncate a pasted
+          // "+91 98765 43210" to its first ten CHARACTERS before clean() ever saw
+          // it, leaving a mangled number. clean() caps the digits instead.
+          maxLength={isNumeric ? undefined : (field.exactLen ?? undefined)}
+          className={`min-h-14 w-full rounded-lg border bg-white px-3 text-base outline-none transition-shadow placeholder:text-[var(--color-ink-muted)]/80 focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] ${border} ${
+            isNumeric ? "font-mono" : ""
+          } ${field.inputType === "tel" ? "pr-12" : ""}`}
         />
+        {field.inputType === "tel" ? (
+          <DeviceMobile
+            aria-hidden
+            size={24}
+            weight="regular"
+            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-ink-muted)]"
+          />
+        ) : null}
+      </div>
+      {!bad && isNumeric && field.exactLen ? (
+        <span className="mt-2 block text-sm text-[var(--color-ink-muted)]">
+          <Bi t={T.numericHint(field.exactLen)} />
+        </span>
       ) : null}
 
       {!bad ? askFor : null}

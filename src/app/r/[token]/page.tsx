@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { resolveToken } from "@/lib/auth/token";
 import { RequestForm } from "@/components/teacher/RequestForm";
 import { ServiceWorker } from "@/components/teacher/ServiceWorker";
-import { Bi } from "@/components/teacher/Bi";
 import { T } from "@/components/teacher/strings";
 
 /**
@@ -33,40 +32,27 @@ export default async function TeacherRequestPage({
   const askingHi = request.fields.map((field) => field.labelHi).join(" · ");
 
   return (
-    <main className="teacher-surface mx-auto max-w-md px-4 pb-4 pt-5">
+    <main className="teacher-surface mx-auto max-w-md px-4 pb-0">
       <ServiceWorker />
       {/* Sticky, and deliberately short: the class and the ask stay on screen
           the whole way down a 46-card list. */}
-      <header className="sticky top-0 z-10 -mx-4 bg-[var(--color-brand-900)] px-4 py-3 text-white">
+      <header className="sticky top-0 z-10 -mx-4 bg-[var(--color-brand-900)] px-5 pb-4 pt-3 text-white shadow-[0_1px_0_rgba(255,255,255,0.12)]">
         <div className="mx-auto max-w-md">
           <div className="flex items-baseline justify-between gap-3">
-            <h1 className="text-lg font-semibold">{request.audienceLabel}</h1>
-            <p className="shrink-0 text-xs opacity-80">
+            <h1 className="text-xl font-semibold tracking-[-0.01em]">{request.audienceLabel}</h1>
+            <p className="shrink-0 text-sm opacity-90">
               {T.dueBy(formatDueDate(request.dueDate)).en}
             </p>
           </div>
-          <p className="mt-0.5 truncate text-sm opacity-90">
+          <p className="mt-1 truncate text-sm opacity-95">
             {asking}
             {request.period ? ` · ${request.period}` : ""}
           </p>
-          <p lang="hi" className="truncate text-xs opacity-70">
+          <p lang="hi" className="mt-0.5 truncate text-xs opacity-80">
             {askingHi}
           </p>
         </div>
       </header>
-
-      <p className="mt-4 text-sm text-[var(--color-ink-muted)]">
-        {request.teacherName} — {request.title}
-      </p>
-
-      {/* Says what actually happens now. The old copy promised a review screen
-          before anything left the phone, and that promise is no longer kept —
-          answers go by themselves. Saying so plainly is the trade: she is told
-          she can still fix anything, and the office review queue is unchanged
-          behind it, so nothing reaches a student record unapproved either way. */}
-      <p className="mt-3 rounded-[var(--radius-card)] border border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-3 text-sm text-[var(--color-confirm-fg)]">
-        <Bi t={T.intro} />
-      </p>
 
       <RequestForm
         token={token}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CheckCircle, CloudCheck } from "@phosphor-icons/react";
 import { StudentRow } from "./StudentRow";
 import { ProgressRail } from "./ProgressRail";
 import { ReviewSummary } from "./ReviewSummary";
@@ -248,6 +249,23 @@ export function RequestForm({
     [roster, rows, sentIds],
   );
 
+  const activeStudentId = useMemo(
+    () => {
+      const ordered = [...blanks, ...known];
+      const editing = ordered.find((student) =>
+        ["editing", "partial"].includes(rows[student.studentId]!.status),
+      );
+      return (
+        editing?.studentId ??
+        ordered.find(
+          (student) => !COMPLETE.includes(rows[student.studentId]!.status),
+        )?.studentId ??
+        null
+      );
+    },
+    [blanks, known, rows],
+  );
+
   /** Known-group students she has not touched yet — what "सब सही हैं" covers. */
   const untouchedKnown = useMemo(
     () => known.filter((student) => rows[student.studentId]!.status === "todo"),
@@ -462,6 +480,7 @@ export function RequestForm({
 
   useEffect(() => {
     if (stage !== "review") return;
+    window.scrollTo({ top: 0, behavior: "auto" });
     function onPop() {
       setStage("list");
     }
@@ -726,6 +745,8 @@ export function RequestForm({
       blank={blankIds.has(student.studentId)}
       required={requiredByStudent.get(student.studentId) ?? []}
       sent={sentIds.has(student.studentId)}
+      position={(blankIds.has(student.studentId) ? 0 : blanks.length) + index + 1}
+      active={activeStudentId === student.studentId}
       onConfirm={() => update(student.studentId, { status: "confirmed" })}
       onEdit={() => update(student.studentId, { status: "editing" })}
       onReopen={() => update(student.studentId, { status: "todo" })}
@@ -768,6 +789,40 @@ export function RequestForm({
       online={online}
       onUploaded={onPhotoUploaded}
     >
+      <section
+        aria-label="How to complete this list"
+        className="-mx-4 grid grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)] border-b border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-3 text-[var(--color-confirm-fg)]"
+      >
+        <div className="flex min-w-0 items-start gap-3 border-r border-[var(--color-confirm-border)] pr-3">
+          <CheckCircle
+            aria-hidden
+            size={28}
+            weight="duotone"
+            className="mt-0.5 shrink-0"
+          />
+          <p className="min-w-0 text-sm font-semibold leading-snug">
+            <Bi
+              t={
+                blanks.length > 0
+                  ? T.fillMissingFirst(blanks.length)
+                  : T.checkExistingFirst(known.length)
+              }
+            />
+          </p>
+        </div>
+        <div className="flex min-w-0 items-start gap-2 pl-3">
+          <CloudCheck
+            aria-hidden
+            size={28}
+            weight="duotone"
+            className="mt-0.5 shrink-0"
+          />
+          <p className="min-w-0 text-sm font-medium leading-snug">
+            <Bi t={T.savedAutomatically} />
+          </p>
+        </div>
+      </section>
+
       {restored ? (
         <p className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-3 text-sm text-[var(--color-correct-fg)]">
           <Bi t={T.restored} />
@@ -783,11 +838,11 @@ export function RequestForm({
       {/* ============================================ 1. the ones that matter */}
       {/* No blanks, no heading. An empty section with a zero in it is noise. */}
       {blanks.length > 0 ? (
-        <section className="mt-5">
-          <h2 className="px-1 text-base font-semibold text-[var(--color-warning-fg)]">
+        <section>
+          <h2 className="sr-only">
             <Bi t={T.blanksHeading(blanks.length)} />
           </h2>
-          <ol className="mt-2 space-y-3">
+          <ol>
             {blanks.slice(0, shownBlanks).map(renderRow)}
           </ol>
           <MoreButton
@@ -804,9 +859,9 @@ export function RequestForm({
 
       {/* ==================================== 2. the ones already on record */}
       {known.length > 0 ? (
-        <section className="mt-7">
-          <h2 className="px-1 text-base font-semibold">
-            <Bi t={T.knownHeading(known.length)} />
+        <section className="mt-5 border-t border-[var(--color-border)] pt-5">
+          <h2 className="text-base font-semibold">
+            <Bi t={T.knownHeadingShort(known.length)} />
           </h2>
 
           {/* Hidden entirely on a photo round. "All correct" is one tap
@@ -819,7 +874,7 @@ export function RequestForm({
             <button
               type="button"
               onClick={confirmAllKnown}
-              className="mt-2 min-h-12 w-full rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-2 font-semibold text-[var(--color-confirm-fg)]"
+              className="mt-3 min-h-12 w-full rounded-lg border border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-2 font-semibold text-[var(--color-confirm-fg)] transition-transform active:scale-[0.98]"
             >
               <Bi t={T.confirmAll(untouchedKnown.length)} />
             </button>
@@ -831,7 +886,7 @@ export function RequestForm({
             </p>
           ) : null}
 
-          <ol className="mt-3 space-y-3">
+          <ol className="mt-3 border-t border-[var(--color-border)]">
             {known.slice(0, shownKnown).map(renderRow)}
           </ol>
           <MoreButton

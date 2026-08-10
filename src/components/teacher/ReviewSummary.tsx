@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowRight } from "@phosphor-icons/react";
 import { Bi } from "./Bi";
 import { T, type Phrase } from "./strings";
 import type { Summary } from "./summary";
@@ -51,9 +52,9 @@ export function ReviewSummary({
   const { changed, confirmed, notPresent, partial, untouched } = summary;
 
   return (
-    <section className="mt-4">
+    <section className="pt-5">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-lg font-semibold">
+        <h2 className="text-xl font-semibold tracking-[-0.01em]">
           <Bi t={pending > 0 ? T.receiptFilled : T.receiptSent} />
         </h2>
         <button
@@ -80,7 +81,7 @@ export function ReviewSummary({
                 <button
                   type="button"
                   onClick={() => onFix(entry.studentId)}
-                  className="block w-full rounded-[var(--radius-card)] border-2 border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-3 text-left"
+                  className="block w-full rounded-[var(--radius-card)] border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-3 text-left"
                 >
                   <span className="block font-medium">{entry.name}</span>
                   <span className="mt-0.5 block text-sm text-[var(--color-ink-muted)]">
@@ -90,7 +91,7 @@ export function ReviewSummary({
                     <span className="line-through opacity-60">
                       {entry.from ?? T.wasEmpty.en}
                     </span>
-                    <span aria-hidden>→</span>
+                    <ArrowRight aria-hidden size={16} />
                     <span className="font-semibold">{entry.to}</span>
                   </span>
                   <span className="mt-1 block text-xs text-[var(--color-brand-600)] underline">
@@ -136,7 +137,7 @@ export function ReviewSummary({
           already worked on, so they are the ones she is closest to finishing —
           and unlike an unanswered row, part of this one has already gone. */}
       {partial.length > 0 ? (
-        <div className="mt-4 rounded-[var(--radius-card)] border-2 border-[var(--color-partial-border)] bg-[var(--color-partial-bg)] px-4 py-3">
+        <div className="mt-5 border-y border-[var(--color-partial-border)] bg-[var(--color-partial-bg)]/45 py-4">
           <h3 className="text-base font-semibold text-[var(--color-partial-fg)]">
             <Bi t={T.partialCount(partial.length)} />
           </h3>
@@ -166,27 +167,27 @@ export function ReviewSummary({
 
       {/* ======================================= what she has not answered */}
       {untouched.length > 0 ? (
-        <div className="mt-4 rounded-[var(--radius-card)] border-2 border-dashed border-[var(--color-warning)] px-4 py-3">
-          <h3 className="text-base font-semibold text-[var(--color-warning)]">
+        <details className="mt-5 border-y border-[var(--color-border)] py-4">
+          <summary className="cursor-pointer text-base font-semibold text-[var(--color-warning-fg)]">
             <Bi t={T.untouchedCount(untouched.length)} />
-          </h3>
-          <ul className="mt-2 space-y-1">
+          </summary>
+          <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
+            <Bi t={T.untouchedNote} />
+          </p>
+          <ul className="mt-2 divide-y divide-[var(--color-border)]">
             {untouched.map((entry) => (
               <li key={entry.studentId}>
                 <button
                   type="button"
                   onClick={() => onFix(entry.studentId)}
-                  className="min-h-12 text-left text-sm font-medium text-[var(--color-brand-600)] underline"
+                  className="min-h-12 w-full text-left text-sm font-medium text-[var(--color-brand-600)]"
                 >
                   {entry.name}
                 </button>
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
-            <Bi t={T.untouchedNote} />
-          </p>
-        </div>
+        </details>
       ) : null}
 
       {error ? (
@@ -222,7 +223,7 @@ export function ReviewSummary({
           </button>
         ) : (
           <p className="min-h-12 rounded-lg bg-[var(--color-confirm-bg)] px-4 py-3 text-center font-semibold text-[var(--color-confirm-fg)]">
-            <Bi t={summary.empty ? T.nothingFilledYet : T.allReached} />
+            <Bi t={summary.empty ? T.nothingFilledYet : T.filledAnswersReached} />
           </p>
         )}
         {!online ? (

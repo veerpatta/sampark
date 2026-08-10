@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1",
+    "@phosphor-icons/react": "^2.1.10",
     "@vercel/blob": "^2.7.0",
     "bcryptjs": "^3.0.2",
     "drizzle-orm": "^0.44.5",
