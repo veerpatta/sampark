@@ -128,8 +128,6 @@ export const T = {
       `सब ${n} बच्चों की जानकारी विद्यालय पहुँच गई`,
     ),
   finish: p("Done", "पूरा हुआ"),
-  showNext: (n: number, left: number) =>
-    p(`Show next ${n} — ${left} more`, `अगले ${n} दिखाएँ — ${left} और बाकी`),
 
   /* ---------------------------------------------------------- the rail */
   allDone: p("All done", "सब पूरे हैं"),

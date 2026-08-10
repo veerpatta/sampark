@@ -79,9 +79,6 @@ import {
 
 type Stage = "list" | "review";
 
-/** Rows revealed at a time. Ten is a batch she can see the end of. */
-const BATCH = 10;
-
 /** How long to stand down after a 429 before trying again. */
 const RATE_LIMIT_BACKOFF_MS = 15_000;
 
@@ -151,12 +148,6 @@ export function RequestForm({
   const [stage, setStage] = useState<Stage>("list");
   /** Set when she jumps back from review, so the row can be scrolled to. */
   const [focusId, setFocusId] = useState<string | null>(null);
-  /**
-   * How many rows of each group are on screen. Forty-six cards in one scroll is
-   * a wall with no end in sight; ten is a batch a person can finish.
-   */
-  const [shownBlanks, setShownBlanks] = useState(BATCH);
-  const [shownKnown, setShownKnown] = useState(BATCH);
 
   /**
    * The upload in flight, or the last one that failed. One key per upload, held
@@ -499,48 +490,17 @@ export function RequestForm({
     return () => window.removeEventListener("popstate", onPop);
   }, [stage]);
 
-  /** Jump back from the summary to one row, opened and in view. */
+  /**
+   * Jump back from the summary to one row, opened and in view.
+   *
+   * It used to have to reveal the batch that row was hiding in first. The whole
+   * list is rendered now, so every row is always there to scroll to.
+   */
   function fix(studentId: string) {
-    // The row may be past the batch currently revealed, in which case there is
-    // nothing to scroll to. Reveal down to it first.
-    const inBlanks = blanks.findIndex((s) => s.studentId === studentId);
-    if (inBlanks >= 0) {
-      setShownBlanks((current) => Math.max(current, inBlanks + 1));
-    } else {
-      const inKnown = known.findIndex((s) => s.studentId === studentId);
-      if (inKnown >= 0) setShownKnown((current) => Math.max(current, inKnown + 1));
-    }
-
     setStage("list");
     setFocusId(studentId);
     update(studentId, { status: "editing" });
   }
-
-  /**
-   * Reveal the next batch as soon as the current one is finished.
-   *
-   * She gets the "I finished a batch" beat without having to ask for more, and
-   * the button below stays for when she wants to skip ahead. Appending rather
-   * than paging: her answers are keyed by student id either way, but hiding
-   * rows she has already done would make the group heading's count read as a
-   * lie, and it would lose her scroll position every ten rows.
-   */
-  useEffect(() => {
-    // COMPLETE, not UPLOADABLE. A partial row must not unlock the next ten and
-    // scroll the screen on past the very box she still has to come back to.
-    const batchDone = (group: TeacherRosterRow[], shown: number) =>
-      shown < group.length &&
-      group
-        .slice(0, shown)
-        .every((student) => COMPLETE.includes(rows[student.studentId]!.status));
-
-    if (batchDone(blanks, shownBlanks)) {
-      setShownBlanks((current) => Math.min(current + BATCH, blanks.length));
-    }
-    if (batchDone(known, shownKnown)) {
-      setShownKnown((current) => Math.min(current + BATCH, known.length));
-    }
-  }, [rows, blanks, known, shownBlanks, shownKnown]);
 
   useEffect(() => {
     if (stage !== "list" || !focusId) return;
@@ -898,18 +858,7 @@ export function RequestForm({
           <h2 className="sr-only">
             <Bi t={T.blanksHeading(blanks.length)} />
           </h2>
-          <ol>
-            {blanks.slice(0, shownBlanks).map(renderRow)}
-          </ol>
-          <MoreButton
-            shown={shownBlanks}
-            total={blanks.length}
-            onMore={() =>
-              setShownBlanks((current) =>
-                Math.min(current + BATCH, blanks.length),
-              )
-            }
-          />
+          <ol>{blanks.map(renderRow)}</ol>
         </section>
       ) : null}
 
@@ -943,15 +892,8 @@ export function RequestForm({
           ) : null}
 
           <ol className="mt-3 border-t border-[var(--color-border)]">
-            {known.slice(0, shownKnown).map(renderRow)}
+            {known.map(renderRow)}
           </ol>
-          <MoreButton
-            shown={shownKnown}
-            total={known.length}
-            onMore={() =>
-              setShownKnown((current) => Math.min(current + BATCH, known.length))
-            }
-          />
         </section>
       ) : null}
 
@@ -1000,32 +942,3 @@ export function RequestForm({
   );
 }
 
-/**
- * "Next 10 (14 left)".
- *
- * Says how many remain rather than just offering more, because the number is
- * the thing that tells her whether to keep going or put the phone down. Absent
- * once everything in the group is on screen — a disabled button at the end of a
- * list is a dead end she has to read.
- */
-function MoreButton({
-  shown,
-  total,
-  onMore,
-}: {
-  shown: number;
-  total: number;
-  onMore: () => void;
-}) {
-  if (shown >= total) return null;
-  const left = total - shown;
-  return (
-    <button
-      type="button"
-      onClick={onMore}
-      className="mt-3 min-h-12 w-full rounded-lg border-2 border-dashed border-[var(--color-border)] px-4 py-2 font-medium text-[var(--color-ink-muted)]"
-    >
-      <Bi t={T.showNext(Math.min(BATCH, left), left)} />
-    </button>
-  );
-}
