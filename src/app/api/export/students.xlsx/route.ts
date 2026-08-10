@@ -3,6 +3,7 @@ import { buildWorkbook, type ExportColumn } from "@/lib/excel";
 import { listStudents } from "@/lib/students";
 import { parseFilters } from "@/lib/student-filters";
 import { compareClassLabels } from "@/lib/classes";
+import { fetchPhotos } from "@/lib/photo-store";
 import type { Student } from "../../../../../drizzle/schema";
 
 /**
@@ -16,7 +17,14 @@ import type { Student } from "../../../../../drizzle/schema";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const COLUMNS: ExportColumn<Student>[] = [
+/**
+ * The workbook's columns, given the photographs already fetched.
+ *
+ * A function rather than a constant because the Photo column has to close over
+ * the images. Everything else is unchanged and still in the order the importer
+ * reads, so export -> fix in Excel -> re-import still round-trips.
+ */
+const columnsFor = (photos: Map<string, Buffer>): ExportColumn<Student>[] => [
   { header: "Student ID", width: 14, value: (s) => s.id },
   { header: "SR No", width: 12, value: (s) => s.srNo },
   { header: "Admission No", width: 14, value: (s) => s.admissionNo },
@@ -37,10 +45,22 @@ const COLUMNS: ExportColumn<Student>[] = [
   { header: "Address", width: 30, value: (s) => s.address },
   { header: "Bus Route", width: 14, value: (s) => s.busRoute },
   { header: "Status", width: 10, value: (s) => s.status },
-  // Yes or no, never the pathname. A blob path in a spreadsheet is noise to a
-  // reader and a dead string to PSP, but "which children still need a photo"
-  // is the exact question a printed list is wanted for.
-  { header: "Photo", width: 8, value: (s) => (s.photoPath ? "yes" : "") },
+  /*
+   * THE PICTURE ITSELF, not a pathname and not "yes".
+   *
+   * A blob pathname in a spreadsheet is a dead string — unreadable to a person
+   * and meaningless to PSP — and "yes" answers the wrong question. What the
+   * office wants this file for is a printed class list with faces on it.
+   *
+   * `value` still fills the cell when there is no photograph, so the column
+   * reads as a work list rather than as a row of holes.
+   */
+  {
+    header: "Photo",
+    width: 11,
+    value: (s) => (s.photoPath ? "" : "no photo"),
+    image: (s) => photos.get(s.id) ?? null,
+  },
 ];
 
 export async function GET(request: Request) {
@@ -94,7 +114,13 @@ export async function GET(request: Request) {
     .sort(compareClassLabels)
     .map((label) => ({ name: label, rows: byClass.get(label)! }));
 
-  const file = await buildWorkbook(sheets, COLUMNS);
+  // Opt OUT, not in: the office asked for this file so it could print faces,
+  // and an export that quietly leaves them behind is the bug being fixed here.
+  // `?photos=0` is for the case where somebody wants the columns in a hurry.
+  const withPhotos = url.searchParams.get("photos") !== "0";
+  const photos = withPhotos ? await fetchPhotos(students) : new Map();
+
+  const file = await buildWorkbook(sheets, columnsFor(photos));
   const stamp = new Date().toISOString().slice(0, 10);
   // Named after the single class when that is all the filter is, because the
   // office files these by class. Any richer filter gets the general name rather

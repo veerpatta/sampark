@@ -1,6 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { looksLikeHtml, parseHtmlTable } from "../src/lib/excel";
+import ExcelJS from "exceljs";
+import { buildWorkbook, looksLikeHtml, parseHtmlTable } from "../src/lib/excel";
 
 /**
  * The PSP report downloads as `.xls` and is not an Excel file — it is an HTML
@@ -86,5 +87,79 @@ describe("parseHtmlTable", () => {
     const table = parseHtmlTable(encode("<div>no table here</div>"));
     assert.deepEqual(table.headers, []);
     assert.deepEqual(table.rows, []);
+  });
+});
+
+describe("buildWorkbook — photographs in cells", () => {
+  /**
+   * The office wanted a printed class list with faces on it and kept getting a
+   * column that said "yes". A blob pathname is a dead string in a spreadsheet
+   * and "yes" answers a different question, so the cell holds the picture.
+   *
+   * Read back through ExcelJS rather than asserting on the bytes we passed in:
+   * addImage is easy to call in a way that produces a valid file with the
+   * picture anchored outside the sheet, and only a reader catches that.
+   */
+  const JPEG = Buffer.from(
+    "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a" +
+      "HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAA" +
+      "AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==",
+    "base64",
+  );
+
+  type Row = { id: string; photo: Buffer | null };
+
+  const columns = [
+    { header: "Student ID", width: 14, value: (r: Row) => r.id },
+    {
+      header: "Photo",
+      width: 11,
+      value: (r: Row) => (r.photo ? "" : "no photo"),
+      image: (r: Row) => r.photo,
+    },
+  ];
+
+  async function build(rows: Row[]) {
+    const file = await buildWorkbook([{ name: "Class 8", rows }], columns);
+    const read = new ExcelJS.Workbook();
+    await read.xlsx.load(
+      file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer,
+    );
+    return read.getWorksheet("Class 8")!;
+  }
+
+  test("puts the picture in the cell, on the row it belongs to", async () => {
+    const sheet = await build([
+      { id: "S1", photo: JPEG },
+      { id: "S2", photo: JPEG },
+    ]);
+
+    const images = sheet.getImages();
+    assert.equal(images.length, 2, "both faces should be in the sheet");
+
+    // Column index 1 is Photo; row 1 is the first DATA row, because the anchor
+    // grid is zero-based and row 0 is the frozen header.
+    const rowsAnchored = images.map((image) => image.range.tl.nativeRow).sort();
+    assert.deepEqual(rowsAnchored, [1, 2]);
+    for (const image of images) {
+      assert.equal(image.range.tl.nativeCol, 1, "a face landed outside the Photo column");
+    }
+  });
+
+  test("grows only the rows that carry a picture", async () => {
+    const sheet = await build([
+      { id: "S1", photo: JPEG },
+      { id: "S2", photo: null },
+    ]);
+
+    // Row 1 is the header, so the data starts at 2.
+    assert.ok((sheet.getRow(2).height ?? 0) > 20, "the photo row was left too short to see it");
+    assert.equal(sheet.getRow(3).height, undefined, "a class with no photos should read as a normal table");
+  });
+
+  test("says so in words when there is no photograph", async () => {
+    const sheet = await build([{ id: "S1", photo: null }]);
+    assert.equal(sheet.getImages().length, 0);
+    assert.equal(sheet.getRow(2).getCell(2).value, "no photo");
   });
 });

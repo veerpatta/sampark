@@ -192,6 +192,21 @@ export default async function StudentsPage({
               Export these {total.toLocaleString("en-IN")} to Excel
             </a>
           ) : null}
+          {/* The photographs are the slow part of that file — one blob read per
+              child — so the way to get the columns in a hurry is offered next
+              to it rather than left as an undocumented query parameter. */}
+          {total > 0 ? (
+            <a
+              href={`/api/export/students.xlsx?${(() => {
+                const fast = new URLSearchParams(exportQuery);
+                fast.set("photos", "0");
+                return fast;
+              })()}`}
+              className="inline-flex min-h-[var(--tap-min)] items-center px-2 text-sm text-[var(--color-ink-muted)] hover:underline"
+            >
+              without photos
+            </a>
+          ) : null}
           {canImport ? (
             <Link
               href="/students/import"

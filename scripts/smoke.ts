@@ -1,9 +1,12 @@
 import "../drizzle/env";
 import assert from "node:assert/strict";
 import { eq, and, sql } from "drizzle-orm";
+import ExcelJS from "exceljs";
 import { del, head } from "@vercel/blob";
 import { db, schema } from "../src/lib/db";
 import { decideSubmissions } from "../src/lib/submissions";
+import { buildWorkbook } from "../src/lib/excel";
+import { fetchPhotos } from "../src/lib/photo-store";
 import { listRequests } from "../src/lib/requests";
 import { listStudents } from "../src/lib/students";
 import { photoPathname, thumbPathname } from "../src/lib/photos";
@@ -374,6 +377,45 @@ async function main() {
     const withPhoto = await listStudents({ search: first, limit: 10 });
     assert.equal(withPhoto.students[0]?.photoPath, uploaded);
     return `${missing.total} children still have none`;
+  });
+
+  await step("the photograph reaches the Excel export as a picture", async () => {
+    // End to end through the real store: the blob the teacher uploaded, read
+    // back as a thumbnail, drawn into a workbook, and read out of the file
+    // again. tests/excel.test.ts covers the drawing with a fixture; this is the
+    // half that needs a live blob to mean anything.
+    const [student] = await db
+      .select()
+      .from(schema.students)
+      .where(eq(schema.students.id, first));
+    assert.ok(student?.photoPath, "the student has no photo to export");
+
+    const photos = await fetchPhotos([student!]);
+    assert.ok(photos.get(first)?.length, "the export could not read the photo back");
+
+    const file = await buildWorkbook(
+      [{ name: "Smoke", rows: [student!] }],
+      [
+        { header: "Student ID", width: 14, value: (row) => row.id },
+        {
+          header: "Photo",
+          width: 11,
+          value: (row) => (row.photoPath ? "" : "no photo"),
+          image: (row) => photos.get(row.id) ?? null,
+        },
+      ],
+    );
+
+    const read = new ExcelJS.Workbook();
+    await read.xlsx.load(
+      file.buffer.slice(
+        file.byteOffset,
+        file.byteOffset + file.byteLength,
+      ) as ArrayBuffer,
+    );
+    const images = read.getWorksheet("Smoke")!.getImages();
+    assert.equal(images.length, 1, "no picture landed in the workbook");
+    return `${(photos.get(first)!.length / 1024).toFixed(1)} kB thumbnail embedded`;
   });
 
   console.log("\nThe office board");

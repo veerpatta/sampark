@@ -299,7 +299,23 @@ export type ExportColumn<T> = {
   header: string;
   width: number;
   value: (row: T) => string | number | null;
+  /**
+   * JPEG bytes to draw INTO the cell, rather than text.
+   *
+   * Already resolved — this module formats a workbook and does not know that a
+   * photograph lives behind a network call. The caller fetches, with whatever
+   * concurrency it needs, and hands over bytes. See the students export.
+   *
+   * `value` is still read when this returns null, so a child with no photo gets
+   * a readable cell instead of a hole.
+   */
+  image?: (row: T) => Buffer | null;
 };
+
+/** How big a picture is drawn, in pixels, and the row height that fits it. */
+const IMAGE_PX = 64;
+/** Excel measures row height in points: 1pt = 1/72in, a screen px = 1/96in. */
+const IMAGE_ROW_POINTS = (IMAGE_PX + 8) * 0.75;
 
 /**
  * One sheet per group, with a frozen, bold header row.
@@ -329,8 +345,46 @@ export async function buildWorkbook<T>(
     worksheet.getRow(1).font = { bold: true };
     worksheet.views = [{ state: "frozen", ySplit: 1 }];
 
-    for (const row of sheet.rows) {
-      worksheet.addRow(columns.map((column) => column.value(row) ?? ""));
+    const imageColumns = columns
+      .map((column, index) => ({ column, index }))
+      .filter((entry) => entry.column.image);
+
+    for (const [offset, row] of sheet.rows.entries()) {
+      const added = worksheet.addRow(
+        columns.map((column) => column.value(row) ?? ""),
+      );
+
+      if (imageColumns.length === 0) continue;
+
+      // The header is row 1, so the first data row is 2 — and addImage anchors
+      // on a ZERO-based grid, which is why this is `offset + 1` and not + 2.
+      const anchorRow = offset + 1;
+      let drew = false;
+
+      for (const { column, index } of imageColumns) {
+        const bytes = column.image!(row);
+        if (!bytes) continue;
+
+        // base64 rather than the buffer overload: ExcelJS types that parameter
+        // against its own bundled Buffer, which no longer matches Node's.
+        const id = workbook.addImage({
+          base64: bytes.toString("base64"),
+          extension: "jpeg",
+        });
+        worksheet.addImage(id, {
+          // Inset a little so the picture sits inside its cell rather than on
+          // the gridline, which is what makes a column of faces read as a
+          // column rather than as one long strip.
+          tl: { col: index + 0.1, row: anchorRow + 0.1 },
+          ext: { width: IMAGE_PX, height: IMAGE_PX },
+          editAs: "oneCell",
+        });
+        drew = true;
+      }
+
+      // Only rows that actually got a picture grow. A class where nobody has
+      // been photographed still reads as a normal table.
+      if (drew) added.height = IMAGE_ROW_POINTS;
     }
 
     worksheet.autoFilter = {
