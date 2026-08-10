@@ -17,6 +17,7 @@
  * a neutral "also on N other students" line in /review; the teacher sees
  * nothing. See listPendingReview in lib/submissions.ts.
  */
+import { isPhotoPathname } from "./photos";
 import type { FieldDef } from "../../drizzle/schema";
 
 export type { FieldDef };
@@ -113,6 +114,24 @@ export function validateField(
       if (yes.includes(lower)) return ok("yes");
       if (no.includes(lower)) return ok("no");
       return fail(`${def.labelEn} must be yes or no`, `हाँ या नहीं चुनें`);
+    }
+
+    case "photo": {
+      // The value is the pathname of a blob the upload endpoint has already
+      // written and already sniffed. All that is left to check here is that it
+      // has the shape this app mints — anything else is a string somebody put
+      // in the request body by hand.
+      //
+      // WHAT THIS CANNOT CHECK is whether the pathname belongs to THIS student:
+      // validateField has a field definition and a value, and no idea whose row
+      // it is on. That check lives in recordSubmissions, which does.
+      if (!isPhotoPathname(value)) {
+        return fail(
+          `${def.labelEn} is not a photo this app stored`,
+          `फ़ोटो दोबारा लें`,
+        );
+      }
+      return ok(value);
     }
 
     case "select": {

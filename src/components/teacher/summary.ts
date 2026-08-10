@@ -28,6 +28,7 @@ export type ChangedValue = {
   studentId: string;
   name: string;
   fieldKey: string;
+  labelEn: string;
   labelHi: string;
   /** What the school held. Null when it held nothing. */
   from: string | null;
@@ -38,8 +39,15 @@ export type NamedStudent = { studentId: string; name: string };
 
 /** A row that went to the school with a box still empty. */
 export type PartialStudent = NamedStudent & {
-  /** The Hindi labels of the fields still waiting. */
-  missing: string[];
+  /**
+   * The fields still waiting, as `{ en, hi }` pairs.
+   *
+   * A pair rather than one string because the receipt now shows both languages
+   * and the screen must not be the place that decides which half exists — a
+   * component that receives only Hindi cannot grow an English line later
+   * without this type changing anyway.
+   */
+  missing: { en: string; hi: string }[];
 };
 
 export type Summary = {
@@ -53,7 +61,7 @@ export type Summary = {
    * Rows that went to the school with a box the school holds nothing for still
    * empty.
    *
-   * Its own bucket, and NOT folded into `untouched`. Saying "जवाब बाकी है"
+   * Its own bucket, and NOT folded into `untouched`. Saying "not answered yet"
    * about a number the office already has is the same lie in the other
    * direction, and she would go looking for a value she has already given.
    * Whatever she DID type still appears under `changed`.
@@ -81,7 +89,12 @@ export function summarise(
   const partial: PartialStudent[] = [];
   const untouched: NamedStudent[] = [];
 
-  const labelHi = new Map(fields.map((field) => [field.key, field.labelHi]));
+  const labels = new Map(
+    fields.map((field) => [
+      field.key,
+      { en: field.labelEn, hi: field.labelHi },
+    ]),
+  );
 
   for (const student of roster) {
     const row = rows[student.studentId];
@@ -91,7 +104,7 @@ export function summarise(
       partial.push({
         ...named,
         missing: missingRequired(row, requiredKeys(student, fields)).map(
-          (key) => labelHi.get(key) ?? key,
+          (key) => labels.get(key) ?? { en: key, hi: key },
         ),
       });
       // Falls through to the edits below rather than continuing: what she DID
@@ -122,6 +135,7 @@ export function summarise(
         studentId: student.studentId,
         name: student.name,
         fieldKey: field.key,
+        labelEn: field.labelEn,
         labelHi: field.labelHi,
         from: student.values[field.key] ?? null,
         to: row.values[field.key]!,
@@ -130,8 +144,8 @@ export function summarise(
     if (edits.length > 0) changed.push(...edits);
     // A partial row is never "confirmed". She can reach this line by retyping a
     // value we already held while another box stayed empty — one entered field,
-    // no diff — and listing that under "आपने सही बताई" would tell her the card
-    // was finished, which is the whole thing being fixed.
+    // no diff — and listing that under "you confirmed these" would tell her the
+    // card was finished, which is the whole thing being fixed.
     else if (row.status !== "partial") confirmed.push(named);
   }
 

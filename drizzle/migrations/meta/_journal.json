@@ -64,6 +64,13 @@
       "when": 1786155136395,
       "tag": "0008_old_martin_li",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786335208116,
+      "tag": "0009_solid_katie_power",
+      "breakpoints": true
     }
   ]
 }

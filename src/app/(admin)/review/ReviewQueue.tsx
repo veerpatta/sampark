@@ -6,6 +6,7 @@ import type { Decision, ReviewItem } from "@/lib/submissions";
 import { titleCaseName } from "@/lib/classes";
 import { useToast } from "@/components/ui/Toast";
 import { ThumbBar } from "@/components/admin/ThumbBar";
+import { PhotoDiff } from "@/components/admin/StudentPhoto";
 import { decide } from "./actions";
 
 /**
@@ -30,13 +31,66 @@ export function ReviewQueue({
   // she taps; if the action throws, React discards this and they come back.
   const [decided, setDecided] = useOptimistic<string[]>([]);
 
-  const visible = items.filter((item) => !decided.includes(item.id));
+  /**
+   * Narrowing, not a second selection.
+   *
+   * At the end of a marks round this queue is several hundred rows across
+   * nineteen classes, and "approve the phone numbers but look at the photos
+   * properly" is the normal way to work through it. Three dimensions is enough:
+   * which group it came from, which field it is, and what the teacher did.
+   *
+   * A filter CHANGES THE SELECTION rather than hiding rows that stay ticked.
+   * Approving a hidden row because it was ticked before a filter was applied is
+   * the one failure this screen must not have — everything actionable being
+   * ticked by default is only safe while "actionable" means "on screen".
+   */
+  const [audience, setAudience] = useState<string | null>(null);
+  const [field, setField] = useState<string | null>(null);
+  const [action, setAction] = useState<string | null>(null);
+
+  const matches = (item: ReviewItem) =>
+    (audience === null || item.audienceLabel === audience) &&
+    (field === null || item.fieldKey === field) &&
+    (action === null || item.action === action);
+
+  const visible = items.filter(
+    (item) => !decided.includes(item.id) && matches(item),
+  );
   const live = visible.filter((item) => !item.superseded);
   const stale = visible.filter((item) => item.superseded);
 
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(items.filter((item) => !item.superseded).map((item) => item.id)),
   );
+
+  /** Re-tick whatever the new filter reveals, and untick everything it hides. */
+  function narrow(next: {
+    audience?: string | null;
+    field?: string | null;
+    action?: string | null;
+  }) {
+    const a = next.audience !== undefined ? next.audience : audience;
+    const f = next.field !== undefined ? next.field : field;
+    const c = next.action !== undefined ? next.action : action;
+    setAudience(a);
+    setField(f);
+    setAction(c);
+
+    setSelected(
+      new Set(
+        items
+          .filter(
+            (item) =>
+              !item.superseded &&
+              !decided.includes(item.id) &&
+              (a === null || item.audienceLabel === a) &&
+              (f === null || item.fieldKey === f) &&
+              (c === null || item.action === c),
+          )
+          .map((item) => item.id),
+      ),
+    );
+  }
   const [showStale, setShowStale] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -169,6 +223,14 @@ export function ReviewQueue({
         </p>
       ) : null}
 
+      <ReviewFilters
+        items={items.filter((item) => !decided.includes(item.id))}
+        audience={audience}
+        field={field}
+        action={action}
+        onNarrow={narrow}
+      />
+
       {groups.map((group) => (
         <section
           key={group.requestId}
@@ -180,6 +242,24 @@ export function ReviewQueue({
               {group.audienceLabel} · {group.teacherName} ·{" "}
               {group.items.length} item{group.items.length === 1 ? "" : "s"}
             </span>
+            {/* Approving one class at a time is how the office actually works
+                through a marks round, and it beats unticking two hundred rows
+                to get at nineteen. */}
+            <button
+              type="button"
+              onClick={() =>
+                setSelected(
+                  new Set(
+                    group.items
+                      .filter((item) => !item.superseded)
+                      .map((item) => item.id),
+                  ),
+                )
+              }
+              className="ml-auto min-h-[var(--tap-min)] px-1 text-sm text-[var(--color-brand-600)] hover:underline md:min-h-0"
+            >
+              Only this one
+            </button>
           </header>
 
           <ul className="divide-y divide-[var(--color-border)]">
@@ -224,6 +304,15 @@ export function ReviewQueue({
                         <span className="rounded bg-[var(--color-absent-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-absent-fg)]">
                           teacher says not in this class
                         </span>
+                      ) : item.inputType === "photo" ? (
+                        /* A pathname printed in a monospace cell would mean
+                           approving a photograph of a child that nobody has
+                           looked at. Old and new, side by side, old dimmed. */
+                        <PhotoDiff
+                          before={item.oldValue}
+                          after={item.newValue}
+                          name={item.studentName}
+                        />
                       ) : (
                         <span className="font-mono text-xs">
                           <span className="line-through opacity-60">
@@ -282,6 +371,114 @@ export function ReviewQueue({
         re-importing.
       </p>
     </div>
+  );
+}
+
+/**
+ * Three rows of chips: which group, which field, what the teacher did.
+ *
+ * Counted over everything still pending, NOT over what the current filter
+ * leaves — a chip list that shrinks as you use it means the one you want
+ * disappears the moment you pick another, with no way back except clearing.
+ *
+ * A row is only rendered when it has more than one value to choose between. A
+ * single chip labelled "Mobile 42" next to a queue that is entirely mobile
+ * numbers is a control that cannot do anything.
+ */
+function ReviewFilters({
+  items,
+  audience,
+  field,
+  action,
+  onNarrow,
+}: {
+  items: ReviewItem[];
+  audience: string | null;
+  field: string | null;
+  action: string | null;
+  onNarrow: (next: {
+    audience?: string | null;
+    field?: string | null;
+    action?: string | null;
+  }) => void;
+}) {
+  const count = <K extends keyof ReviewItem>(key: K, label: (item: ReviewItem) => string) => {
+    const map = new Map<string, { label: string; n: number }>();
+    for (const item of items) {
+      const value = String(item[key]);
+      const entry = map.get(value) ?? { label: label(item), n: 0 };
+      entry.n += 1;
+      map.set(value, entry);
+    }
+    return [...map.entries()].sort((a, b) => a[1].label.localeCompare(b[1].label));
+  };
+
+  const audiences = count("audienceLabel", (item) => item.audienceLabel);
+  const fields = count("fieldKey", (item) => item.fieldLabel);
+  const actions = count("action", (item) =>
+    item.action === "not_present" ? "Not in this class" : "Changed",
+  );
+
+  const rows: [string, [string, { label: string; n: number }][], string | null, (v: string | null) => void][] = [
+    ["Group", audiences, audience, (value) => onNarrow({ audience: value })],
+    ["Field", fields, field, (value) => onNarrow({ field: value })],
+    ["Answer", actions, action, (value) => onNarrow({ action: value })],
+  ];
+
+  const useful = rows.filter(([, values]) => values.length > 1);
+  if (useful.length === 0) return null;
+
+  return (
+    <div className="space-y-3 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-card">
+      {useful.map(([label, values, current, set]) => (
+        <div key={label}>
+          <span className="text-xs font-medium uppercase tracking-wider text-[var(--color-ink-muted)]">
+            {label}
+          </span>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <Chip active={current === null} onClick={() => set(null)}>
+              All
+            </Chip>
+            {values.map(([value, entry]) => (
+              <Chip
+                key={value}
+                active={current === value}
+                onClick={() => set(current === value ? null : value)}
+              >
+                {entry.label}
+                <span className="font-mono text-xs text-[var(--color-ink-muted)]">
+                  {entry.n}
+                </span>
+              </Chip>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius-chip)] border px-3 text-sm ${
+        active
+          ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)] font-medium text-[var(--color-brand-700)]"
+          : "border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

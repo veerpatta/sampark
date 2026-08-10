@@ -5,7 +5,14 @@
  * own WhatsApp. Automated sending via AiSensy is a later phase and only after
  * the manual flow is proven (SAMPARK_BUILD_PLAN.md section 11).
  *
- * Messages are Hindi-first — the teacher-facing surface always is.
+ * MESSAGES ARE BILINGUAL, ENGLISH LINE OVER HINDI LINE, matching the screen
+ * the link opens. They used to be Hindi-only, and a Hindi message that opens an
+ * English screen is worse than either on its own — the words she is told to
+ * press have to be the words she then sees, which is why the how-to now quotes
+ * "Correct" and "Change" inside its Hindi sentence rather than translating them.
+ *
+ * The pairing is line-by-line, not block-by-block: an English paragraph
+ * followed by a Hindi paragraph makes her scroll past three lines to find hers.
  */
 
 import { HOUSES } from "./houses";
@@ -74,20 +81,59 @@ export function describeAudienceHi(audience: MessageAudience): string {
   return audience.label;
 }
 
+/**
+ * How the group reads in the English half of the same sentence.
+ *
+ * A class label already says "Class 8", so it is left alone; the other kinds
+ * need the noun that names what they are, exactly as the Hindi side does.
+ * EVERY KIND IS EXPLICIT here for the reason the Hindi one is: a fallback that
+ * names a kind would announce the next kind added as that one, silently.
+ */
+export function describeAudienceEn(audience: MessageAudience): string {
+  if (audience.kind === "class") return audience.label;
+  if (audience.kind === "house") return `${audience.label} House`;
+  if (audience.kind === "route") return `${audience.label} route`;
+  if (audience.kind === "subject") {
+    const subject = audience.fieldKeys
+      ?.map((key) => subjectByFieldKey(key))
+      .find(Boolean);
+    return subject ? `${subject.en} (your classes)` : audience.label;
+  }
+  return audience.label;
+}
+
+/** The sign-off, both halves, on one line. */
+const SIGN_OFF = "— Veer Patta School office · वीर पत्ता विद्यालय कार्यालय";
+
+/**
+ * The how-to, said once per message.
+ *
+ * The button names are NOT translated. She is being told which words to look
+ * for, and the words on the screen are "Correct" and "Change".
+ */
+const HOW_TO = [
+  `The list opens at the link below. Press "Correct" where it is right, or "Change" to fix it.`,
+  `नीचे दिए लिंक पर सूची खुलेगी — जो सही है उस पर "Correct" दबाएँ, गलत हो तो "Change" दबाकर ठीक कर दें।`,
+];
+
 /** The initial "please fill this" message. */
 export function buildRequestMessage(input: RequestMessageInput): string {
+  const due = formatDue(input.dueDate);
   const lines = [
+    `Namaste ${input.teacherName},`,
     `नमस्ते ${input.teacherName} जी,`,
     ``,
+    `Please check ${input.title} for ${describeAudienceEn(input.audience)}.`,
     `${describeAudienceHi(input.audience)} के लिए ${input.title} की जाँच करनी है।`,
-    `नीचे दिए लिंक पर सूची खुलेगी — जो सही है उस पर "सही है" दबाएँ, गलत हो तो "बदलें" दबाकर ठीक कर दें।`,
+    ``,
+    ...HOW_TO,
     ``,
     input.url,
     ``,
-    `अंतिम तिथि: ${formatDue(input.dueDate)}`,
+    `Due: ${due} · अंतिम तिथि: ${due}`,
   ];
 
-  lines.push(``, `— वीर पत्ता विद्यालय कार्यालय`);
+  lines.push(``, SIGN_OFF);
   return lines.join("\n");
 }
 
@@ -130,6 +176,17 @@ export function describeAudienceLineHi(audience: MessageAudience): string {
   return describeAudienceHi(audience);
 }
 
+/** The same, in English. What the teacher's durable page shows. */
+export function describeAudienceLine(audience: MessageAudience): string {
+  if (audience.kind === "subject") {
+    const subject = audience.fieldKeys
+      ?.map((key) => subjectByFieldKey(key))
+      .find(Boolean);
+    if (subject) return subject.en;
+  }
+  return describeAudienceEn(audience);
+}
+
 /**
  * Everything one teacher has to do this round, in one message.
  *
@@ -163,49 +220,65 @@ export function buildRoundMessage(input: RoundMessageInput): string {
   }
 
   const count = input.links.length;
+  const due = formatDue(input.dueDate);
   const lines = [
+    `Namaste ${input.teacherName},`,
     `नमस्ते ${input.teacherName} जी,`,
     ``,
-    count === 1
-      ? `${input.title} की जाँच करनी है।`
-      : `${input.title} की जाँच करनी है। आपके ${count} लिंक हैं — हर एक की सूची अलग है।`,
+    ...(count === 1
+      ? [`Please check ${input.title}.`, `${input.title} की जाँच करनी है।`]
+      : [
+          `Please check ${input.title}. You have ${count} links — each opens a different list.`,
+          `${input.title} की जाँच करनी है। आपके ${count} लिंक हैं — हर एक की सूची अलग है।`,
+        ]),
     ``,
   ];
 
+  // The group name carries both halves on ONE numbered line, separated by a
+  // dot, rather than on two. Everywhere else the pairing is line over line;
+  // here, at three links, doubling the line count is exactly the wall this
+  // message shape exists to avoid.
   input.links.forEach((link, index) => {
-    lines.push(`${index + 1}) ${describeAudienceLineHi(link.audience)}`);
+    const en = describeAudienceLine(link.audience);
+    const hi = describeAudienceLineHi(link.audience);
+    lines.push(`${index + 1}) ${en}${hi === en ? "" : ` · ${hi}`}`);
     lines.push(link.url);
     lines.push(``);
   });
 
   lines.push(
-    `हर लिंक में सूची खुलेगी — जो सही है उस पर "सही है" दबाएँ, गलत हो तो "बदलें" दबाकर ठीक कर दें।`,
+    `Every link opens its own list. Press "Correct" where it is right, or "Change" to fix it.`,
+    `हर लिंक में सूची खुलेगी — जो सही है उस पर "Correct" दबाएँ, गलत हो तो "Change" दबाकर ठीक कर दें।`,
     ``,
-    `अंतिम तिथि: ${formatDue(input.dueDate)}`,
+    `Due: ${due} · अंतिम तिथि: ${due}`,
   );
 
   if (input.teacherPageUrl) {
     lines.push(
       ``,
+      `From now on all your links live in one place. Save this:`,
       `आगे से आपके सारे लिंक एक ही जगह मिलेंगे। इसे सहेज लें:`,
       input.teacherPageUrl,
     );
   }
 
-  lines.push(``, `— वीर पत्ता विद्यालय कार्यालय`);
+  lines.push(``, SIGN_OFF);
   return lines.join("\n");
 }
 
 /** The nudge for teachers who have not submitted yet. */
 export function buildReminderMessage(input: RequestMessageInput): string {
+  const due = formatDue(input.dueDate);
   return [
+    `Namaste ${input.teacherName},`,
     `नमस्ते ${input.teacherName} जी,`,
     ``,
-    `${describeAudienceHi(input.audience)} की ${input.title} अभी बाकी है। अंतिम तिथि ${formatDue(input.dueDate)} है।`,
+    `${input.title} for ${describeAudienceEn(input.audience)} is still pending. It is due ${due}.`,
+    `${describeAudienceHi(input.audience)} की ${input.title} अभी बाकी है। अंतिम तिथि ${due} है।`,
     ``,
     input.url,
     ``,
-    `— वीर पत्ता विद्यालय कार्यालय`,
+    SIGN_OFF,
   ].join("\n");
 }
 

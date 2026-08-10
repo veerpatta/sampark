@@ -53,6 +53,19 @@ const father: TeacherField = {
   targetColumn: "father_name",
 };
 
+const photo: TeacherField = {
+  key: "photo",
+  labelEn: "Student photo",
+  labelHi: "फ़ोटो",
+  mode: "verify",
+  inputType: "photo",
+  exactLen: null,
+  pattern: null,
+  maxValue: null,
+  options: null,
+  targetColumn: "photo_path",
+};
+
 const row = (values: Record<string, string>): RowState => ({
   status: "editing",
   values,
@@ -176,6 +189,32 @@ describe("judgeRow", () => {
     assert.equal(
       judgeRow([phone, village], row({ village: "Amet" }), ["phone", "village"]),
       "partial",
+    );
+  });
+
+  it("is PARTIAL while a photograph is still queued on the phone", () => {
+    /*
+     * The whole reason the photo queue writes nothing into the row until the
+     * upload succeeds.
+     *
+     * A photo waiting for signal leaves its key unfilled, so this reads exactly
+     * as it does for any other empty required box: the row stays open, stays in
+     * the count, and is not `ready`. Nothing in autosave.ts knows a camera
+     * exists — and it must stay that way, because the alternative is a sentinel
+     * value that judgeRow would have to learn to disbelieve.
+     */
+    assert.equal(
+      judgeRow([photo, village], row({ village: "Amet" }), ["photo", "village"]),
+      "partial",
+    );
+    // And once the pathname lands, it is an ordinary finished row.
+    assert.equal(
+      judgeRow(
+        [photo, village],
+        row({ village: "Amet", photo: "students/S1/20260810-aabbccddeeff001122334455.jpg" }),
+        ["photo", "village"],
+      ),
+      "ready",
     );
   });
 

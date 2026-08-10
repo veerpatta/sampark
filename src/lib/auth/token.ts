@@ -222,8 +222,19 @@ export async function resolveToken(
  *
  * A SET IN CODE, not a column and not an office decision at send time. A
  * checkbox someone forgets to tick is a checkbox that has already failed.
+ *
+ * `photo` joins them for the same reason and with the same trade. A photo round
+ * opens the camera on forty-six children, and a page that outlives the round is
+ * the wrong place to advertise it — the durable link is deliberately uncached
+ * so that revoking it works, and a photo round is exactly the kind that should
+ * be revocable. Nothing is lost: the round runs on its own /r/ link.
  */
-const NEVER_ON_TEACHER_PAGE = new Set(["aadhaar", "jan_aadhaar", "dob"]);
+const NEVER_ON_TEACHER_PAGE = new Set([
+  "aadhaar",
+  "jan_aadhaar",
+  "dob",
+  "photo",
+]);
 
 /** Pure, so the rule can be tested without a database. */
 export function isListableOnTeacherPage(fieldKeys: string[]): boolean {

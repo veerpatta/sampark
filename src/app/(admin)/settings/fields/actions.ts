@@ -25,7 +25,17 @@ async function requireOwner() {
   return user;
 }
 
-const INPUT_TYPES = ["text", "tel", "date", "number", "select", "boolean"];
+const INPUT_TYPES = [
+  "text",
+  "tel",
+  "date",
+  "number",
+  "select",
+  "boolean",
+  // Not a text box. A 'photo' field opens the camera on the teacher's phone and
+  // stores a blob pathname; the registry only has to let the type be chosen.
+  "photo",
+];
 const MODES = ["verify", "collect"];
 
 export async function saveField(formData: FormData) {

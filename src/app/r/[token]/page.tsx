@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { resolveToken } from "@/lib/auth/token";
 import { RequestForm } from "@/components/teacher/RequestForm";
 import { ServiceWorker } from "@/components/teacher/ServiceWorker";
+import { Bi } from "@/components/teacher/Bi";
+import { T } from "@/components/teacher/strings";
 
 /**
  * The only page a teacher ever sees.
@@ -27,7 +29,8 @@ export default async function TeacherRequestPage({
 
   // What is being asked, in the fewest words that still say it. Scrolling 46
   // cards should never leave her wondering which class she is in or why.
-  const asking = request.fields.map((field) => field.labelHi).join(" · ");
+  const asking = request.fields.map((field) => field.labelEn).join(" · ");
+  const askingHi = request.fields.map((field) => field.labelHi).join(" · ");
 
   return (
     <main className="teacher-surface mx-auto max-w-md px-4 pb-4 pt-5">
@@ -39,18 +42,21 @@ export default async function TeacherRequestPage({
           <div className="flex items-baseline justify-between gap-3">
             <h1 className="text-lg font-semibold">{request.audienceLabel}</h1>
             <p className="shrink-0 text-xs opacity-80">
-              {formatHindiDate(request.dueDate)} तक
+              {T.dueBy(formatDueDate(request.dueDate)).en}
             </p>
           </div>
           <p className="mt-0.5 truncate text-sm opacity-90">
             {asking}
             {request.period ? ` · ${request.period}` : ""}
           </p>
+          <p lang="hi" className="truncate text-xs opacity-70">
+            {askingHi}
+          </p>
         </div>
       </header>
 
       <p className="mt-4 text-sm text-[var(--color-ink-muted)]">
-        {request.teacherName} जी — {request.title}
+        {request.teacherName} — {request.title}
       </p>
 
       {/* Says what actually happens now. The old copy promised a review screen
@@ -59,11 +65,7 @@ export default async function TeacherRequestPage({
           she can still fix anything, and the office review queue is unchanged
           behind it, so nothing reaches a student record unapproved either way. */}
       <p className="mt-3 rounded-[var(--radius-card)] border border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-3 text-sm text-[var(--color-confirm-fg)]">
-        जिन बच्चों की जानकारी नहीं है, वे सबसे ऊपर हैं — पहले वही भरें। बाकी
-        सबकी जानकारी पहले से है; ठीक हो तो एक बार में{" "}
-        <strong>सब सही हैं</strong> दबा दें। जो आप भरती जाएँगी वह{" "}
-        <strong>अपने आप विद्यालय पहुँचता रहेगा</strong> — कुछ भी गलत हो जाए तो
-        बाद में ठीक कर सकती हैं।
+        <Bi t={T.intro} />
       </p>
 
       <RequestForm
@@ -87,15 +89,16 @@ export default async function TeacherRequestPage({
 }
 
 /**
- * Hindi month, Latin day.
+ * The due date, in English, in Latin digits.
  *
- * hi-IN already defaults to Latin numerals — checked on the deployed Node —
- * but that is a CLDR default, not a promise, and it is the due date. Pinning
- * the numbering system means the one date on this screen cannot quietly become
- * ११ अगस्त because an ICU table moved.
+ * It used to be a Hindi month name with the numbering system pinned to Latin,
+ * because hi-IN's Latin default is a CLDR convention rather than a promise and
+ * ११ अगस्त on a due date is unreadable. The screen is English-primary now, so
+ * en-IN is the honest locale — and it has the same Latin digits by definition
+ * rather than by pinning.
  */
-function formatHindiDate(date: string): string {
-  return new Intl.DateTimeFormat("hi-IN-u-nu-latn", {
+function formatDueDate(date: string): string {
+  return new Intl.DateTimeFormat("en-IN", {
     day: "numeric",
     month: "long",
     timeZone: "Asia/Kolkata",

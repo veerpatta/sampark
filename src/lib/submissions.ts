@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { db, schema, withTransaction } from "./db";
 import { validateField } from "./fields";
+import { photoBelongsTo } from "./photos";
 import { teacherOrigin, type OriginWrite } from "./precedence";
 import { STUDENT_COLUMN_BY_DB_NAME } from "./student-columns";
 import type { ResolvedRequest } from "./auth/token";
@@ -117,6 +118,34 @@ export async function recordSubmissions(
           fieldKey: field.key,
           error: checked.error,
           errorHi: checked.errorHi,
+        });
+        continue;
+      }
+
+      /*
+       * THE ONE FIELD-TYPE SPECIAL CASE IN THIS FUNCTION, AND IT IS LOAD-BEARING.
+       *
+       * A photo's value is the pathname of a blob, and validateField has
+       * already checked it has the shape this app mints. What it cannot check
+       * is WHOSE it is — it sees a field definition and a string, not a row.
+       * Without this, a teacher holding a live token can put the pathname of
+       * one child's photograph on another child on her roster, and the office
+       * approves a face that belongs to somebody else.
+       *
+       * It is a validation failure rather than a silent skip because nothing a
+       * real phone does produces one: her own upload returns the pathname the
+       * server just minted for that student.
+       */
+      if (
+        field.inputType === "photo" &&
+        checked.value !== null &&
+        !photoBelongsTo(checked.value, student.studentId)
+      ) {
+        failures.push({
+          studentId: student.studentId,
+          fieldKey: field.key,
+          error: "That photo was not taken for this student.",
+          errorHi: "यह फ़ोटो इस बच्चे की नहीं है — दोबारा लें।",
         });
         continue;
       }
@@ -246,6 +275,17 @@ export type ReviewItem = {
   rollNo: number | null;
   fieldKey: string;
   fieldLabel: string;
+  /**
+   * The field's registry input type, carried so the queue can RENDER the value
+   * rather than print it.
+   *
+   * A photo's value is a blob pathname, and a pathname in a monospace cell is
+   * unreadable — which would mean approving a photograph of a child into the
+   * master record without anyone having looked at it. Carried as the type
+   * rather than compared against the key 'photo', so a second photo field added
+   * as a row in field_defs renders correctly with no deploy (rule 11).
+   */
+  inputType: string;
   action: string;
   oldValue: string | null;
   newValue: string | null;
@@ -289,6 +329,7 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
       studentName: schema.students.name,
       rollNo: schema.students.rollNo,
       fieldLabel: schema.fieldDefs.labelEn,
+      inputType: schema.fieldDefs.inputType,
     })
     .from(schema.submissions)
     .innerJoin(schema.requests, eq(schema.requests.id, schema.submissions.requestId))
@@ -336,6 +377,7 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
     rollNo: row.rollNo,
     fieldKey: row.submission.fieldKey,
     fieldLabel: row.fieldLabel,
+    inputType: row.inputType,
     action: row.submission.action,
     oldValue: row.submission.oldValue,
     newValue: row.submission.newValue,

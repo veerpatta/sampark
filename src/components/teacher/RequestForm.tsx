@@ -22,6 +22,9 @@ import {
   ROW_COMMIT_MS,
 } from "./autosave";
 import { suggestForRow } from "./suggest";
+import { Bi } from "./Bi";
+import { PhotoProvider } from "./photo-context";
+import { T, type Phrase } from "./strings";
 import {
   COMPLETE,
   UPLOADABLE,
@@ -135,7 +138,7 @@ export function RequestForm({
   );
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Phrase | null>(null);
   const [online, setOnline] = useState(true);
   const [restored, setRestored] = useState(false);
   /**
@@ -353,6 +356,42 @@ export function RequestForm({
   }, []);
 
   /**
+   * A photograph has reached the school; write its pathname into the row.
+   *
+   * This is the ONE place a value arrives from somewhere other than her
+   * fingers, and from here on it is indistinguishable from one she typed: the
+   * row commits, the batch flushes, the server diffs it against the frozen
+   * snapshot, and the office approves it. `commitNow` rather than the timer,
+   * because an upload finishing is not typing — there is nothing to wait for.
+   */
+  function onPhotoUploaded(studentId: string, pathname: string) {
+    const row = rowsRef.current[studentId];
+    if (!row || !photoFieldKey) return;
+    const next = {
+      ...rowsRef.current,
+      [studentId]: {
+        ...row,
+        status: "editing" as RowStatus,
+        values: { ...row.values, [photoFieldKey]: pathname },
+      },
+    };
+    rowsRef.current = next;
+    setRows(next);
+    commitNow(studentId);
+  }
+
+  /**
+   * Which field, if any, is the photograph.
+   *
+   * Read off the registry rather than compared against a literal 'photo', so a
+   * second photo field added as a row in field_defs works without a deploy —
+   * rule 11. Null when this request does not ask for one, which is most of them.
+   */
+  const photoFieldKey =
+    fields.find((field) => field.inputType === "photo")?.key ?? null;
+  const hasPhotoField = photoFieldKey !== null;
+
+  /**
    * Confirm the whole known group in one tap.
    *
    * Deliberately narrow. It touches ONLY untouched rows in the known group:
@@ -392,8 +431,8 @@ export function RequestForm({
     // pushed the list down as it appeared and again as it went; the toast sits
     // over the list instead, at the bottom, next to her thumb.
     toast({
-      message: `${untouchedKnown.length} पर सही का निशान लगाया`,
-      undoLabel: "वापस लें",
+      message: <Bi t={T.markedCorrect(untouchedKnown.length)} />,
+      undoLabel: T.undo.en,
       duration: 10_000,
       tone: "success",
       undo: () => setRows((current) => ({ ...current, ...before })),
@@ -516,6 +555,10 @@ export function RequestForm({
       setBusy(true);
       if (options.manual) setError(null);
 
+      // `absent` can no longer be produced — the button that set it was removed.
+      // The branch stays because a draft saved on her phone before that change
+      // still holds rows in that state, and it has to reach the school rather
+      // than be silently re-read as an ordinary unanswered row.
       const payload = ids.map((studentId) => {
         const row = rows[studentId]!;
         return {
@@ -533,7 +576,7 @@ export function RequestForm({
         });
 
         if (response.status === 404) {
-          setError("यह लिंक अब काम नहीं कर रहा। कार्यालय से संपर्क करें।");
+          setError(T.linkDead);
           return;
         }
         if (response.status === 429) {
@@ -541,15 +584,15 @@ export function RequestForm({
           // only thing that helps; retrying immediately hits the same wall and
           // burns the budget a genuine retry needs.
           lastFlushAt.current = Date.now() + RATE_LIMIT_BACKOFF_MS;
-          setError("थोड़ा धीरे — आपका काम सुरक्षित है, अपने आप चला जाएगा।");
+          setError(T.tooFast);
           return;
         }
         if (response.status === 422) {
-          setError("कुछ जानकारी सही नहीं है। लाल निशान वाली पंक्तियाँ देखें।");
+          setError(T.someInvalid);
           return;
         }
         if (!response.ok) {
-          setError("भेजने में दिक्कत हुई। अपने आप फिर कोशिश होगी।");
+          setError(T.sendFailed);
           return;
         }
 
@@ -685,7 +728,6 @@ export function RequestForm({
       sent={sentIds.has(student.studentId)}
       onConfirm={() => update(student.studentId, { status: "confirmed" })}
       onEdit={() => update(student.studentId, { status: "editing" })}
-      onAbsent={() => update(student.studentId, { status: "absent", values: {} })}
       onReopen={() => update(student.studentId, { status: "todo" })}
       onLeave={() => commitNow(student.studentId)}
       onFilledLast={() => commitNow(student.studentId)}
@@ -716,18 +758,25 @@ export function RequestForm({
     );
   }
 
+  // The provider wraps the LIST, not the review screen — the review screen has
+  // no camera on it, and a queue draining behind a screen she is reading would
+  // move numbers under her eyes. It is mounted for the whole time the list is,
+  // which is what lets a photo queued on row 40 upload while she is on row 8.
   return (
-    <>
+    <PhotoProvider
+      token={token}
+      online={online}
+      onUploaded={onPhotoUploaded}
+    >
       {restored ? (
         <p className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-3 text-sm text-[var(--color-correct-fg)]">
-          आपका पहले का काम फ़ोन में सुरक्षित था — वहीं से आगे बढ़ें।
+          <Bi t={T.restored} />
         </p>
       ) : null}
 
       {!online ? (
         <p className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-absent-border)] bg-[var(--color-absent-bg)] px-4 py-3 text-sm text-[var(--color-absent-fg)]">
-          इंटरनेट नहीं है। काम करती रहें — सब फ़ोन में सुरक्षित है और जुड़ते ही
-          अपने आप भेज दिया जाएगा।
+          <Bi t={T.offlineWorking} />
         </p>
       ) : null}
 
@@ -736,8 +785,7 @@ export function RequestForm({
       {blanks.length > 0 ? (
         <section className="mt-5">
           <h2 className="px-1 text-base font-semibold text-[var(--color-warning-fg)]">
-            {blanks.length} बच्चों की जानकारी नहीं है — ये सबसे
-            ज़रूरी हैं
+            <Bi t={T.blanksHeading(blanks.length)} />
           </h2>
           <ol className="mt-2 space-y-3">
             {blanks.slice(0, shownBlanks).map(renderRow)}
@@ -758,18 +806,29 @@ export function RequestForm({
       {known.length > 0 ? (
         <section className="mt-7">
           <h2 className="px-1 text-base font-semibold">
-            {known.length} बच्चों की जानकारी पहले से है — देखकर
-            बता दें कि सही है
+            <Bi t={T.knownHeading(known.length)} />
           </h2>
 
-          {untouchedKnown.length > 0 ? (
+          {/* Hidden entirely on a photo round. "All correct" is one tap
+              asserting that forty faces are the right forty children, and
+              nobody has looked at them — which is a worse thing to have in the
+              master record than no confirmation at all. Every other kind of
+              field keeps the button; a photo request simply does not offer it,
+              and the sentence under the heading says why. */}
+          {untouchedKnown.length > 0 && !hasPhotoField ? (
             <button
               type="button"
               onClick={confirmAllKnown}
-              className="mt-2 min-h-12 w-full rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)]"
+              className="mt-2 min-h-12 w-full rounded-lg border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-2 font-semibold text-[var(--color-confirm-fg)]"
             >
-              सब सही हैं ({untouchedKnown.length})
+              <Bi t={T.confirmAll(untouchedKnown.length)} />
             </button>
+          ) : null}
+
+          {hasPhotoField ? (
+            <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
+              <Bi t={T.photoNoBulkConfirm} />
+            </p>
           ) : null}
 
           <ol className="mt-3 space-y-3">
@@ -790,7 +849,7 @@ export function RequestForm({
           role="alert"
           className="mt-4 rounded-[var(--radius-card)] border-2 border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm font-medium text-[var(--color-danger)]"
         >
-          {error}
+          <Bi t={error} />
         </p>
       ) : null}
 
@@ -801,7 +860,7 @@ export function RequestForm({
       {done === roster.length && unsent.length === 0 && roster.length > 0 ? (
         <div className="mt-6 rounded-[var(--radius-card)] border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] p-4 text-center">
           <p className="font-semibold text-[var(--color-confirm-fg)]">
-            सब {roster.length} बच्चों की जानकारी विद्यालय पहुँच गई
+            <Bi t={T.everyoneSent(roster.length)} />
           </p>
           <button
             type="button"
@@ -809,9 +868,9 @@ export function RequestForm({
               clearDraft(token);
               router.push(`/r/${token}/done`);
             }}
-            className="mt-3 min-h-12 w-full rounded-lg bg-[var(--color-confirm-fg)] px-4 font-semibold text-white transition-transform active:scale-[0.98]"
+            className="mt-3 min-h-12 w-full rounded-lg bg-[var(--color-confirm-fg)] px-4 py-2 font-semibold text-white transition-transform active:scale-[0.98]"
           >
-            पूरा हुआ
+            <Bi t={T.finish} />
           </button>
         </div>
       ) : null}
@@ -826,7 +885,7 @@ export function RequestForm({
         online={online}
         onReview={openReview}
       />
-    </>
+    </PhotoProvider>
   );
 }
 
@@ -853,9 +912,9 @@ function MoreButton({
     <button
       type="button"
       onClick={onMore}
-      className="mt-3 min-h-12 w-full rounded-lg border-2 border-dashed border-[var(--color-border)] px-4 font-medium text-[var(--color-ink-muted)]"
+      className="mt-3 min-h-12 w-full rounded-lg border-2 border-dashed border-[var(--color-border)] px-4 py-2 font-medium text-[var(--color-ink-muted)]"
     >
-      अगले {Math.min(BATCH, left)} दिखाएँ — {left} और बाकी
+      <Bi t={T.showNext(Math.min(BATCH, left), left)} />
     </button>
   );
 }

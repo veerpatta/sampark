@@ -215,7 +215,9 @@ describe("summarise", () => {
       s1: row("partial", { phone: "9000000001" }),
     });
 
-    assert.deepEqual(result.partial[0]!.missing, ["पिता का नाम"]);
+    assert.deepEqual(result.partial[0]!.missing, [
+      { en: "Father", hi: "पिता का नाम" },
+    ]);
   });
 
   it("still shows what she DID type on a partial card", () => {

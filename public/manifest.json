@@ -1,8 +1,8 @@
 {
   "name": "Sampark — VPPS Data Desk",
   "short_name": "Sampark",
-  "description": "कक्षा की जानकारी जाँचें और भेजें",
-  "lang": "hi",
+  "description": "Check and send your class list · कक्षा की जानकारी जाँचें और भेजें",
+  "lang": "en",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

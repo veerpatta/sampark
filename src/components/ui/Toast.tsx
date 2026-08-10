@@ -30,7 +30,12 @@ import { createPortal } from "react-dom";
 export type ToastTone = "info" | "success" | "danger";
 
 export type ToastInput = {
-  message: string;
+  /**
+   * A node, not a string, because the teacher surface says everything twice —
+   * English over Hindi — and that is a <Bi>, not a sentence with a separator in
+   * the middle of it.
+   */
+  message: React.ReactNode;
   /** Omit when the action genuinely cannot be reversed. */
   undo?: () => void | Promise<void>;
   /** Label for the undo button. Hindi on the teacher surface. */

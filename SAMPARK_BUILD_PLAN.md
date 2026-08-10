@@ -614,8 +614,17 @@ Do not launch to all teachers at once. Adoption failure is very hard to recover 
 
 Adding any of these before v1 ships will sink it.
 
+**Student PHOTO upload has since shipped** and is no longer on this list. It
+went in as an ordinary `field_defs` row (`photo`, `inputType: 'photo'`,
+`targetColumn: 'photo_path'`), so it rides the same request → frozen snapshot →
+review → master pipeline as a phone number rather than being a second pipeline
+of its own. Bytes live in a **private** Vercel Blob store and are read back only
+through `/api/photos` (admin session) or `/api/r/<token>/photo` (the teacher's
+own frozen roster) — there is no public URL to a photograph of a child. See
+`src/lib/photos.ts`. Document upload is still out.
+
 - Parent-facing access of any kind
-- Photo or document upload
+- Document upload
 - Attendance
 - Live two-way sync with PSP or LEAD
 - Multi-school support

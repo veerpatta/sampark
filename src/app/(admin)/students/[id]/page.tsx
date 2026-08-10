@@ -7,6 +7,7 @@ import { IMPORT_COLUMNS } from "@/lib/students-import";
 import { readStudentColumn } from "@/lib/student-columns";
 import { titleCaseName } from "@/lib/classes";
 import { HouseChip } from "@/components/HouseChip";
+import { StudentPhoto } from "@/components/admin/StudentPhoto";
 import type { Student } from "../../../../../drizzle/schema";
 
 export const metadata = { title: "Student — Sampark" };
@@ -84,7 +85,18 @@ export default async function StudentDetailPage({
 
   return (
     <div className="space-y-8">
-      <header>
+      <header className="flex items-start gap-4">
+        {/* The face, next to the name. This is the screen you open when a
+            parent rings, and a photograph is the fastest recognition aid there
+            is. Deliberately NOT in the IMPORT_COLUMNS list below — a blob
+            pathname printed as text would be noise. */}
+        <StudentPhoto
+          pathname={student.photoPath}
+          name={titleCaseName(student.name)}
+          className="h-24 w-24"
+          size="full"
+        />
+        <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-3">
           <h1 className="text-display font-semibold tracking-tight">
             {titleCaseName(student.name)}
@@ -113,6 +125,7 @@ export default async function StudentDetailPage({
           {student.id}
           {student.srNo ? ` · SR ${student.srNo}` : ""}
         </p>
+        </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr]">

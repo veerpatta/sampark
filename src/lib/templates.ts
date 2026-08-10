@@ -34,6 +34,14 @@ export const TEMPLATES: Template[] = [
     fieldKeys: ["jan_aadhaar", "category"],
   },
   { name: "Transport", nameHi: "परिवहन", fieldKeys: ["bus_route", "village"] },
+  /**
+   * Photos on their own, never bundled with anything else.
+   *
+   * A photo round is a different physical act: she walks along the row with a
+   * camera rather than reading a register. Mixing it with phone numbers means
+   * neither job gets finished in one pass.
+   */
+  { name: "Student photos", nameHi: "बच्चों की फ़ोटो", fieldKeys: ["photo"] },
   {
     name: "FA marks (Science)",
     nameHi: "FA अंक (विज्ञान)",

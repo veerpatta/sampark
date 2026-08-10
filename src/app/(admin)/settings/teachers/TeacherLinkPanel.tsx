@@ -52,14 +52,18 @@ export function TeacherLinkPanel({
   }
 
   const url = `${origin}/t/${token}`;
+  // Bilingual, English line over Hindi line, exactly like every other message
+  // in lib/whatsapp.ts and like the page this link opens.
   const message = [
+    `Namaste ${teacherName},`,
     `नमस्ते ${teacherName} जी,`,
     ``,
+    `Whatever the school asks for will appear on this page from now on. Save it:`,
     `विद्यालय जो भी जानकारी माँगेगा, वह अब इसी पेज पर दिखेगी। इसे सहेज कर रखें:`,
     ``,
     url,
     ``,
-    `— वीर पत्ता विद्यालय कार्यालय`,
+    `— Veer Patta School office · वीर पत्ता विद्यालय कार्यालय`,
   ].join("\n");
 
   async function copy() {

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Bi } from "@/components/teacher/Bi";
+import { T } from "@/components/teacher/strings";
 
 /**
  * Confirmation screen.
@@ -25,24 +27,26 @@ export default async function TeacherDonePage({
       >
         ✓
       </div>
-      <h1 className="text-2xl font-semibold">धन्यवाद</h1>
+      <h1 className="text-2xl font-semibold">
+        <Bi t={T.thankYou} />
+      </h1>
       <p className="text-[var(--color-ink-muted)]">
-        आपकी जानकारी विद्यालय को भेज दी गई है।
+        <Bi t={T.sentToSchool} />
       </p>
 
       <Link
         href={`/r/${token}`}
-        className="mt-4 flex w-full items-center justify-center rounded-lg border-2 border-[var(--color-border)] px-4 font-medium"
+        className="mt-4 flex w-full flex-col items-center justify-center rounded-lg border-2 border-[var(--color-border)] px-4 py-2 font-medium"
       >
-        सूची फिर से देखें
+        <Bi t={T.seeListAgain} />
       </Link>
 
       <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
-        कुछ और बदलना हो तो ऊपर दबाकर वापस जा सकती हैं।
+        <Bi t={T.changeMore} />
       </p>
 
       <p className="mt-8 text-xs text-[var(--color-ink-muted)]">
-        श्री वीर पत्ता उ. मा. विद्यालय, आमेट
+        <Bi t={T.schoolName} />
       </p>
     </main>
   );

@@ -219,6 +219,14 @@ describe("isListableOnTeacherPage", () => {
     }
   });
 
+  test("nor does a photo round", () => {
+    // A durable page is deliberately uncached so that revoking a link works,
+    // and a round that opens the camera on forty-six children is exactly the
+    // kind that should stay revocable. Its own /r/ link is unaffected.
+    assert.equal(isListableOnTeacherPage(["photo"]), false);
+    assert.equal(isListableOnTeacherPage(["phone", "photo"]), false);
+  });
+
   test("one sensitive field is enough to keep the whole round off", () => {
     assert.equal(isListableOnTeacherPage(["phone", "aadhaar"]), false);
   });

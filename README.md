@@ -42,6 +42,7 @@ agent, start from **[PROMPTS.md](./PROMPTS.md)**.
 | Admin auth | Auth.js v5, Credentials provider |
 | Teacher auth | Token in URL + optional 4-digit PIN |
 | Excel / CSV | ExcelJS / PapaParse |
+| Student photos | Vercel Blob, private store, read through a session-checked proxy |
 | Hosting | Vercel |
 
 **The browser never connects to the database.** Neon has no anonymous API

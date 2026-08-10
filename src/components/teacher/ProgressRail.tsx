@@ -1,14 +1,15 @@
 "use client";
 
-
+import { Bi } from "./Bi";
+import { T } from "./strings";
 
 /**
  * The sticky bar at the bottom of the teacher surface.
  *
  * It answers the only two questions she has while working: how much is LEFT,
- * and how do I send it. It counts down rather than up — "अभी 6 बाकी हैं" tells
- * her when she can stop, which is what she actually wants to know;
- * "40 / 46 हो गए" makes her do the subtraction herself.
+ * and how do I send it. It counts down rather than up — "6 left" tells her when
+ * she can stop, which is what she actually wants to know; "40 / 46 done" makes
+ * her do the subtraction herself.
  *
  * It sits at the BOTTOM because that is where a thumb already is on a phone
  * held one-handed.
@@ -56,11 +57,11 @@ export function ProgressRail({
       <div className="flex items-center justify-between text-sm">
         {remaining === 0 ? (
           <span className="font-medium text-[var(--color-confirm-fg)]">
-            सब पूरे हैं
+            <Bi t={T.allDone} />
           </span>
         ) : (
           <span className="font-medium">
-            अभी {remaining} बाकी हैं
+            <Bi t={T.remaining(remaining)} />
           </span>
         )}
         {/* "Reached the school" is the one that matters, so it gets the tick
@@ -73,10 +74,12 @@ export function ProgressRail({
           // saved-on-phone line below.
           <span
             key={sent}
-            className="animate-[pop_240ms_ease-out] flex items-center gap-1 font-medium text-[var(--color-confirm-fg)]"
+            className="animate-[pop_240ms_ease-out] flex items-start gap-1 font-medium text-[var(--color-confirm-fg)]"
           >
             <span aria-hidden>✓</span>
-            {sent} विद्यालय पहुँच गए
+            <span>
+              <Bi t={T.sentCount(sent)} />
+            </span>
           </span>
         ) : null}
       </div>
@@ -99,9 +102,7 @@ export function ProgressRail({
 
       {pending > 0 ? (
         <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
-          {busy
-            ? "भेजा जा रहा है…"
-            : `${pending} फ़ोन में सुरक्षित, अपने आप जा रहे हैं`}
+          <Bi t={busy ? T.sending : T.savedGoing(pending)} />
         </p>
       ) : null}
 
@@ -112,13 +113,13 @@ export function ProgressRail({
         type="button"
         onClick={onReview}
         disabled={reviewable === 0}
-        className="mt-2 min-h-12 w-full rounded-lg bg-[var(--color-brand-600)] px-4 font-semibold text-white disabled:opacity-40"
+        className="mt-2 min-h-12 w-full rounded-lg bg-[var(--color-brand-600)] px-4 py-2 font-semibold text-white disabled:opacity-40"
       >
-        {reviewable === 0 ? "पहले जवाब दें" : `देखें (${reviewable})`}
+        <Bi t={reviewable === 0 ? T.answerFirst : T.review(reviewable)} />
       </button>
       {pending > 0 && !online ? (
         <p className="mt-1 text-center text-xs text-[var(--color-ink-muted)]">
-          इंटरनेट नहीं है — काम करती रहें, जुड़ते ही अपने आप चला जाएगा।
+          <Bi t={T.offlineKeepGoing} />
         </p>
       ) : null}
     </div>

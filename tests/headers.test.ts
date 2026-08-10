@@ -48,6 +48,29 @@ describe("security headers", () => {
     }
   });
 
+  /**
+   * The office's photo proxy is NOT in TEACHER_FACING and must not be: it has
+   * no token in its URL and no-store there would make a hundred-row students
+   * board re-fetch every face on every scroll. It still serves photographs of
+   * children, so noindex is not optional.
+   *
+   * The teacher's own /api/r/[token]/photo route is deliberately absent from
+   * this file — it nests under the `/api/r/:path*` rule already asserted above.
+   * Adding a rule for it would be harmless; moving it out from under that
+   * prefix would not be, and the assertions above are what would catch that.
+   */
+  it("keeps children's photographs out of a search index", async () => {
+    const rules = await config.headers!();
+    const rule = rules.find((entry) => entry.source === "/api/photos");
+    assert.ok(rule, "the photo proxy has no header rule");
+    const robots = rule.headers.find((header) => header.key === "X-Robots-Tag");
+    assert.ok(robots?.value.includes("noindex"));
+    assert.ok(
+      !rule.headers.some((header) => header.key === "Cache-Control"),
+      "no-store here would defeat the browser cache the board depends on",
+    );
+  });
+
   it("sends no referrer, so a token cannot ride to a third party", async () => {
     const rules = await config.headers!();
     for (const source of TEACHER_FACING) {

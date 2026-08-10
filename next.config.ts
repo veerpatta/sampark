@@ -26,6 +26,23 @@ const baseHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
 ];
 
+/**
+ * The office's photo proxy.
+ *
+ * NOT teacher-facing — there is no token in its URL, it is guarded by the admin
+ * session — so it does not belong in the list above and must not get no-store,
+ * which would make a students board re-fetch a hundred faces on every scroll.
+ * It does need noindex: it serves photographs of children, and a URL that ends
+ * in a bare `?p=` is exactly the shape a crawler will follow if it finds one.
+ *
+ * The teacher's own photo route needs nothing here — it lives under
+ * `/api/r/:path*` and inherits that rule, which is why it was put there.
+ */
+const photoHeaders = [
+  { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+  { key: "Referrer-Policy", value: "no-referrer" },
+];
+
 const nextConfig: NextConfig = {
   async headers() {
     return [
@@ -33,6 +50,7 @@ const nextConfig: NextConfig = {
       { source: "/r/:path*", headers: teacherSurfaceHeaders },
       { source: "/api/r/:path*", headers: teacherSurfaceHeaders },
       { source: "/t/:path*", headers: teacherSurfaceHeaders },
+      { source: "/api/photos", headers: photoHeaders },
     ];
   },
 };

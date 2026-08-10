@@ -175,6 +175,35 @@ export const FIELD_DEFS: NewFieldDef[] = [
     options: HOUSES.map((house) => house.name),
     sortOrder: 75,
   },
+  {
+    /**
+     * A photograph of the child, taken on the teacher's phone.
+     *
+     * `verify`, NOT `collect`, and the difference is the whole ergonomics of a
+     * photo round. requiredKeys (src/components/teacher/types.ts) treats a
+     * verify field with no stored value as required and one with a value as
+     * optional, so a child with no photo lands in the blanks group at the top
+     * of her screen with the camera already open, and a child who has one shows
+     * a thumbnail she confirms with a single tap. `collect` would demand a
+     * fresh photograph of all forty-six children every single round.
+     *
+     * `targetColumn`, not `recordKind`: a photo is master data about the child,
+     * and decideSubmissions drops a recordKind field on any request with no
+     * period — silently, which is the worst way for a photo round to fail.
+     *
+     * The value is a blob pathname. It is validated in code rather than by
+     * `pattern` here, because `pattern` is editable from /settings/fields and
+     * this particular regex is what stops one child's photo being attached to
+     * another. See src/lib/photos.ts.
+     */
+    key: "photo",
+    labelEn: "Student photo",
+    labelHi: "बच्चे की फ़ोटो",
+    mode: "verify",
+    inputType: "photo",
+    targetColumn: "photo_path",
+    sortOrder: 78,
+  },
 
   // --- collect: we hold nothing, so there is nothing to confirm ---
   {

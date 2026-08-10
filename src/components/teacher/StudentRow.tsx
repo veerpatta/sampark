@@ -9,17 +9,25 @@ import { HouseChip } from "@/components/HouseChip";
 import { tick } from "./haptics";
 import { judgeRow, missingRequired, rowTouched } from "./autosave";
 import { COMPLETE, UPLOADABLE } from "./types";
+import { Bi } from "./Bi";
+import { PhotoField } from "./PhotoField";
+import { T } from "./strings";
 
 import type { RowState, TeacherField, TeacherRosterRow } from "./types";
 
 /**
  * One student, and what a teacher can say about them.
  *
- *   सही है   — what you have is right. One tap, and that is the common case.
- *   बदलें    — it is wrong, let me fix it.
- *   नहीं है  — this child is not in my class.
+ *   Correct   — what you have is right. One tap, and that is the common case.
+ *   Change    — it is wrong, let me fix it.
  *
- * The whole product rests on सही है being one tap. Anything that adds a step to
+ * There used to be a third: "this child is not in my class". It was removed —
+ * a full-width button under every card, on the path her thumb travels, that
+ * blanked the row when it was hit by accident. The `not_present` action it
+ * wrote still exists everywhere else, because answers given before this change
+ * are in the database and still have to read correctly.
+ *
+ * The whole product rests on Correct being one tap. Anything that adds a step to
  * the confirm path turns a five-minute job back into a forty-minute one — which
  * is also why most confirmations now happen in bulk, one tap for the whole
  * group, and never reach this component at all.
@@ -43,7 +51,6 @@ export function StudentRow({
   sent,
   onConfirm,
   onEdit,
-  onAbsent,
   onChange,
   onLeave,
   onFilledLast,
@@ -62,7 +69,6 @@ export function StudentRow({
   sent: boolean;
   onConfirm: () => void;
   onEdit: () => void;
-  onAbsent: () => void;
   onChange: (fieldKey: string, value: string) => void;
   /** Focus left the row entirely — commit now rather than waiting out the timer. */
   onLeave: () => void;
@@ -150,8 +156,8 @@ export function StudentRow({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          {/* Stored ALL CAPS, rendered title case. A Hindi-first screen
-              shouting a child's name reads as an error message. */}
+          {/* Stored ALL CAPS, rendered title case. A screen shouting a child's
+              name reads as an error message. */}
           <span className="text-name font-medium">{titleCaseName(student.name)}</span>
           <Recognition student={student} fields={fields} />
         </div>
@@ -162,19 +168,27 @@ export function StudentRow({
               over", so the row has to carry it: grey while it is only on the
               phone, green once the school actually has it. On a bad signal the
               difference is the whole truth. */}
+          {/* English only, and only here. These are compact chips in the row
+              that has to stay scannable, the state is already carried by the
+              card's colour and its left bar, and the same words appear in full
+              — with their Hindi — on the rail and on the receipt. A two-line
+              chip beside a child's name costs more than it says. */}
           {uploaded ? (
             sent ? (
               <span className="rounded bg-[var(--color-confirm-bg)] px-1.5 py-0.5 text-xs font-medium text-[var(--color-confirm-fg)]">
-                ✓ विद्यालय पहुँच गया
+                ✓ {T.reachedSchool.en}
               </span>
             ) : (
               <span className="rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-xs text-[var(--color-ink-muted)]">
-                फ़ोन में सुरक्षित
+                {T.savedOnPhone.en}
               </span>
             )
           ) : null}
           {state.status === "confirmed" ? (
-            <span className="text-2xl text-[var(--color-confirm-fg)]" aria-label="सही है">
+            <span
+              className="text-2xl text-[var(--color-confirm-fg)]"
+              aria-label={T.correct.en}
+            >
               ✓
             </span>
           ) : null}
@@ -182,17 +196,17 @@ export function StudentRow({
               thing that says "sent AND still not done" in one breath. */}
           {state.status === "partial" ? (
             <span className="text-sm font-medium text-[var(--color-partial-fg)]">
-              अधूरा
+              {T.statusPartial.en}
             </span>
           ) : null}
           {state.status === "edited" ? (
             <span className="text-sm font-medium text-[var(--color-correct-fg)]">
-              बदला गया
+              {T.statusChanged.en}
             </span>
           ) : null}
           {state.status === "absent" ? (
             <span className="text-sm font-medium text-[var(--color-absent-fg)]">
-              नहीं है
+              {T.statusAbsent.en}
             </span>
           ) : null}
         </div>
@@ -207,7 +221,7 @@ export function StudentRow({
               className="flex items-baseline justify-between gap-3 border-t border-[var(--color-border)] pt-2"
             >
               <dt className="text-sm text-[var(--color-ink-muted)]">
-                {field.labelHi}
+                <Bi t={label(field)} />
               </dt>
               <dd className="text-right text-base font-medium">
                 <span className={numeric(field) ? "font-mono" : ""}>
@@ -232,7 +246,7 @@ export function StudentRow({
                 className="flex items-baseline justify-between gap-3 border-t border-[var(--color-correct-border)] pt-2"
               >
                 <dt className="text-sm text-[var(--color-ink-muted)]">
-                  {field.labelHi}
+                  <Bi t={label(field)} />
                 </dt>
                 <dd className="text-right text-base font-medium">
                   {changed ? (
@@ -248,7 +262,7 @@ export function StudentRow({
                     </>
                   ) : (
                     <span className={numeric(field) ? "font-mono" : ""}>
-                      {stored ?? "खाली है"}
+                      {stored ?? T.nothingOnRecord.en}
                     </span>
                   )}
                 </dd>
@@ -261,7 +275,24 @@ export function StudentRow({
       {/* --------------------------------------------------------- the inputs */}
       {open ? (
         <div className="mt-3 space-y-3">
-          {fields.map((field, index) => (
+          {fields.map((field, index) =>
+            // A photo is not a box she types in, so it does not go through
+            // FieldInput's keyboard machinery at all — no auto-advance, no
+            // length counter, no carry-down suggestion. It owns its own upload
+            // and writes into the row only once the school has the bytes.
+            field.inputType === "photo" ? (
+              <PhotoField
+                key={field.key}
+                studentId={student.studentId}
+                studentName={titleCaseName(student.name)}
+                value={
+                  state.values[field.key] ?? student.values[field.key] ?? ""
+                }
+                missing={
+                  state.status === "partial" && missing.includes(field.key)
+                }
+              />
+            ) : (
             <FieldInput
               key={field.key}
               field={field}
@@ -301,7 +332,8 @@ export function StudentRow({
                 onFilledLast();
               }}
             />
-          ))}
+            ),
+          )}
 
           {/* A row that is not finished has to say so, and the two reasons it
               might not be are different enough to need different words.
@@ -317,34 +349,34 @@ export function StudentRow({
               adding up. */}
           {state.status === "partial" ? (
             <p className="text-sm font-medium text-[var(--color-partial-fg)]">
-              {fields.length} में से {fields.length - missing.length} भरा — बाकी भी भर दें
+              <Bi t={T.filled(fields.length, fields.length - missing.length)} />
             </p>
           ) : verdict === "unfinished" && touched ? (
             <p className="text-sm text-[var(--color-ink-muted)]">
-              अभी पूरा नहीं हुआ
+              <Bi t={T.notFinished} />
             </p>
           ) : null}
         </div>
       ) : null}
 
       {/* -------------------------------------------------------- the actions */}
-      <div className="mt-4 space-y-2">
+      <div className="mt-4">
         <div className="flex flex-wrap items-center gap-2">
           {state.status === "todo" && !blank ? (
             <>
               <button
                 type="button"
                 onClick={answer(onConfirm)}
-                className="min-h-12 flex-1 rounded-lg transition-transform active:scale-[0.98] border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 font-semibold text-[var(--color-confirm-fg)]"
+                className="min-h-12 flex-1 rounded-lg transition-transform active:scale-[0.98] border-2 border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-2 font-semibold text-[var(--color-confirm-fg)]"
               >
-                सही है
+                <Bi t={T.correct} />
               </button>
               <button
                 type="button"
                 onClick={onEdit}
-                className="min-h-12 flex-1 rounded-lg transition-transform active:scale-[0.98] border-2 border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 font-semibold text-[var(--color-correct-fg)]"
+                className="min-h-12 flex-1 rounded-lg transition-transform active:scale-[0.98] border-2 border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-2 font-semibold text-[var(--color-correct-fg)]"
               >
-                बदलें
+                <Bi t={T.change} />
               </button>
             </>
           ) : null}
@@ -355,26 +387,12 @@ export function StudentRow({
             <button
               type="button"
               onClick={onReopen}
-              className="min-h-12 rounded-lg border-2 border-[var(--color-border)] px-4 text-sm transition-transform active:scale-[0.98] font-medium text-[var(--color-ink-muted)]"
+              className="min-h-12 rounded-lg border-2 border-[var(--color-border)] px-4 py-2 text-sm transition-transform active:scale-[0.98] font-medium text-[var(--color-ink-muted)]"
             >
-              फिर से देखें
+              <Bi t={T.lookAgain} />
             </button>
           ) : null}
         </div>
-
-        {/* नहीं है gets its own row, away from सही है. It used to be an
-            underlined link sitting next to the confirm button — the easiest
-            thing on the screen to hit by accident, and the most annoying to
-            undo. Its own row, full height, low emphasis. */}
-        {state.status !== "absent" ? (
-          <button
-            type="button"
-            onClick={answer(onAbsent)}
-            className="min-h-12 w-full rounded-lg border border-dashed transition-transform active:scale-[0.98] border-[var(--color-absent-border)] px-4 text-sm font-medium text-[var(--color-absent-fg)]"
-          >
-            यह बच्चा मेरी कक्षा में नहीं है
-          </button>
-        ) : null}
       </div>
     </li>
   );
@@ -419,13 +437,16 @@ function Recognition({
 
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--color-ink-muted)]">
+      {/* English only, on purpose. This line exists so she can tell one child
+          from another in a glance; a Hindi second line under each fragment
+          would double the height of the very thing that has to be skimmed. */}
       {student.srNo ? (
-        <span className="font-mono text-xs">क्र. {student.srNo}</span>
+        <span className="font-mono text-xs">SR {student.srNo}</span>
       ) : null}
 
       {showHouse ? <HouseChip house={student.house} /> : null}
 
-      {showFather ? <span>पिता: {titleCaseName(student.fatherName!)}</span> : null}
+      {showFather ? <span>Father: {titleCaseName(student.fatherName!)}</span> : null}
       {showRoute ? <span>{student.route}</span> : null}
     </div>
   );
@@ -454,9 +475,12 @@ function SuggestChip({
         tick();
         onUse(value);
       }}
-      className="mt-2 min-h-12 w-full rounded-lg border-2 border-dashed border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-3 text-sm font-medium text-[var(--color-correct-fg)] transition-transform active:scale-[0.98]"
+      className="mt-2 min-h-12 w-full rounded-lg border-2 border-dashed border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-3 py-2 text-sm font-medium text-[var(--color-correct-fg)] transition-transform active:scale-[0.98]"
     >
-      {label} — लगाएँ
+      {/* The label is a value she is reading (a number, a route), so it stays
+          as it is; only the instruction attached to it is bilingual. */}
+      <span>{label}</span>
+      <Bi t={T.useThis} className="ml-1 underline underline-offset-2" />
     </button>
   );
 }
@@ -515,7 +539,7 @@ function FieldInput({
 
   const askFor = missing ? (
     <span className="mt-1 block text-sm font-medium text-[var(--color-partial-fg)]">
-      यह अभी भरना बाकी है
+      <Bi t={T.stillToFill} />
     </span>
   ) : null;
 
@@ -525,13 +549,13 @@ function FieldInput({
   if (field.inputType === "boolean") {
     return (
       <div>
-        <span className="text-label text-[var(--color-ink-muted)]">
-          {field.labelHi}
+        <span className="block text-label text-[var(--color-ink-muted)]">
+          <Bi t={label(field)} />
         </span>
         <div className="mt-1 flex gap-2">
           {[
-            { value: "yes", label: "हाँ" },
-            { value: "no", label: "नहीं" },
+            { value: "yes", phrase: T.yes },
+            { value: "no", phrase: T.no },
           ].map((option) => (
             <button
               key={option.value}
@@ -540,13 +564,13 @@ function FieldInput({
                 tick();
                 onChange(option.value);
               }}
-              className={`min-h-12 flex-1 rounded-lg border-2 px-4 font-semibold transition-transform active:scale-[0.98] ${
+              className={`min-h-12 flex-1 rounded-lg border-2 px-4 py-2 font-semibold transition-transform active:scale-[0.98] ${
                 value === option.value
                   ? "border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
                   : "border-[var(--color-border)]"
               }`}
             >
-              {option.label}
+              <Bi t={option.phrase} />
             </button>
           ))}
         </div>
@@ -565,8 +589,8 @@ function FieldInput({
     if (options.length > 12) {
       return (
         <label className="block">
-          <span className="text-label text-[var(--color-ink-muted)]">
-            {field.labelHi}
+          <span className="block text-label text-[var(--color-ink-muted)]">
+            <Bi t={label(field)} />
           </span>
           <input
             value={value}
@@ -576,7 +600,7 @@ function FieldInput({
             enterKeyHint={last ? "done" : "next"}
             autoComplete="off"
             autoCapitalize="words"
-            placeholder="टाइप करके ढूँढें"
+            placeholder={T.typeToSearch}
             className={`mt-1 min-h-12 w-full rounded-lg border-2 px-3 text-base ${border}`}
           />
           <datalist id={`options-${field.key}`}>
@@ -585,11 +609,11 @@ function FieldInput({
             ))}
           </datalist>
           {suggestion && !value ? (
-            <SuggestChip label={`पिछले जैसा: ${suggestion}`} onUse={onChange} value={suggestion} />
+            <SuggestChip label={T.sameAsLast(suggestion)} onUse={onChange} value={suggestion} />
           ) : null}
           {bad ? (
             <span role="alert" className="mt-1 block text-sm text-[var(--color-danger)]">
-              सूची में से चुनें
+              <Bi t={T.chooseFromList} />
             </span>
           ) : (
             askFor
@@ -600,15 +624,18 @@ function FieldInput({
 
     return (
       <label className="block">
-        <span className="text-label text-[var(--color-ink-muted)]">
-          {field.labelHi}
+        <span className="block text-label text-[var(--color-ink-muted)]">
+          <Bi t={label(field)} />
         </span>
         <select
           value={value}
           onChange={(event) => onChange(event.target.value)}
           className={`mt-1 min-h-12 w-full rounded-lg border-2 px-3 text-base ${border}`}
         >
-          <option value="">— चुनें —</option>
+          {/* An <option> cannot hold two lines, so this one carries both
+              languages on one, separated. It is the only string on the surface
+              that does. */}
+          <option value="">{`${T.chooseOne.en}  ${T.chooseOne.hi}`}</option>
           {options.map((option) => (
             <option key={option} value={option}>
               {option}
@@ -616,7 +643,7 @@ function FieldInput({
           ))}
         </select>
         {suggestion && !value ? (
-          <SuggestChip label={`पिछले जैसा: ${suggestion}`} onUse={onChange} value={suggestion} />
+          <SuggestChip label={T.sameAsLast(suggestion)} onUse={onChange} value={suggestion} />
         ) : null}
         {askFor}
       </label>
@@ -625,8 +652,10 @@ function FieldInput({
 
   return (
     <label className="block">
-      <span className="flex items-baseline justify-between text-label text-[var(--color-ink-muted)]">
-        <span>{field.labelHi}</span>
+      <span className="flex items-baseline justify-between gap-2 text-label text-[var(--color-ink-muted)]">
+        <span className="min-w-0">
+          <Bi t={label(field)} />
+        </span>
         {isNumeric && field.exactLen && value.length > 0 ? (
           <span className="font-mono text-xs">
             {value.length} / {field.exactLen}
@@ -670,7 +699,7 @@ function FieldInput({
           and the answer still goes through the office review queue. */}
       {sibling && !value ? (
         <SuggestChip
-          label={`${sibling.name} का नंबर: ${sibling.phone}`}
+          label={T.siblingNumber(sibling.name, sibling.phone)}
           value={sibling.phone}
           onUse={onChange}
         />
@@ -683,7 +712,11 @@ function FieldInput({
           role="alert"
           className="mt-1 block text-sm font-medium text-[var(--color-danger)]"
         >
-          {check.ok ? "" : check.errorHi}
+          {/* validateField has always returned both halves; the teacher surface
+              only ever showed the Hindi one. */}
+          {check.ok ? null : (
+            <Bi t={{ en: check.error, hi: check.errorHi }} />
+          )}
         </span>
       ) : null}
     </label>
@@ -711,6 +744,18 @@ function clean(field: TeacherField, raw: string): string {
 
 const numeric = (field: TeacherField) =>
   field.inputType === "tel" || field.inputType === "number";
+
+/**
+ * A field's own two labels, as a Phrase.
+ *
+ * `field_defs` has carried `label_en` and `label_hi` since the first migration;
+ * the teacher surface simply never read the English one. This is the whole
+ * adapter — there is nothing to translate and nothing to seed.
+ */
+const label = (field: TeacherField) => ({
+  en: field.labelEn,
+  hi: field.labelHi,
+});
 
 function optionsOf(field: TeacherField): string[] {
   return Array.isArray(field.options) ? field.options.map(String) : [];

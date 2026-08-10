@@ -3,7 +3,9 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { resolveTeacherToken, type TeacherPageItem } from "@/lib/auth/token";
 import { clientIp, limitByIp, limitByTeacherToken } from "@/lib/ratelimit";
-import { describeAudienceLineHi } from "@/lib/whatsapp";
+import { describeAudienceLine } from "@/lib/whatsapp";
+import { Bi } from "@/components/teacher/Bi";
+import { T } from "@/components/teacher/strings";
 
 /**
  * Everything currently open for one teacher, on one durable link.
@@ -30,7 +32,7 @@ import { describeAudienceLineHi } from "@/lib/whatsapp";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "आपकी सूचियाँ — Sampark",
+  title: "Your lists — Sampark",
   robots: { index: false, follow: false },
 };
 
@@ -43,7 +45,7 @@ export default async function TeacherHomePage({
 
   // Rate limited BEFORE resolving, for the reason /api/r does it: a guess must
   // not cost a database read. A Server Component cannot answer 429 with a
-  // Retry-After, so a refusal renders a Hindi "try again shortly" — honest for
+  // Retry-After, so a refusal renders a plain "try again shortly" — honest for
   // the one real person who ever hits it, and no cheaper for anyone probing.
   const head = await headers();
   const [byToken, byIp] = await Promise.all([
@@ -59,20 +61,26 @@ export default async function TeacherHomePage({
     <main className="teacher-surface mx-auto max-w-md px-4 pb-8 pt-5">
       <header className="sticky top-0 z-10 -mx-4 bg-[var(--color-brand-900)] px-4 py-3 text-white">
         <div className="mx-auto max-w-md">
-          <h1 className="text-lg font-semibold">{page.teacherName} जी</h1>
+          <h1 className="text-lg font-semibold">{page.teacherName}</h1>
           <p className="mt-0.5 text-sm text-white/80">
-            {page.items.length > 0
-              ? `${page.items.length} सूची भरनी है`
-              : "अभी कुछ बाकी नहीं"}
+            <Bi
+              t={
+                page.items.length > 0
+                  ? T.listsToFill(page.items.length)
+                  : T.nothingPending
+              }
+            />
           </p>
         </div>
       </header>
 
       {page.items.length === 0 ? (
         <div className="mt-8 rounded-[var(--radius-card)] border-2 border-dashed border-[var(--color-border)] px-4 py-8 text-center">
-          <p className="font-medium">अभी कोई सूची बाकी नहीं है।</p>
+          <p className="font-medium">
+            <Bi t={T.noListsYet} />
+          </p>
           <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
-            विद्यालय जब कुछ भेजेगा, वह यहीं दिखेगा — इस पेज को सहेज कर रखें।
+            <Bi t={T.noListsNote} />
           </p>
         </div>
       ) : (
@@ -86,7 +94,7 @@ export default async function TeacherHomePage({
       )}
 
       <p className="mt-8 text-center text-xs text-[var(--color-ink-muted)]">
-        यह पेज सिर्फ़ आपके लिए है। किसी और को न भेजें।
+        <Bi t={T.pageIsYours} />
       </p>
     </main>
   );
@@ -116,7 +124,7 @@ function RequestCard({ item }: { item: TeacherPageItem }) {
       }`}
     >
       <span className="block text-name font-medium">
-        {describeAudienceLineHi({
+        {describeAudienceLine({
           kind: item.audienceKind,
           label: item.audienceLabel,
           fieldKeys: item.fieldKeys,
@@ -132,11 +140,11 @@ function RequestCard({ item }: { item: TeacherPageItem }) {
         </span>
         {done ? (
           <span className="font-medium text-[var(--color-confirm-fg)]">
-            ✓ पूरा हो गया
+            ✓ {T.listDone.en}
           </span>
         ) : (
           <span className="text-[var(--color-ink-muted)]">
-            {left} बाकी
+            {T.listLeft(left).en}
           </span>
         )}
       </span>
@@ -148,9 +156,7 @@ function RequestCard({ item }: { item: TeacherPageItem }) {
             : "text-[var(--color-ink-muted)]"
         }`}
       >
-        {overdue
-          ? "अंतिम तिथि निकल चुकी है — अभी भी भर सकती हैं"
-          : `${formatDue(item.dueDate)} तक`}
+        {overdue ? T.overdue.en : T.dueBy(formatDue(item.dueDate)).en}
       </span>
     </Link>
   );
@@ -163,9 +169,11 @@ function RequestCard({ item }: { item: TeacherPageItem }) {
 function TooBusy() {
   return (
     <main className="teacher-surface mx-auto max-w-md px-4 pt-16 text-center">
-      <p className="font-medium">थोड़ी देर बाद कोशिश करें।</p>
+      <p className="font-medium">
+        <Bi t={T.tooBusy} />
+      </p>
       <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
-        आपका लिंक ठीक है — बस एक मिनट रुक जाएँ।
+        <Bi t={T.tooBusyNote} />
       </p>
     </main>
   );

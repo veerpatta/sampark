@@ -22,6 +22,22 @@ import { db } from "./db";
 export const LIMITS = {
   perToken: { limit: 30, windowMs: 60_000 },
   perIp: { limit: 100, windowMs: 60 * 60_000 },
+  /**
+   * Photo uploads, counted separately from everything else.
+   *
+   * A teacher photographing a class of forty-six is forty-six uploads in maybe
+   * fifteen minutes. Counted against the 30/min token budget they would starve
+   * her own answer flushes — the two would take turns failing — and against the
+   * 100/hour IP budget a second teacher on the same staffroom wifi would be
+   * locked out by the first one's round.
+   *
+   * So: its own token bucket at 60/min, and its own IP bucket at 500/hour,
+   * which is ten classes' worth with room for retakes. Generous on purpose. The
+   * thing this budget defends against is somebody using a live link as a file
+   * dropbox, and 1.5 MB a piece is what actually bounds that.
+   */
+  perPhotoToken: { limit: 60, windowMs: 60_000 },
+  perPhotoIp: { limit: 500, windowMs: 60 * 60_000 },
 } as const;
 
 export type RateLimitResult = {
@@ -83,6 +99,18 @@ export function limitByTeacherToken(token: string): Promise<RateLimitResult> {
 export function limitByIp(ip: string): Promise<RateLimitResult> {
   const { limit, windowMs } = LIMITS.perIp;
   return hit(`ip:${ip}`, limit, windowMs);
+}
+
+/** Photo uploads, per link. Own prefix for the reason limitByTeacherToken has one. */
+export function limitPhotosByToken(token: string): Promise<RateLimitResult> {
+  const { limit, windowMs } = LIMITS.perPhotoToken;
+  return hit(`photo:${token}`, limit, windowMs);
+}
+
+/** Photo uploads, per IP. A whole staffroom shares one. */
+export function limitPhotosByIp(ip: string): Promise<RateLimitResult> {
+  const { limit, windowMs } = LIMITS.perPhotoIp;
+  return hit(`photoip:${ip}`, limit, windowMs);
 }
 
 /** Best-effort client IP from Vercel's forwarding headers. */

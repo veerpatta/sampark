@@ -88,7 +88,15 @@ export default async function FieldSettingsPage() {
           <Select
             name="inputType"
             label="Input type"
-            options={["text", "tel", "date", "number", "select", "boolean"]}
+            options={[
+              "text",
+              "tel",
+              "date",
+              "number",
+              "select",
+              "boolean",
+              "photo",
+            ]}
           />
           <Select
             name="targetColumn"

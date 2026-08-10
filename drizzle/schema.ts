@@ -65,6 +65,16 @@ export const students = pgTable(
      * teacher job.
      */
     aadhaarLast4: text("aadhaar_last4"),
+    /**
+     * The pathname of a private Vercel Blob, not a URL.
+     *
+     * A private blob has no durable public URL, and a public one would be a
+     * live credential — this column and every `submissions.new_value` behind it
+     * would hold a permanently readable link to a photograph of a child.
+     * Resolving a pathname to bytes needs the store token, which lives on the
+     * server, so both read proxies can re-check who is asking. See lib/photos.ts.
+     */
+    photoPath: text("photo_path"),
     status: text("status").notNull().default("active"), // active | left | tc_issued
     source: text("source").default("psp"),
     createdAt: timestamp("created_at", { withTimezone: true })

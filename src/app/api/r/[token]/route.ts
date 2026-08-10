@@ -6,12 +6,8 @@ import {
   SubmissionValidationError,
   type StudentAnswer,
 } from "@/lib/submissions";
-import {
-  clientIp,
-  limitByIp,
-  limitByToken,
-  sweepRateLimits,
-} from "@/lib/ratelimit";
+import { clientIp, sweepRateLimits } from "@/lib/ratelimit";
+import { guard } from "./guard";
 
 /**
  * The teacher-facing API. The only endpoints reachable without an account.
@@ -24,30 +20,6 @@ import {
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/**
- * Rate limit BEFORE resolving the token.
- *
- * Checking the token first would mean every guess costs a database read of
- * `requests` — the limiter exists precisely to make enumeration expensive for
- * the attacker rather than for us. 96 bits of entropy makes guessing infeasible
- * anyway; this closes the cheap-probe half of it.
- */
-async function guard(request: Request, token: string) {
-  const ip = clientIp(request.headers);
-  const [byToken, byIp] = await Promise.all([
-    limitByToken(token),
-    limitByIp(ip),
-  ]);
-
-  const worst = !byToken.ok ? byToken : !byIp.ok ? byIp : null;
-  if (!worst) return null;
-
-  return new Response(null, {
-    status: 429,
-    headers: { "retry-after": String(Math.max(1, worst.retryAfterSeconds)) },
-  });
-}
 
 /** Same body as the page render, for the offline client to refresh against. */
 export async function GET(

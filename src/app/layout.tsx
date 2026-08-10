@@ -55,7 +55,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="hi">
+    <html lang="en">
       <body
         className={`${anekLatin.variable} ${anekDevanagari.variable} ${plexMono.variable} antialiased`}
       >
