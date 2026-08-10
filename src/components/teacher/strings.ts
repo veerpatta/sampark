@@ -108,7 +108,6 @@ export const T = {
   savedAutomatically: p("Saved automatically", "अपने-आप सहेजा गया"),
   missingCount: (n: number) => p(`Missing ${n}`, `${n} बाकी`),
   allSet: p("All set", "पूरा"),
-  fillDetails: p("Fill details", "जानकारी भरें"),
   knownHeading: (n: number) =>
     p(
       `${n} children already have details — please check and confirm`,

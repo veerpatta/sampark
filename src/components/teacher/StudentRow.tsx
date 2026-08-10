@@ -97,10 +97,21 @@ export function StudentRow({
   // Partial keeps the inputs on screen. showEntered stays tied to `edited`, so
   // the read-only summary below is unreachable for a partial row and cannot
   // hide the box that is still empty.
+  /*
+   * A BLANK ROW IS OPEN. Always, from the moment the list renders, and not
+   * because it is the one the screen has decided she is on.
+   *
+   * It was gated on `active` for a while, so every child except one sat closed
+   * behind a tap that revealed a box. That tap buys nothing: there is nothing
+   * to confirm on a row the school holds no value for, so the only thing the
+   * extra step can produce is the box she was always going to have to fill. On
+   * a forty-six child photo round it is forty-five taps and forty-five waits
+   * for a card to expand, which is most of the time the round takes.
+   */
   const open =
     state.status === "editing" ||
     state.status === "partial" ||
-    (blank && state.status === "todo" && active);
+    (blank && state.status === "todo");
   const showStored = state.status === "todo" && !blank;
   const showEntered = state.status === "edited";
 
@@ -116,16 +127,10 @@ export function StudentRow({
   /*
    * WHAT A TAP ON THE CARD DOES.
    *
-   * It used to do nothing. A closed row carried a caret at the far right and
-   * that 48px circle was the only way in — so a teacher tapped the child's
-   * name, got no response, and tapped again harder. On a list where every child
-   * is blank that is the entire interaction, and it read as a broken screen.
-   *
-   * The card is the target now, and the caret stays as the thing that says so.
-   * Only where there is exactly ONE sensible action, though:
-   *
-   *   blank and unanswered  -> open the inputs
-   *   already answered      -> reopen it
+   * One thing only: reopen a row she has already answered. There is no longer
+   * an expand step to tap into — a blank row arrives open — so the only closed
+   * card left on the screen is a finished one, and the only thing anybody wants
+   * from a finished card is another look at it.
    *
    * A row the school HOLDS values for is deliberately left alone. Its two
    * actions — Correct and Change — are equally valid, and a card-wide tap would
@@ -133,12 +138,7 @@ export function StudentRow({
    * gave, and guessing "Change" would throw up a keyboard mid-scroll. Two named
    * buttons filling the width are already the clearest thing on that card.
    */
-  const cardAction =
-    state.status === "todo" && blank && !open
-      ? onEdit
-      : collapsed
-        ? onReopen
-        : null;
+  const cardAction = collapsed ? onReopen : null;
   const siblingField = fields.find(
     (field) =>
       field.exactLen === PHONE_LENGTH && !student.values[field.key],
@@ -172,7 +172,7 @@ export function StudentRow({
     >
       <Header
         action={cardAction}
-        label={`${collapsed ? T.lookAgain.en : T.fillDetails.en}: ${titleCaseName(student.name)}`}
+        label={`${T.lookAgain.en}: ${titleCaseName(student.name)}`}
       >
         <div className="flex min-w-0 items-start gap-3">
           <span
@@ -244,17 +244,6 @@ export function StudentRow({
           {blank && missing.length > 0 ? (
             <span className="rounded-xl bg-[var(--color-correct-bg)] px-2.5 py-1 text-center text-sm font-medium text-[var(--color-correct-fg)]">
               <Bi t={T.missingCount(missing.length)} />
-            </span>
-          ) : null}
-          {/* Decoration now, not a control. It still says "this opens", which
-              is the job it was always doing; the tap target is the whole card
-              around it. Nesting a real button inside one is invalid anyway. */}
-          {state.status === "todo" && blank && !open ? (
-            <span
-              aria-hidden
-              className="flex h-12 w-12 items-center justify-center rounded-full text-[var(--color-brand-600)]"
-            >
-              <CaretRight size={24} weight="bold" />
             </span>
           ) : null}
         </div>
