@@ -148,6 +148,34 @@ framework dependency to keep current. Coverage is deliberately narrow and aimed
 at the two places the build plan calls out as expensive to get wrong: the token
 resolver and the import matching rules.
 
+### The smoke test
+
+```bash
+npm run dev      # in another terminal
+npm run smoke
+```
+
+`npm test` runs with no server and no blob store, so the route handlers are the
+one layer it cannot reach — and that is where the rate limiter, the frozen-roster
+check and the JPEG sniff actually live. `npm run smoke` drives a whole photo
+round over HTTP exactly as a teacher's phone does: it creates a request, uploads
+a real JPEG, refuses a PNG wearing a JPEG content-type, refuses a child off the
+roster, reads the photo back, submits the pathname as an ordinary field value,
+refuses one child's photo on another child, approves it into the master record,
+and checks the change log.
+
+It also asserts the two things that are invisible until they are wrong:
+
+- **the blob store is PRIVATE** — it fetches the raw blob URL with no
+  credentials and requires a refusal. A public store behaves identically from
+  inside the app and differs only in that every photograph of every child is
+  readable by anyone who ever sees a URL.
+- **a request holding answers cannot be deleted** by the app role, which is the
+  reason `removeRequest` archives rather than deletes.
+
+Everything it creates is prefixed `ZZTESTSMOKE`, including the blobs, and is torn
+down at the end. Point it elsewhere with `SMOKE_BASE_URL`.
+
 ---
 
 ## Layout
@@ -164,6 +192,7 @@ scripts/
   seed-branch.ts        field registry for a non-default Neon branch
   import-fees-bundle.ts master refresh from a fee-app context bundle
   create-user.ts        interactive admin account creation
+  smoke.ts              a whole photo round over HTTP — see above
   make-icons.ts         PWA icons, rasterised from icon.svg
   backup.ps1            verified weekly pg_dump
 tests/                  node:test, run with `npm test`
