@@ -1,47 +1,118 @@
 import Link from "next/link";
 import { canApproveIntoMaster, currentUser } from "@/lib/auth/session";
-import { listClassLabels, listStudents } from "@/lib/students";
-import { titleCaseName } from "@/lib/classes";
+import { listFacets, listStudents } from "@/lib/students";
+import { compareClassLabels, titleCaseName } from "@/lib/classes";
+import { completeness } from "@/lib/completeness";
+import {
+  MISSING_FIELDS,
+  MISSING_LABELS,
+  PAGE_SIZES,
+  SORT_LABELS,
+  SORTS,
+  parseFilters,
+  toSearchParams,
+  type StudentSearchParams,
+} from "@/lib/student-filters";
 import { DataTable, type Column } from "@/components/admin/DataTable";
+import { FilterBar, type ChipGroup } from "@/components/admin/FilterBar";
+import { StudentPhoto } from "@/components/admin/StudentPhoto";
+import { HouseChip } from "@/components/HouseChip";
 
 export const metadata = { title: "Students — Sampark" };
 export const dynamic = "force-dynamic";
 
-const PAGE_SIZE = 100;
-
 /**
- * The master record, searchable and filterable by class.
+ * The master record, sliced any way the office needs it.
  *
- * Search and filter live in the query string rather than component state, so a
- * particular view is a link the office can send to itself.
+ * FILTER STATE LIVES IN THE QUERY STRING, which is the existing decision here
+ * and the reason a particular view is a link the office can send to itself.
+ * Every filter, the sort and the page size are in it, and so is the Excel
+ * export — pressing Export on a filtered board used to hand over a different
+ * set of children than the one on screen, because it read `?class=` alone.
+ *
+ * The board defaults to ACTIVE students only. It never used to filter on status
+ * at all, so children who had left were mixed in with no way to tell; the
+ * result line now says which it is showing rather than changing that silently.
  */
 export default async function StudentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; class?: string; page?: string }>;
+  searchParams: Promise<StudentSearchParams>;
 }) {
   const params = await searchParams;
+  const { query, page, size, active } = parseFilters(params);
 
-  const search = params.q?.trim() ?? "";
-  const classLabel = params.class?.trim() ?? "";
-  const page = Math.max(1, Number(params.page ?? 1) || 1);
-
-  const [session, { students, total }, classes] = await Promise.all([
+  const [session, { students, total }, facets] = await Promise.all([
     currentUser(),
-    listStudents({
-      search,
-      classLabel: classLabel || undefined,
-      limit: PAGE_SIZE,
-      offset: (page - 1) * PAGE_SIZE,
-    }),
-    listClassLabels(),
+    listStudents(query),
+    listFacets(),
   ]);
 
   const canImport = session ? canApproveIntoMaster(session.role) : false;
+  const lastPage = Math.max(1, Math.ceil(total / size));
+  const exportQuery = toSearchParams(params);
 
-  // Name is the card's title, class its subtitle; the identifiers become
-  // labelled pairs below rather than columns off the right edge of a phone.
+  const sorted = (map: Map<string, number>) => [...map.entries()].sort();
+  const chip = (
+    name: string,
+    label: string,
+    map: Map<string, number>,
+    selected: string[] = [],
+    order: [string, number][] = sorted(map),
+  ): ChipGroup => ({
+    name,
+    label,
+    selected,
+    values: order.map(([value, count]) => ({ value, count })),
+  });
+
+  const primary: ChipGroup[] = [
+    chip(
+      "classes",
+      "Class",
+      facets.classes,
+      query.classes ?? [],
+      [...facets.classes.entries()].sort((a, b) =>
+        compareClassLabels(a[0], b[0]),
+      ),
+    ),
+    chip("houses", "House", facets.houses, query.houses ?? []),
+    {
+      name: "missing",
+      label: "Missing",
+      selected: query.missing ?? [],
+      // The work list. Every count here is a number of children somebody still
+      // has to chase, which is why this group sits with class and house rather
+      // than behind the disclosure.
+      values: MISSING_FIELDS.map((field) => ({
+        value: field,
+        label: MISSING_LABELS[field],
+        count: facets.missing.get(field),
+      })),
+    },
+  ];
+
+  const secondary: ChipGroup[] = [
+    chip("sections", "Section", facets.sections, query.sections ?? []),
+    chip("routes", "Bus route", facets.routes, query.routes ?? []),
+    chip("genders", "Gender", facets.genders, query.genders ?? []),
+    chip("categories", "Category", facets.categories, query.categories ?? []),
+    chip("villages", "Village", facets.villages, query.villages ?? []),
+    chip("statuses", "Record status", facets.statuses, query.statuses ?? []),
+  ];
+
   const columns: Column<(typeof students)[number]>[] = [
+    {
+      key: "photo",
+      header: "",
+      hideOnCard: true,
+      cell: (student) => (
+        <StudentPhoto
+          pathname={student.photoPath}
+          name={titleCaseName(student.name)}
+        />
+      ),
+    },
     {
       key: "class",
       header: "Class",
@@ -60,15 +131,18 @@ export default async function StudentsPage({
       key: "name",
       header: "Name",
       role: "primary",
-      cell: (student) => (
-        <Link
-          href={`/students/${encodeURIComponent(student.id)}`}
-          className="hover:text-[var(--color-brand-600)] hover:underline"
-        >
-          {titleCaseName(student.name)}
-        </Link>
-      ),
+      cell: (student) => titleCaseName(student.name),
       cellClassName: "font-medium",
+    },
+    {
+      key: "house",
+      header: "House",
+      cell: (student) =>
+        student.house ? (
+          <HouseChip house={student.house} lang="en" />
+        ) : (
+          <span className="text-[var(--color-ink-muted)]">—</span>
+        ),
     },
     {
       key: "father",
@@ -86,38 +160,36 @@ export default async function StudentsPage({
       cellClassName: "font-mono text-xs",
     },
     {
+      key: "complete",
+      header: "Record",
+      cell: (student) => <CompletenessBar student={student} />,
+    },
+    {
       key: "id",
       header: "Student ID",
       cell: (student) => student.id,
       cellClassName: "font-mono text-xs text-[var(--color-ink-muted)]",
     },
-    {
-      key: "sr",
-      header: "SR",
-      cell: (student) => student.srNo ?? "—",
-      cellClassName: "font-mono text-xs text-[var(--color-ink-muted)]",
-    },
   ];
-  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <header className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h1 className="text-display font-semibold tracking-tight">Students</h1>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
             {total.toLocaleString("en-IN")} record{total === 1 ? "" : "s"}
-            {classLabel ? ` in ${classLabel}` : ""}
-            {search ? ` matching “${search}”` : ""}
+            {query.statuses?.length ? "" : ", active only"}
+            {active ? " matching these filters" : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {total > 0 ? (
             <a
-              href={`/api/export/students.xlsx${classLabel ? `?class=${encodeURIComponent(classLabel)}` : ""}`}
+              href={`/api/export/students.xlsx${exportQuery.size > 0 ? `?${exportQuery}` : ""}`}
               className="inline-flex min-h-[var(--tap-min)] items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
             >
-              Export {classLabel ? classLabel : "all"} to Excel
+              Export these {total.toLocaleString("en-IN")} to Excel
             </a>
           ) : null}
           {canImport ? (
@@ -131,56 +203,69 @@ export default async function StudentsPage({
         </div>
       </header>
 
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <label className="block w-full sm:w-auto">
-          <span className="text-xs font-medium text-[var(--color-ink-muted)]">
-            Search
-          </span>
-          <input
-            name="q"
-            defaultValue={search}
-            placeholder="Name, student ID, SR number, mobile"
-            className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] sm:w-72 px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)]"
-          />
-        </label>
+      <QuickViews facets={facets} />
 
-        <label className="block w-full sm:w-auto">
-          <span className="text-xs font-medium text-[var(--color-ink-muted)]">
-            Class
-          </span>
-          <select
-            name="class"
-            defaultValue={classLabel}
-            className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] sm:w-40 px-3 py-2 text-sm"
-          >
-            <option value="">All classes</option>
-            {classes.map((label) => (
-              <option key={label} value={label}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+      <FilterBar primary={primary} secondary={secondary}>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block w-full sm:w-auto">
+            <span className="text-xs font-medium text-[var(--color-ink-muted)]">
+              Search
+            </span>
+            <input
+              name="q"
+              defaultValue={query.search}
+              placeholder="Name, ID, SR, admission no., mobile, father"
+              className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)] sm:w-80"
+            />
+          </label>
 
-        <button
-          type="submit"
-          className="min-h-[var(--tap-min)] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
-        >
-          Apply
-        </button>
+          <label className="block">
+            <span className="text-xs font-medium text-[var(--color-ink-muted)]">
+              Sort by
+            </span>
+            <select
+              name="sort"
+              defaultValue={query.sort}
+              className="mt-1 min-h-[var(--tap-min)] rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            >
+              {SORTS.map((value) => (
+                <option key={value} value={value}>
+                  {SORT_LABELS[value]}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        {search || classLabel ? (
-          <Link
-            href="/students"
-            className="inline-flex min-h-[var(--tap-min)] items-center text-sm text-[var(--color-ink-muted)] hover:underline"
-          >
-            Clear
-          </Link>
-        ) : null}
-      </form>
+          <label className="block">
+            <span className="text-xs font-medium text-[var(--color-ink-muted)]">
+              Per page
+            </span>
+            <select
+              name="size"
+              defaultValue={String(size)}
+              className="mt-1 min-h-[var(--tap-min)] rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            >
+              {PAGE_SIZES.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {active ? (
+            <Link
+              href="/students"
+              className="inline-flex min-h-[var(--tap-min)] items-center text-sm text-[var(--color-ink-muted)] hover:underline"
+            >
+              Clear all
+            </Link>
+          ) : null}
+        </div>
+      </FilterBar>
 
       {students.length === 0 ? (
-        <EmptyState hasFilter={Boolean(search || classLabel)} canImport={canImport} />
+        <EmptyState hasFilter={active} canImport={canImport} />
       ) : (
         <DataTable
           columns={columns}
@@ -192,23 +277,13 @@ export default async function StudentsPage({
 
       {lastPage > 1 ? (
         <nav className="flex items-center gap-4 text-sm">
-          <PageLink
-            page={page - 1}
-            disabled={page <= 1}
-            search={search}
-            classLabel={classLabel}
-          >
+          <PageLink page={page - 1} disabled={page <= 1} params={params}>
             ← Previous
           </PageLink>
           <span className="text-[var(--color-ink-muted)]">
             Page {page} of {lastPage}
           </span>
-          <PageLink
-            page={page + 1}
-            disabled={page >= lastPage}
-            search={search}
-            classLabel={classLabel}
-          >
+          <PageLink page={page + 1} disabled={page >= lastPage} params={params}>
             Next →
           </PageLink>
         </nav>
@@ -217,17 +292,101 @@ export default async function StudentsPage({
   );
 }
 
+/**
+ * One tap to the questions the office actually asks.
+ *
+ * These are nothing but query strings — the same filters, pre-built — so
+ * anything reachable here is also reachable by hand, and a view worth keeping
+ * is a link worth bookmarking. The counts come from the same facet query the
+ * chips use, so a view promising 42 children opens on 42 children.
+ */
+function QuickViews({
+  facets,
+}: {
+  facets: Awaited<ReturnType<typeof listFacets>>;
+}) {
+  const views = [
+    ...MISSING_FIELDS.map((field) => ({
+      href: `/students?missing=${field}&sort=class`,
+      label: MISSING_LABELS[field],
+      count: facets.missing.get(field) ?? 0,
+    })),
+    {
+      href: "/students?statuses=left&statuses=tc_issued",
+      label: "Left or TC issued",
+      count:
+        (facets.statuses.get("left") ?? 0) +
+        (facets.statuses.get("tc_issued") ?? 0),
+    },
+  ].filter((view) => view.count > 0);
+
+  if (views.length === 0) return null;
+
+  return (
+    <section>
+      <h2 className="text-xs font-medium uppercase tracking-wider text-[var(--color-ink-muted)]">
+        Work left
+      </h2>
+      <div className="mt-1.5 flex flex-wrap gap-2">
+        {views.map((view) => (
+          <Link
+            key={view.href}
+            href={view.href}
+            className="inline-flex min-h-9 items-center gap-2 rounded-[var(--radius-chip)] border border-[var(--color-warning)] bg-[var(--color-partial-bg)] px-3 text-sm font-medium text-[var(--color-warning-fg)] hover:bg-[var(--color-correct-bg)]"
+          >
+            {view.label}
+            <span className="font-mono text-xs">{view.count}</span>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * How much of this child's record the school holds.
+ *
+ * Twelve fields, one bar. It exists so "who should the next request be about"
+ * is answerable by looking rather than by opening five hundred detail pages,
+ * and it is the same count the "least complete first" sort orders by — see
+ * lib/completeness.ts, which is the single list both read.
+ */
+function CompletenessBar({
+  student,
+}: {
+  student: Parameters<typeof completeness>[0];
+}) {
+  const { filled, total, percent } = completeness(student);
+  return (
+    <span className="flex items-center gap-2" title={`${filled} of ${total} fields`}>
+      <span className="h-1.5 w-12 overflow-hidden rounded-full bg-[var(--color-surface-muted)]">
+        <span
+          className={`block h-full rounded-full ${
+            percent >= 80
+              ? "bg-[var(--color-success)]"
+              : percent >= 50
+                ? "bg-[var(--color-warning)]"
+                : "bg-[var(--color-danger)]"
+          }`}
+          style={{ width: `${percent}%` }}
+        />
+      </span>
+      <span className="font-mono text-xs text-[var(--color-ink-muted)]">
+        {filled}/{total}
+      </span>
+    </span>
+  );
+}
+
 function PageLink({
   page,
   disabled,
-  search,
-  classLabel,
+  params,
   children,
 }: {
   page: number;
   disabled: boolean;
-  search: string;
-  classLabel: string;
+  params: StudentSearchParams;
   children: React.ReactNode;
 }) {
   if (disabled) {
@@ -237,13 +396,10 @@ function PageLink({
       </span>
     );
   }
-  const params = new URLSearchParams();
-  if (search) params.set("q", search);
-  if (classLabel) params.set("class", classLabel);
-  params.set("page", String(page));
+  const search = toSearchParams(params, { page });
   return (
     <Link
-      href={`/students?${params}`}
+      href={`/students?${search}`}
       className="inline-flex min-h-[var(--tap-min)] items-center px-2 text-[var(--color-brand-600)] hover:underline"
     >
       {children}
@@ -261,7 +417,11 @@ function EmptyState({
   if (hasFilter) {
     return (
       <p className="p-6 text-sm text-[var(--color-ink-muted)]">
-        No students match that search.
+        No students match those filters.{" "}
+        <Link href="/students" className="text-[var(--color-brand-600)] hover:underline">
+          Clear them
+        </Link>
+        .
       </p>
     );
   }

@@ -1,6 +1,7 @@
 import { requireUser, UnauthorizedError } from "@/lib/auth/session";
 import { buildWorkbook, type ExportColumn } from "@/lib/excel";
 import { listStudents } from "@/lib/students";
+import { parseFilters } from "@/lib/student-filters";
 import { compareClassLabels } from "@/lib/classes";
 import type { Student } from "../../../../../drizzle/schema";
 
@@ -36,6 +37,10 @@ const COLUMNS: ExportColumn<Student>[] = [
   { header: "Address", width: 30, value: (s) => s.address },
   { header: "Bus Route", width: 14, value: (s) => s.busRoute },
   { header: "Status", width: 10, value: (s) => s.status },
+  // Yes or no, never the pathname. A blob path in a spreadsheet is noise to a
+  // reader and a dead string to PSP, but "which children still need a photo"
+  // is the exact question a printed list is wanted for.
+  { header: "Photo", width: 8, value: (s) => (s.photoPath ? "yes" : "") },
 ];
 
 export async function GET(request: Request) {
@@ -48,12 +53,31 @@ export async function GET(request: Request) {
     throw error;
   }
 
+  /*
+   * THE EXPORT FOLLOWS THE BOARD, not just its class.
+   *
+   * It used to read `?class=` alone, so filtering the students board to a house
+   * or to "no mobile number" and then pressing Export handed over a completely
+   * different set of children — with nothing on the file to say which. The
+   * board builds this link from the same query string it is rendering, and
+   * parseFilters is the one place that reads it, so the two cannot disagree.
+   */
   const url = new URL(request.url);
-  const only = url.searchParams.get("class")?.trim() || undefined;
+  const params = Object.fromEntries(
+    [...new Set([...url.searchParams.keys()])].map((key) => [
+      key,
+      url.searchParams.getAll(key),
+    ]),
+  );
+  const { query } = parseFilters(params);
 
-  // No pagination: the whole point is one file with everyone in it, and at
-  // ~2,000 students that is a small workbook.
-  const { students } = await listStudents({ classLabel: only, limit: 10_000 });
+  // No pagination: the whole point is one file with everyone the board is
+  // showing, and at ~2,000 students that is a small workbook.
+  const { students } = await listStudents({
+    ...query,
+    limit: 10_000,
+    offset: 0,
+  });
 
   if (students.length === 0) {
     return new Response("No students to export.", { status: 404 });
@@ -72,7 +96,14 @@ export async function GET(request: Request) {
 
   const file = await buildWorkbook(sheets, COLUMNS);
   const stamp = new Date().toISOString().slice(0, 10);
-  const name = only ? `sampark-class-${only}-${stamp}` : `sampark-students-${stamp}`;
+  // Named after the single class when that is all the filter is, because the
+  // office files these by class. Any richer filter gets the general name rather
+  // than a filename trying to describe six dimensions.
+  const onlyClass =
+    query.classes?.length === 1 && sheets.length === 1 ? query.classes[0] : null;
+  const name = onlyClass
+    ? `sampark-class-${onlyClass}-${stamp}`
+    : `sampark-students-${stamp}`;
 
   return new Response(new Uint8Array(file), {
     headers: {
