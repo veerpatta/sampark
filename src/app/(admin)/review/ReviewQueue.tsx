@@ -7,6 +7,14 @@ import { titleCaseName } from "@/lib/classes";
 import { useToast } from "@/components/ui/Toast";
 import { ThumbBar } from "@/components/admin/ThumbBar";
 import { PhotoDiff } from "@/components/admin/StudentPhoto";
+// `field` is already the name of this screen's field filter, hence the alias.
+import {
+  btn,
+  card,
+  chip,
+  eyebrow,
+  field as fieldClass,
+} from "@/components/ui/controls";
 import { decide } from "./actions";
 
 /**
@@ -183,16 +191,20 @@ export function ReviewQueue({
               value={note}
               onChange={(event) => setNote(event.target.value)}
               placeholder="Note (optional)"
-              className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 text-sm md:mt-0 md:w-48 md:min-h-0 md:py-2"
+              className={`${fieldClass()} mt-1 md:mt-0 md:min-h-0 md:w-48 md:py-2`}
             />
           </details>
 
+          {/* Approve gets twice the width of Reject. They are not equal
+              choices: approving is what the office came here to do, rejecting
+              is the exception, and two identical buttons side by side under a
+              thumb is how the wrong one gets pressed. */}
           <div className="flex w-full gap-2 md:w-auto">
             <button
               type="button"
               onClick={() => submit("rejected")}
               disabled={!canApprove || selected.size === 0 || pending}
-              className="min-h-[var(--tap-min)] flex-1 rounded-lg border border-[var(--color-border)] px-4 text-sm font-medium text-[var(--color-danger)] transition-transform active:scale-[0.98] disabled:opacity-40 md:min-h-0 md:flex-none md:py-2"
+              className={`${btn({ tone: "danger" })} flex-1 md:min-h-0 md:flex-none md:py-2`}
             >
               Reject{selected.size > 0 ? ` ${selected.size}` : ""}
             </button>
@@ -200,7 +212,7 @@ export function ReviewQueue({
               type="button"
               onClick={() => submit("approved")}
               disabled={!canApprove || selected.size === 0 || pending}
-              className="min-h-[var(--tap-min)] flex-1 rounded-lg bg-[var(--color-success)] px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-40 md:min-h-0 md:flex-none md:py-2"
+              className={`${btn({ tone: "go" })} flex-[2] md:min-h-0 md:flex-none md:py-2`}
             >
               {pending ? "Working…" : `Approve ${selected.size}`}
             </button>
@@ -210,14 +222,14 @@ export function ReviewQueue({
       {error ? (
         <p
           role="alert"
-          className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger)]"
+          className="rounded-[var(--radius-control)] border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger)]"
         >
           {error}
         </p>
       ) : null}
 
       {!canApprove ? (
-        <p className="rounded-lg border border-[var(--color-warning)] bg-amber-50 px-4 py-3 text-sm text-[var(--color-warning)]">
+        <p className="rounded-[var(--radius-control)] border border-[var(--color-warning)] bg-[var(--color-correct-bg)] px-4 py-3 text-sm text-[var(--color-warning-fg)]">
           Your role can view this queue but cannot approve changes into the
           master record. Ask an admin or the owner.
         </p>
@@ -234,11 +246,11 @@ export function ReviewQueue({
       {groups.map((group) => (
         <section
           key={group.requestId}
-          className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card"
+          className={`${card()} overflow-hidden`}
         >
           <header className="flex flex-wrap items-baseline gap-2 border-b border-[var(--color-border)] px-4 py-3">
-            <h2 className="font-medium">{group.requestTitle}</h2>
-            <span className="text-sm text-[var(--color-ink-muted)]">
+            <h2 className="text-[15px] font-medium">{group.requestTitle}</h2>
+            <span className="text-xs text-[var(--color-ink-muted)]">
               {group.audienceLabel} · {group.teacherName} ·{" "}
               {group.items.length} item{group.items.length === 1 ? "" : "s"}
             </span>
@@ -256,7 +268,7 @@ export function ReviewQueue({
                   ),
                 )
               }
-              className="ml-auto min-h-[var(--tap-min)] px-1 text-sm text-[var(--color-brand-600)] hover:underline md:min-h-0"
+              className="ml-auto min-h-[var(--tap-min)] px-1 text-[13px] text-[var(--color-brand-600)] hover:underline md:min-h-0"
             >
               Only this one
             </button>
@@ -286,7 +298,7 @@ export function ReviewQueue({
                     checked={selected.has(item.id)}
                     onChange={() => toggle(item.id)}
                     disabled={item.superseded}
-                    className="mt-1 h-5 w-5 shrink-0"
+                    className="mt-0.5 h-[22px] w-[22px] shrink-0 rounded-[5px]"
                   />
 
                   <div className="min-w-0 flex-1">
@@ -429,13 +441,11 @@ function ReviewFilters({
   if (useful.length === 0) return null;
 
   return (
-    <div className="space-y-3 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-card">
+    <div className={`${card()} space-y-3 p-4`}>
       {useful.map(([label, values, current, set]) => (
         <div key={label}>
-          <span className="text-xs font-medium uppercase tracking-wider text-[var(--color-ink-muted)]">
-            {label}
-          </span>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <span className={eyebrow()}>{label}</span>
+          <div className="mt-2 flex flex-wrap gap-1.5">
             <Chip active={current === null} onClick={() => set(null)}>
               All
             </Chip>
@@ -471,10 +481,8 @@ function Chip({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius-chip)] border px-3 text-sm ${
-        active
-          ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)] font-medium text-[var(--color-brand-700)]"
-          : "border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]"
+      className={`${chip({ on: active, pill: true })} ${
+        active ? "" : "hover:bg-[var(--color-surface-muted)]"
       }`}
     >
       {children}

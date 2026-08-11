@@ -879,7 +879,7 @@ export function RequestForm({
             <button
               type="button"
               onClick={confirmAllKnown}
-              className="mt-3 min-h-12 w-full rounded-lg border border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-2 font-semibold text-[var(--color-confirm-fg)] transition-transform active:scale-[0.98]"
+              className="mt-3 min-h-14 w-full rounded-[var(--radius-card)] border border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-2 font-semibold text-[var(--color-confirm-fg)] transition-transform active:scale-[0.98]"
             >
               <Bi t={T.confirmAll(untouchedKnown.length)} />
             </button>
@@ -921,7 +921,7 @@ export function RequestForm({
               clearDraft(token);
               router.push(`/r/${token}/done`);
             }}
-            className="mt-3 min-h-12 w-full rounded-lg bg-[var(--color-confirm-fg)] px-4 py-2 font-semibold text-white transition-transform active:scale-[0.98]"
+            className="mt-3 min-h-12 w-full rounded-[var(--radius-control)] bg-[var(--color-confirm-fg)] px-4 py-2 font-semibold text-white transition-transform active:scale-[0.98]"
           >
             <Bi t={T.finish} />
           </button>

@@ -6,6 +6,8 @@ import type { Template } from "@/lib/templates";
 import type { RecipientMode } from "@/lib/fanout";
 import { AddQuestion } from "@/components/admin/AddQuestion";
 import { ThumbBar } from "@/components/admin/ThumbBar";
+import { Card } from "@/components/admin/Card";
+import { btn } from "@/components/ui/controls";
 import { SUBJECTS } from "@/lib/subjects";
 import { preview, send, type BulkRequest } from "./actions";
 
@@ -176,7 +178,7 @@ export function BulkSend({
     // Clearance for the ThumbBar. <main> already clears the nav under it.
     <div className="space-y-5 pb-24 md:pb-0">
       {/* ------------------------------------------------------------- who */}
-      <Card step="1" title="Who is this about?">
+      <Card step={1} title="Who is this about?">
         <Chips
           label="Classes"
           options={classes}
@@ -185,7 +187,7 @@ export function BulkSend({
           onToggle={(value) => toggle(pickedClasses, setClasses, value)}
         />
 
-        <label className="mt-3 flex min-h-[var(--tap-min)] cursor-pointer items-center gap-3 rounded-lg border border-[var(--color-border)] px-4">
+        <label className="mt-3 flex min-h-[var(--tap-min)] cursor-pointer items-center gap-3 rounded-[var(--radius-control)] border border-[var(--color-border)] px-4">
           <input
             type="checkbox"
             checked={allActive}
@@ -233,7 +235,7 @@ export function BulkSend({
       </Card>
 
       {/* ------------------------------------------------------------ what */}
-      <Card step="2" title="What are you asking for?">
+      <Card step={2} title="What are you asking for?">
         <div className="flex flex-wrap gap-2">
           {templates.map((template) => (
             <button
@@ -244,7 +246,7 @@ export function BulkSend({
                 if (!title.trim()) setTitle(template.name);
                 invalidate();
               }}
-              className="min-h-[var(--tap-min)] rounded-lg border border-dashed border-[var(--color-border)] px-3 text-sm transition-transform active:scale-[0.98]"
+              className="min-h-[var(--tap-min)] rounded-[var(--radius-control)] border border-dashed border-[var(--color-border)] px-3 text-sm transition-transform active:scale-[0.98]"
             >
               {template.name}
             </button>
@@ -256,7 +258,7 @@ export function BulkSend({
           {fields.map((field) => (
             <label
               key={field.key}
-              className={`flex min-h-[var(--tap-min)] cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm ${
+              className={`flex min-h-[var(--tap-min)] cursor-pointer items-center gap-2 rounded-[var(--radius-control)] border px-3 text-sm ${
                 fieldKeys.includes(field.key)
                   ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)]"
                   : "border-[var(--color-border)]"
@@ -303,7 +305,7 @@ export function BulkSend({
                 setPeriod(event.target.value);
                 invalidate();
               }}
-              className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 text-sm"
+              className="mt-1 min-h-[var(--tap-min)] w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 text-sm"
             />
           </label>
         ) : null}
@@ -320,7 +322,7 @@ export function BulkSend({
                 invalidate();
               }}
               placeholder="Mobile number update"
-              className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 text-sm"
+              className="mt-1 min-h-[var(--tap-min)] w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 text-sm"
             />
           </label>
           <label className="block">
@@ -334,14 +336,14 @@ export function BulkSend({
                 setDueDate(event.target.value);
                 invalidate();
               }}
-              className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 text-sm"
+              className="mt-1 min-h-[var(--tap-min)] w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 text-sm"
             />
           </label>
         </div>
       </Card>
 
       {/* -------------------------------------------------------- send to */}
-      <Card step="3" title="Who gets the links?">
+      <Card step={3} title="Who gets the links?">
         <div className="space-y-2">
           <ModeCard
             picked={mode === "class_teacher"}
@@ -407,7 +409,7 @@ export function BulkSend({
           // Sixteen subjects at once is thirty-eight links and thirty-eight
           // WhatsApp handovers, and a teacher who takes three of them gets three
           // separate messages. Allowed, but she should have meant it.
-          <p className="mt-3 rounded-lg border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-3 py-2 text-sm text-[var(--color-correct-fg)]">
+          <p className="mt-3 rounded-[var(--radius-control)] border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-3 py-2 text-sm text-[var(--color-correct-fg)]">
             {pickedSubjects.length} subjects at once means a separate link, and a
             separate WhatsApp message, for every teacher of each. One subject per
             send is usually kinder.
@@ -417,7 +419,7 @@ export function BulkSend({
 
       {/* --------------------------------------------------------- preview */}
       {result?.ok ? (
-        <Card step="4" title="Check before sending">
+        <Card step={4} title="Check before sending">
           <p className="text-title font-semibold">
             {result.links} {result.links === 1 ? "link" : "links"} ·{" "}
             {result.students}{" "}
@@ -433,7 +435,7 @@ export function BulkSend({
               .map((group) => (
                 <li
                   key={group.key}
-                  className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] px-3 py-2"
+                  className="flex items-center gap-3 rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 py-2"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{group.label}</p>
@@ -447,7 +449,7 @@ export function BulkSend({
           </ul>
 
           {blocked.length > 0 ? (
-            <div className="mt-4 rounded-lg border border-[var(--color-warning)] bg-amber-50 p-3">
+            <div className="mt-4 rounded-[var(--radius-control)] border border-[var(--color-warning)] bg-[var(--color-correct-bg)] p-3">
               <p className="text-sm font-semibold text-[var(--color-warning-fg)]">
                 {blocked.length}{" "}
                 {blocked.length === 1 ? "group needs" : "groups need"} a teacher
@@ -471,7 +473,7 @@ export function BulkSend({
                           [group.key]: { teacherId: event.target.value },
                         }))
                       }
-                      className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 text-sm"
+                      className="mt-1 min-h-[var(--tap-min)] w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 text-sm"
                     >
                       <option value="">Choose a teacher…</option>
                       {group.candidates.length > 0 ? (
@@ -538,7 +540,7 @@ export function BulkSend({
           ) : null}
 
           {result.unassigned ? (
-            <p className="mt-4 rounded-lg border border-[var(--color-danger)] bg-red-50 px-3 py-2 text-sm text-[var(--color-danger)]">
+            <p className="mt-4 rounded-[var(--radius-control)] border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-3 py-2 text-sm text-[var(--color-danger)]">
               {result.unassigned.count}{" "}
               {result.unassigned.count === 1 ? "child has" : "children have"}{" "}
               {result.unassigned.reason} and will not receive this —{" "}
@@ -555,7 +557,7 @@ export function BulkSend({
       {error ? (
         <p
           role="alert"
-          className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger)]"
+          className="rounded-[var(--radius-control)] border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger)]"
         >
           {error}
         </p>
@@ -568,7 +570,7 @@ export function BulkSend({
             type="button"
             onClick={() => void confirmSend()}
             disabled={busy || !sendable || result.links === 0}
-            className="min-h-[var(--tap-min)] w-full rounded-lg bg-[var(--color-success)] px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-50"
+            className={btn({ shape: "commit", tone: "go", full: true })}
           >
             {busy
               ? "Creating…"
@@ -581,7 +583,7 @@ export function BulkSend({
             type="button"
             onClick={() => void runPreview()}
             disabled={busy || !canPreview}
-            className="min-h-[var(--tap-min)] w-full rounded-lg bg-[var(--color-brand-600)] px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-50"
+            className={btn({ shape: "commit", tone: "primary", full: true })}
           >
             {busy
               ? "Working it out…"
@@ -629,7 +631,7 @@ function Chips({
               option.students === 0 ? "No active students here" : undefined
             }
             onClick={() => onToggle(option.label)}
-            className={`min-h-[var(--tap-min)] rounded-lg border px-4 text-sm font-medium transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`min-h-[var(--tap-min)] rounded-[var(--radius-control)] border px-4 text-sm font-medium transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 ${
               picked.has(option.label)
                 ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
                 : "border-[var(--color-border)]"
@@ -664,7 +666,7 @@ function ModeCard({
       type="button"
       onClick={onPick}
       disabled={disabled}
-      className={`w-full rounded-lg border p-3 text-left transition-transform active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 ${
+      className={`w-full rounded-[var(--radius-control)] border p-3 text-left transition-transform active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 ${
         picked && !disabled
           ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)]"
           : "border-[var(--color-border)]"
@@ -676,27 +678,6 @@ function ModeCard({
   );
 }
 
-function Card({
-  step,
-  title,
-  children,
-}: {
-  step: string;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4 md:p-6">
-      <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-brand-50)] text-xs text-[var(--color-brand-700)]">
-          {step}
-        </span>
-        {title}
-      </h2>
-      <div className="mt-3">{children}</div>
-    </section>
-  );
-}
 
 function plusFiveDays(): string {
   const date = new Date();

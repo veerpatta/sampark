@@ -54,7 +54,7 @@ export function RevokeAllLinks({ count }: { count: number }) {
             });
           });
         }}
-        className="mt-3 min-h-[var(--tap-min)] rounded-lg border border-[var(--color-danger)] px-4 text-sm font-medium text-[var(--color-danger)] disabled:opacity-50"
+        className="mt-3 min-h-[var(--tap-min)] rounded-[var(--radius-control)] border border-[var(--color-danger)] px-4 text-sm font-medium text-[var(--color-danger)] disabled:opacity-50"
       >
         Revoke all {count} personal links
       </button>

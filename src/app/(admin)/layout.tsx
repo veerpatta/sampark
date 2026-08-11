@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canManageSettings, currentUser } from "@/lib/auth/session";
-import { AdminNav } from "@/components/admin/AdminNav";
+import { AdminNavBar, type NavItem } from "@/components/admin/AdminNav";
+import { AppBar } from "@/components/admin/AppBar";
 import { logoutAction } from "../login/actions";
 
 /**
@@ -14,11 +14,11 @@ import { logoutAction } from "../login/actions";
  * A layout does NOT protect route handlers. Anything under /api that touches
  * data calls requireUser() from lib/auth/session.ts for itself.
  */
-const NAV = [
-  { href: "/", label: "Home", icon: "◉" },
-  { href: "/requests", label: "Requests", icon: "✉" },
-  { href: "/review", label: "Review", icon: "✓" },
-  { href: "/students", label: "Students", icon: "☰" },
+const NAV: NavItem[] = [
+  { href: "/", label: "Home", icon: "home" },
+  { href: "/requests", label: "Requests", icon: "requests" },
+  { href: "/review", label: "Review", icon: "review" },
+  { href: "/students", label: "Students", icon: "students" },
 ];
 
 export default async function AdminLayout({
@@ -32,14 +32,14 @@ export default async function AdminLayout({
   const user = await currentUser();
   if (!user) redirect("/login");
 
-  const nav = canManageSettings(user.role)
+  const nav: NavItem[] = canManageSettings(user.role)
     ? [
         ...NAV,
         {
-          href: "/settings/teachers",
+          href: "/settings",
           match: "/settings",
           label: "Settings",
-          icon: "⚙",
+          icon: "settings",
         },
       ]
     : NAV;
@@ -52,30 +52,25 @@ export default async function AdminLayout({
       lang="en"
       className="admin-surface min-h-screen bg-[var(--color-surface-muted)]"
     >
-      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
-        <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-4 md:px-6">
-          <Link href="/" className="font-semibold tracking-tight">
-            Sampark
-          </Link>
-          <AdminNav items={nav} />
-          <div className="ml-auto flex items-center gap-3 text-sm">
-            <span className="hidden text-[var(--color-ink-muted)] sm:inline">
-              {user.name}
-              <span className="ml-1.5 rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 font-mono text-xs">
-                {user.role}
-              </span>
-            </span>
-            <form action={logoutAction}>
-              <button
-                type="submit"
-                className="text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
-              >
-                Sign out
-              </button>
-            </form>
-          </div>
-        </div>
-      </header>
+      {/* The sign-out form is passed IN rather than rendered inside AppBar:
+          AppBar is a client component (it reads the pathname for the crumb and
+          the back link) and logoutAction is a server action bound to this
+          module. Handing it down as a rendered node keeps it on the server. */}
+      <AppBar
+        nav={nav}
+        userName={user.name}
+        role={user.role}
+        signOut={
+          <form action={logoutAction}>
+            <button
+              type="submit"
+              className="text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
+            >
+              Sign out
+            </button>
+          </form>
+        }
+      />
       {/* Clears the fixed nav on a phone, and nothing else — a page that also
           mounts a ThumbBar adds its own room on top. Expressed off the token
           rather than as a round number, so the two cannot drift apart. Nothing
@@ -83,6 +78,7 @@ export default async function AdminLayout({
       <main className="mx-auto max-w-6xl px-4 py-6 pb-[calc(var(--admin-nav-h)+env(safe-area-inset-bottom)+1.5rem)] md:px-6 md:py-8 md:pb-8">
         {children}
       </main>
+      <AdminNavBar items={nav} />
     </div>
   );
 }

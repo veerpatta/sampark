@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { UserCircle } from "@phosphor-icons/react";
 import { Bi } from "./Bi";
 import { downscale } from "./downscale";
 import { tick } from "./haptics";
@@ -84,15 +85,20 @@ export function PhotoField({
             className="h-24 w-24 shrink-0 rounded-[var(--radius-card)] border border-[var(--color-border)] object-cover"
           />
         ) : (
+          // A drawn icon, not an emoji. 🙂 rendered as whatever face the
+          // teacher's phone happened to ship — yellow and grinning on most
+          // Android builds — which is a cheerful cartoon sitting where a
+          // photograph of a child is missing. It was also the last emoji in the
+          // app, against the rule in design-qa.md.
           <div
-            className={`flex h-24 w-24 shrink-0 items-center justify-center rounded-[var(--radius-card)] border-2 border-dashed text-3xl ${
+            className={`flex h-24 w-24 shrink-0 items-center justify-center rounded-[var(--radius-card)] border-2 border-dashed ${
               missing
                 ? "border-[var(--color-partial-border)] text-[var(--color-partial-fg)]"
-                : "border-[var(--color-border)] text-[var(--color-ink-muted)]"
+                : "border-[var(--color-border)] text-[var(--color-ink-faint)]"
             }`}
             aria-hidden
           >
-            🙂
+            <UserCircle size={40} weight="thin" />
           </div>
         )}
 
@@ -152,7 +158,7 @@ function Capture({
 }) {
   return (
     <label
-      className={`flex min-h-12 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-[var(--color-brand-500)] bg-[var(--color-brand-50)] px-3 py-2 text-center text-sm font-semibold text-[var(--color-brand-700)] transition-transform active:scale-[0.98] ${
+      className={`flex min-h-12 w-full cursor-pointer flex-col items-center justify-center rounded-[var(--radius-control)] border-2 border-[var(--color-brand-500)] bg-[var(--color-brand-50)] px-3 py-2 text-center text-sm font-semibold text-[var(--color-brand-700)] transition-transform active:scale-[0.98] ${
         disabled ? "opacity-50" : ""
       }`}
     >
@@ -200,7 +206,7 @@ function Progress({
           aria-valuenow={status.percent}
           aria-valuemin={0}
           aria-valuemax={100}
-          className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-muted)]"
+          className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-sunken)]"
         >
           <div
             className="h-full rounded-full bg-[var(--color-brand-600)] transition-[width] duration-200 ease-out"

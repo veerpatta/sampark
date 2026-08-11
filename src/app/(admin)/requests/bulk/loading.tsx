@@ -14,7 +14,7 @@ export default function BulkSendLoading() {
         <SkeletonBlock className="h-4 w-40" />
         <div className="mt-4 flex flex-wrap gap-2">
           {Array.from({ length: 12 }, (_, index) => (
-            <SkeletonBlock key={index} className="h-12 w-24 rounded-lg" />
+            <SkeletonBlock key={index} className="h-12 w-24 rounded-[var(--radius-control)]" />
           ))}
         </div>
       </section>

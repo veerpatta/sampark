@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { ImportPreviewRow, ImportRowOutcome } from "@/lib/excel";
+import { Card } from "@/components/admin/Card";
+import { btn } from "@/components/ui/controls";
 
 type ColumnOption = { value: string; label: string };
 
@@ -107,7 +109,7 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
   return (
     <div className="space-y-8">
       {/* ---------------------------------------------------------- step 1 */}
-      <Card step="1" title="Choose the file">
+      <Card step={1} title="Choose the file">
         <div className="flex flex-wrap items-center gap-3">
           <input
             type="file"
@@ -121,13 +123,13 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
               setResult(null);
               setError(null);
             }}
-            className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-surface-muted)] file:px-3 file:py-2 file:text-sm"
+            className="text-sm file:mr-3 file:rounded-[var(--radius-control)] file:border-0 file:bg-[var(--color-surface-muted)] file:px-3 file:py-2 file:text-sm"
           />
           <button
             type="button"
             onClick={() => void onInspect()}
             disabled={!file || busy}
-            className="rounded-lg bg-[var(--color-brand-600)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+            className={btn({ tone: "primary" })}
           >
             {busy && !inspection ? "Reading…" : "Read file"}
           </button>
@@ -151,7 +153,7 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
                 void onInspect(event.target.value);
               }}
               disabled={busy}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 py-2 text-sm"
             >
               {sheetList.map((name) => (
                 <option key={name} value={name}>
@@ -166,7 +168,7 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
       {error ? (
         <p
           role="alert"
-          className="rounded-lg border border-[var(--color-danger)] bg-red-50 px-4 py-3 text-sm text-[var(--color-danger)]"
+          className="rounded-[var(--radius-control)] border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger)]"
         >
           {error}
         </p>
@@ -175,7 +177,7 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
       {/* ---------------------------------------------------------- step 2 */}
       {inspection ? (
         <Card
-          step="2"
+          step={2}
           title={`Map the columns — ${inspection.rowCount} rows found`}
         >
           <table className="w-full text-sm">
@@ -209,7 +211,7 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
                           [header]: event.target.value,
                         }))
                       }
-                      className="w-56 rounded-lg border border-[var(--color-border)] px-2 py-1.5 text-sm"
+                      className="w-56 rounded-[var(--radius-control)] border border-[var(--color-border)] px-2 py-1.5 text-sm"
                     >
                       <option value={IGNORE}>— ignore this column —</option>
                       {columns.map((column) => (
@@ -253,7 +255,7 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
             type="button"
             onClick={onDryRun}
             disabled={!canDryRun || busy}
-            className="mt-4 rounded-lg bg-[var(--color-brand-600)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+            className={`${btn({ tone: "primary" })} mt-4`}
           >
             {busy ? "Checking…" : "Dry run — show me what would change"}
           </button>
@@ -262,8 +264,8 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
 
       {/* ---------------------------------------------------------- step 3 */}
       {preview ? (
-        <Card step="3" title="What this would do">
-          <div className="flex flex-wrap gap-3">
+        <Card step={3} title="What this would do">
+          <div className="flex gap-2.5">
             <Count label="New students" value={preview.counts.insert} tone="success" />
             <Count label="Updated" value={preview.counts.update} tone="brand" />
             <Count label="Unchanged" value={preview.counts.skip} tone="muted" />
@@ -272,20 +274,23 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
 
           <PreviewTable rows={preview.rows} />
 
-          <div className="mt-5 flex items-center gap-3 border-t border-[var(--color-border)] pt-4">
+          {/* The only irreversible button on the screen, so it takes the
+              commit shape: taller, rounder, full width. Everything above it is
+              a dry run that wrote nothing. */}
+          <div className="mt-5 space-y-2 border-t border-[var(--color-border)] pt-4">
             <button
               type="button"
               onClick={onApply}
               disabled={busy || preview.counts.insert + preview.counts.update === 0}
-              className="rounded-lg bg-[var(--color-success)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              className={btn({ shape: "commit", tone: "go", full: true })}
             >
               {busy
                 ? "Writing…"
                 : `Write ${preview.counts.insert + preview.counts.update} changes`}
             </button>
-            <span className="text-xs text-[var(--color-ink-muted)]">
+            <p className="text-xs text-[var(--color-ink-muted)]">
               Nothing has been written yet.
-            </span>
+            </p>
           </div>
         </Card>
       ) : null}
@@ -324,7 +329,7 @@ function PreviewTable({ rows }: { rows: ImportPreviewRow[] }) {
   }
 
   return (
-    <div className="mt-4 max-h-[28rem] overflow-auto rounded-lg border border-[var(--color-border)]">
+    <div className="mt-4 max-h-[28rem] overflow-auto rounded-[var(--radius-control)] border border-[var(--color-border)]">
       <table className="w-full text-sm">
         <thead className="sticky top-0 bg-[var(--color-surface-muted)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
           <tr>
@@ -402,7 +407,7 @@ function OutcomeTag({ outcome }: { outcome: ImportRowOutcome }) {
     insert: "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]",
     update: "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]",
     skip: "bg-[var(--color-absent-bg)] text-[var(--color-absent-fg)]",
-    error: "bg-red-50 text-[var(--color-danger)]",
+    error: "bg-[var(--color-danger-bg)] text-[var(--color-danger)]",
   };
   const label: Record<ImportRowOutcome, string> = {
     insert: "new",
@@ -419,28 +424,6 @@ function OutcomeTag({ outcome }: { outcome: ImportRowOutcome }) {
   );
 }
 
-function Card({
-  step,
-  title,
-  children,
-}: {
-  step: string;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
-      <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-surface-muted)] font-mono text-xs">
-          {step}
-        </span>
-        {title}
-      </h2>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
-}
-
 function Count({
   label,
   value,
@@ -450,16 +433,23 @@ function Count({
   value: number;
   tone: "success" | "brand" | "muted" | "danger";
 }) {
-  const colour = {
-    success: "text-[var(--color-success)]",
-    brand: "text-[var(--color-brand-600)]",
-    muted: "text-[var(--color-ink-muted)]",
-    danger: "text-[var(--color-danger)]",
+  // Tinted grounds rather than four identical bordered boxes. This is the one
+  // moment in the wizard where the numbers ARE the content, and the office has
+  // to read "12 new, 96 updated, nothing broken" at a glance before pressing
+  // the only irreversible button on the screen. The tint carries the same
+  // meaning as the colour of the numeral, so neither is load-bearing alone.
+  const skin = {
+    success: "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]",
+    brand: "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]",
+    muted: "bg-[var(--color-surface-muted)] text-[var(--color-ink-muted)]",
+    danger: "bg-[var(--color-danger-bg)] text-[var(--color-danger)]",
   }[tone];
   return (
-    <div className="rounded-lg border border-[var(--color-border)] px-4 py-2">
-      <div className={`text-xl font-semibold ${colour}`}>{value}</div>
-      <div className="text-xs text-[var(--color-ink-muted)]">{label}</div>
+    <div
+      className={`min-w-0 flex-1 rounded-[var(--radius-commit)] px-3 py-2.5 ${skin}`}
+    >
+      <div className="text-[22px] font-semibold leading-tight">{value}</div>
+      <div className="text-xs">{label}</div>
     </div>
   );
 }

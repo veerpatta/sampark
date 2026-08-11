@@ -203,13 +203,13 @@ export function ReviewSummary({
           within a few seconds; this is for the moment she is standing by the
           gate about to leave and wants it gone NOW. When nothing is waiting it
           says so rather than offering a button that would do nothing. */}
-      <div className="sticky bottom-0 -mx-4 mt-6 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 pb-[env(safe-area-inset-bottom)] pt-3 shadow-[0_-4px_16px_rgba(15,23,42,0.08)]">
+      <div className="sticky bottom-0 -mx-4 mt-6 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 pb-[env(safe-area-inset-bottom)] pt-3 shadow-[var(--shadow-rail)] backdrop-blur-sm">
         {pending > 0 ? (
           <button
             type="button"
             onClick={onSend}
             disabled={busy}
-            className="min-h-12 w-full rounded-lg bg-[var(--color-brand-600)] px-4 py-2 font-semibold text-white disabled:opacity-40"
+            className="min-h-14 w-full rounded-[var(--radius-card)] bg-[var(--color-brand-600)] px-4 py-2 font-semibold text-white shadow-[var(--shadow-cta)] disabled:opacity-40 disabled:shadow-none"
           >
             <Bi
               t={
@@ -222,7 +222,7 @@ export function ReviewSummary({
             />
           </button>
         ) : (
-          <p className="min-h-12 rounded-lg bg-[var(--color-confirm-bg)] px-4 py-3 text-center font-semibold text-[var(--color-confirm-fg)]">
+          <p className="min-h-12 rounded-[var(--radius-control)] bg-[var(--color-confirm-bg)] px-4 py-3 text-center font-semibold text-[var(--color-confirm-fg)]">
             <Bi t={summary.empty ? T.nothingFilledYet : T.filledAnswersReached} />
           </p>
         )}

@@ -4,6 +4,7 @@ import { db, schema } from "@/lib/db";
 import { countByClass } from "@/lib/students";
 import { CLASS_LABELS } from "@/lib/classes";
 import { TEMPLATES } from "@/lib/templates";
+import { PageHeader } from "@/components/admin/PageHeader";
 import { RequestBuilder } from "./RequestBuilder";
 
 export const metadata = { title: "New request — Sampark" };
@@ -33,18 +34,19 @@ export default async function NewRequestPage({
   ]);
 
   return (
-    <div className="space-y-8">
-      <header>
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-display font-semibold tracking-tight">New request</h1>
+    <div className="space-y-5 md:space-y-8">
+      <PageHeader
+        size="detail"
+        title="New request"
+        actions={
           <Link
             href="/requests"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
+            className="hidden text-sm text-[var(--color-brand-600)] hover:underline md:inline"
           >
             back to the board
           </Link>
-        </div>
-      </header>
+        }
+      />
 
       {/* The canonical nineteen, not whatever labels happen to be in the
           students table. A class with no students is shown but cannot be

@@ -73,7 +73,7 @@ export function AddQuestion({ onAdded }: { onAdded: (key: string) => void }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-3 min-h-[var(--tap-min)] w-full rounded-lg border-2 border-dashed border-[var(--color-border)] px-4 text-sm font-medium text-[var(--color-ink-muted)] transition-transform active:scale-[0.98]"
+        className="mt-3 min-h-[var(--tap-min)] w-full rounded-[var(--radius-control)] border-2 border-dashed border-[var(--color-border)] px-4 text-sm font-medium text-[var(--color-ink-muted)] transition-transform active:scale-[0.98]"
       >
         ＋ Ask something else
       </button>
@@ -81,7 +81,7 @@ export function AddQuestion({ onAdded }: { onAdded: (key: string) => void }) {
   }
 
   return (
-    <div className="mt-3 rounded-lg border border-[var(--color-brand-600)] bg-[var(--color-brand-50)] p-3">
+    <div className="mt-3 rounded-[var(--radius-control)] border border-[var(--color-brand-600)] bg-[var(--color-brand-50)] p-3">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-sm font-semibold">A one-off question</h3>
         <button
@@ -119,7 +119,7 @@ export function AddQuestion({ onAdded }: { onAdded: (key: string) => void }) {
             type="button"
             onClick={() => setType(option.value)}
             title={option.hint}
-            className={`min-h-[var(--tap-min)] rounded-lg border px-3 text-sm transition-transform active:scale-[0.98] ${
+            className={`min-h-[var(--tap-min)] rounded-[var(--radius-control)] border px-3 text-sm transition-transform active:scale-[0.98] ${
               inputType === option.value
                 ? "border-[var(--color-brand-600)] bg-[var(--color-surface)] font-medium text-[var(--color-brand-700)]"
                 : "border-[var(--color-border)] bg-[var(--color-surface)]"
@@ -160,7 +160,7 @@ export function AddQuestion({ onAdded }: { onAdded: (key: string) => void }) {
       {error ? (
         <p
           role="alert"
-          className="mt-2 rounded-lg border border-[var(--color-danger)] bg-red-50 px-3 py-2 text-sm text-[var(--color-danger)]"
+          className="mt-2 rounded-[var(--radius-control)] border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-3 py-2 text-sm text-[var(--color-danger)]"
         >
           {error}
         </p>
@@ -170,7 +170,7 @@ export function AddQuestion({ onAdded }: { onAdded: (key: string) => void }) {
         type="button"
         onClick={() => void save()}
         disabled={busy || !labelEn.trim() || !labelHi.trim()}
-        className="mt-3 min-h-[var(--tap-min)] w-full rounded-lg bg-[var(--color-brand-600)] px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-50"
+        className="mt-3 min-h-[var(--tap-min)] w-full rounded-[var(--radius-control)] bg-[var(--color-brand-600)] px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-50"
       >
         {busy ? "Adding…" : "Add this question"}
       </button>
@@ -201,7 +201,7 @@ function Field({
         lang={lang}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm outline-none focus:border-[var(--color-brand-600)]"
+        className="mt-1 min-h-[var(--tap-min)] w-full rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm outline-none focus:border-[var(--color-brand-600)]"
       />
     </label>
   );

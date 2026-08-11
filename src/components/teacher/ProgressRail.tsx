@@ -48,7 +48,7 @@ export function ProgressRail({
    * focus rather than a viewport measurement answers "is the keyboard up".
    */
   return (
-    <div className="sticky bottom-0 z-20 -mx-4 mt-6 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-6px_20px_rgba(15,23,42,0.09)] backdrop-blur-sm">
+    <div className="sticky bottom-0 z-20 -mx-4 mt-6 border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[var(--shadow-rail)] backdrop-blur-sm">
       {typing ? (
         <div
           role="progressbar"
@@ -130,7 +130,7 @@ export function ProgressRail({
         type="button"
         onClick={onReview}
         disabled={reviewable === 0}
-        className="mt-3 flex min-h-14 w-full items-center justify-between rounded-xl bg-[var(--color-brand-600)] px-5 py-2.5 font-semibold text-white shadow-[0_6px_16px_rgba(37,99,235,0.22)] transition-transform active:scale-[0.98] disabled:opacity-40 disabled:shadow-none"
+        className="mt-3 flex min-h-14 w-full items-center justify-between rounded-[var(--radius-card)] bg-[var(--color-brand-600)] px-5 py-2.5 font-semibold text-white shadow-[var(--shadow-cta)] transition-transform active:scale-[0.98] disabled:opacity-40 disabled:shadow-none"
       >
         <CheckSquare aria-hidden size={28} weight="duotone" />
         <Bi t={T.reviewAnswers} />

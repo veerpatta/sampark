@@ -58,9 +58,18 @@
   /* --- surfaces --- */
   --color-surface: #ffffff;
   --color-surface-muted: #f8fafc;
+  /* One step below muted. Muted is a *page* ground — the console's background,
+     an absent chip, a step numeral. This is the ground a thing sits IN: the
+     empty half of a progress bar, an initials tile where a photo should be.
+     They were the same colour and the bars read as if they were already full. */
+  --color-surface-sunken: #f1f5f9;
   --color-border: #e2e8f0;
   --color-ink: #0f172a;
   --color-ink-muted: #64748b;
+  /* Quieter than muted, and only for things that are not text you read:
+     a placeholder, a › on a settings row, the initials showing through where
+     no photo has been taken. Below the contrast floor for real content. */
+  --color-ink-faint: #94a3b8;
 
   /* --- type --- */
   --font-sans: var(--font-anek-latin), system-ui, sans-serif;
@@ -75,16 +84,34 @@
     0 1px 2px rgb(15 23 42 / 0.04), 0 4px 12px rgb(15 23 42 / 0.06);
   --shadow-raised: 0 8px 24px rgb(15 23 42 / 0.1);
 
+  /* --- depth, upward ---
+     Not a third level of the two above: these three all point the other way,
+     and each was a raw rgba() repeated at four call sites that had drifted
+     apart (the teacher rail and the admin action bar were lifting content by
+     different amounts on the same phone). A bar fixed to the bottom of the
+     screen has to say "there is more above me"; a button you commit with has
+     to sit slightly proud of the page. */
+  --shadow-rail: 0 -6px 20px rgb(15 23 42 / 0.09);
+  --shadow-cta: 0 6px 16px rgb(37 99 235 / 0.22);
+  --shadow-badge: 0 4px 12px rgb(37 99 235 / 0.2);
+
   /* --- type scale ---
      Named for the job, not the size, so "a student's name" and "a field
      label" are visibly different decisions rather than two numbers somebody
      picked. Cramped, undifferentiated type is most of what reads as "old". */
+  /* Tracking rides with the size. A 28px heading set at default tracking looks
+     loose next to 13px body, and the fix was being applied by hand as
+     `tracking-tight` on fifteen separate h1s — which meant a sixteenth screen
+     was one forgotten class away from not matching. Set it once, here. */
   --text-display: 1.75rem;
   --text-display--line-height: 2.125rem;
+  --text-display--letter-spacing: -0.02em;
   --text-title: 1.25rem;
   --text-title--line-height: 1.75rem;
+  --text-title--letter-spacing: -0.01em;
   --text-name: 1.125rem;
   --text-name--line-height: 1.625rem;
+  --text-name--letter-spacing: -0.01em;
   --text-body: 1rem;
   --text-body--line-height: 1.5rem;
   --text-label: 0.8125rem;
@@ -105,7 +132,29 @@
    * padding and every action bar's offset are the same fact, and they used to
    * be three unrelated numbers (pb-24, pb-28, pb-40), none of them the height.
    */
-  --admin-nav-h: 52px;
+  --admin-nav-h: 56px;
+  /*
+   * The phone app bar's height. Same contract as --admin-nav-h, at the other
+   * end of the screen: AppBar sets its bar to exactly this, and anything that
+   * has to sit clear of it (a sticky filter row, scroll-margin on a jumped-to
+   * row) offsets by it rather than by a number somebody measured once.
+   */
+  --app-bar-h: 52px;
+
+  /*
+   * Corner radius, by what the thing IS rather than by how round it looks.
+   *
+   * There were only ever two named radii — the card and the pill — so every
+   * button, input, chip and tile in the app reached for Tailwind's `rounded-lg`
+   * instead. 118 of them. That is not a token, it is a coincidence that held,
+   * and it meant the one place a control genuinely needed to be rounder (the
+   * full-width commit button) had no way to say so except a magic number.
+   *
+   * Three shapes, and the difference between them carries meaning: a control
+   * you tap, a button you commit with, a surface things sit on.
+   */
+  --radius-control: 8px;
+  --radius-commit: 10px;
   --radius-card: 12px;
   --radius-chip: 999px;
 }

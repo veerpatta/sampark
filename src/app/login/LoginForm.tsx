@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { btn } from "@/components/ui/controls";
 import { loginAction } from "./actions";
 
 export function LoginForm() {
@@ -15,7 +16,7 @@ export function LoginForm() {
           type="email"
           autoComplete="username"
           required
-          className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-base outline-none focus:border-[var(--color-brand-600)]"
+          className="mt-1 w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 py-2 text-base outline-none focus:border-[var(--color-brand-600)]"
         />
       </label>
 
@@ -26,7 +27,7 @@ export function LoginForm() {
           type="password"
           autoComplete="current-password"
           required
-          className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-base outline-none focus:border-[var(--color-brand-600)]"
+          className="mt-1 w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 py-2 text-base outline-none focus:border-[var(--color-brand-600)]"
         />
       </label>
 
@@ -39,7 +40,7 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-lg bg-[var(--color-brand-600)] px-4 py-2.5 font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-60"
+        className={btn({ shape: "commit", tone: "primary", full: true })}
       >
         {pending ? "Signing in…" : "Sign in"}
       </button>

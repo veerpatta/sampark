@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
+import { btn } from "@/components/ui/controls";
 import { removeRequest, restoreRequest } from "./actions";
 
 /**
@@ -53,7 +54,7 @@ export function RemoveControls({
               toast({ message: "Back on the boards.", tone: "success" });
             })
           }
-          className="min-h-[var(--tap-min)] rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium disabled:opacity-50"
+          className={btn()}
         >
           Put it back on the boards
         </button>
@@ -102,7 +103,7 @@ export function RemoveControls({
         type="button"
         onClick={remove}
         disabled={pending}
-        className="min-h-[var(--tap-min)] rounded-lg border border-[var(--color-danger)] px-4 py-2 text-sm font-medium text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)] disabled:opacity-50"
+        className={`${btn({ tone: "danger" })} border-[var(--color-danger)]`}
       >
         {destroys ? "Delete this request" : "Archive this request"}
       </button>

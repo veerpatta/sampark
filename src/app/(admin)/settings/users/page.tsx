@@ -27,8 +27,12 @@ export default async function UsersPage() {
   return (
     <div className="space-y-8">
       <header>
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-display font-semibold tracking-tight">Admin users</h1>
+        <h1 className="text-display font-semibold">Admin users</h1>
+        {/* Sibling settings pages, on a pointer only. Below md the bottom nav's
+            Settings tab lands on an index of all six, so this row would be the
+            same navigation twice — and it is the row that pushes the actual
+            content off the first screen. */}
+        <div className="mt-1 hidden flex-wrap items-baseline gap-3 md:flex">
           <Link
             href="/settings/teachers"
             className="text-sm text-[var(--color-brand-600)] hover:underline"
@@ -54,7 +58,7 @@ export default async function UsersPage() {
             audit log
           </Link>
         </div>
-        <p className="mt-1 max-w-prose text-sm text-[var(--color-ink-muted)]">
+        <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
           <strong>owner</strong> can do everything including this page.{" "}
           <strong>admin</strong> can create requests, import students and
           approve changes into the master record. <strong>office</strong> can
@@ -64,7 +68,7 @@ export default async function UsersPage() {
       </header>
 
       <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-muted)]">
           Add a user, or reset a password
         </h2>
         <form action={saveUser} className="mt-4 grid gap-3 sm:grid-cols-5">
@@ -77,7 +81,7 @@ export default async function UsersPage() {
               type="email"
               required
               autoComplete="off"
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)]"
+              className="mt-1 w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)]"
             />
           </label>
 
@@ -88,7 +92,7 @@ export default async function UsersPage() {
             <input
               name="name"
               required
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)]"
+              className="mt-1 w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)]"
             />
           </label>
 
@@ -99,7 +103,7 @@ export default async function UsersPage() {
             <select
               name="role"
               defaultValue="office"
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 py-2 text-sm"
             >
               {ROLES.map((role) => (
                 <option key={role} value={role}>
@@ -119,14 +123,14 @@ export default async function UsersPage() {
               required
               minLength={10}
               autoComplete="new-password"
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)]"
+              className="mt-1 w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)]"
             />
           </label>
 
           <div className="sm:col-span-5">
             <button
               type="submit"
-              className="rounded-lg bg-[var(--color-brand-600)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-brand-700)]"
+              className="rounded-[var(--radius-control)] bg-[var(--color-brand-600)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-brand-700)]"
             >
               Save user
             </button>

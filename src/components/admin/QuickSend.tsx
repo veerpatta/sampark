@@ -11,6 +11,7 @@ import { chooseTeacherForClass, type TeacherLike } from "@/lib/teachers";
 import { hasPhone } from "@/lib/phone";
 import { useToast } from "@/components/ui/Toast";
 import { openWhatsApp } from "@/components/ui/share";
+import { btn, card, chip, eyebrow } from "@/components/ui/controls";
 
 type ClassOption = { label: string; students: number };
 type TeacherOption = TeacherLike & { phone: string };
@@ -127,14 +128,12 @@ export function QuickSend({
   if (usable.length === 0 || teachers.length === 0) return null;
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4 md:p-6">
+    <section className={`${card()} p-4 md:p-6`}>
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
-          Send a link
-        </h2>
+        <h2 className={eyebrow()}>Send a link</h2>
         <Link
           href="/requests/bulk"
-          className="text-sm font-medium text-[var(--color-brand-600)] hover:underline"
+          className="text-[13px] font-medium text-[var(--color-brand-600)] hover:underline"
         >
           Send to many →
         </Link>
@@ -149,11 +148,7 @@ export function QuickSend({
             onClick={() =>
               setClassLabel(classLabel === option.label ? "" : option.label)
             }
-            className={`min-h-[var(--tap-min)] rounded-lg border px-4 text-sm font-medium transition-transform active:scale-[0.98] ${
-              classLabel === option.label
-                ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
-                : "border-[var(--color-border)]"
-            }`}
+            className={chip({ on: classLabel === option.label })}
           >
             {option.label}
           </button>
@@ -170,11 +165,7 @@ export function QuickSend({
               onClick={() =>
                 setTemplate(template?.name === option.name ? null : option)
               }
-              className={`min-h-[var(--tap-min)] rounded-lg border px-4 text-sm font-medium transition-transform active:scale-[0.98] ${
-                template?.name === option.name
-                  ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
-                  : "border-[var(--color-border)]"
-              }`}
+              className={chip({ on: template?.name === option.name })}
             >
               {option.name}
             </button>
@@ -196,7 +187,7 @@ export function QuickSend({
               </p>
               <Link
                 href={builderHref}
-                className="flex min-h-[var(--tap-min)] w-full items-center justify-center rounded-lg border border-[var(--color-brand-600)] px-4 text-sm font-semibold text-[var(--color-brand-700)]"
+                className={`${btn({ full: true })} border-[var(--color-brand-600)] text-[var(--color-brand-700)]`}
               >
                 Choose in the builder →
               </Link>
@@ -207,7 +198,7 @@ export function QuickSend({
                 type="button"
                 onClick={() => void send()}
                 disabled={busy}
-                className="min-h-[var(--tap-min)] w-full rounded-lg bg-[var(--color-success)] px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-50"
+                className={btn({ tone: "go", full: true })}
               >
                 {busy
                   ? "Creating…"
@@ -227,7 +218,7 @@ export function QuickSend({
       {error ? (
         <p
           role="alert"
-          className="mt-3 rounded-lg border border-[var(--color-danger)] bg-red-50 px-4 py-3 text-sm text-[var(--color-danger)]"
+          className="mt-3 rounded-[var(--radius-control)] border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger)]"
         >
           {error}
         </p>

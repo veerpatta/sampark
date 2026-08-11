@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { listRequests } from "@/lib/requests";
 import { DataTable, type Column } from "@/components/admin/DataTable";
+import { PageHeader } from "@/components/admin/PageHeader";
+import { btn } from "@/components/ui/controls";
 import { RequestBulkBar } from "./RequestBulkBar";
 
 export const metadata = { title: "Requests — Sampark" };
@@ -115,36 +117,40 @@ export default async function RequestsPage({
   ];
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-wrap items-baseline justify-between gap-3">
-        <div>
-          <h1 className="text-display font-semibold tracking-tight">Requests</h1>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-            {requests.length} request{requests.length === 1 ? "" : "s"}
-            {showArchived ? ", archived included" : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <div className="space-y-5 md:space-y-8">
+      <PageHeader
+        title="Requests"
+        subtitle={`${requests.length} request${requests.length === 1 ? "" : "s"}${
+          showArchived ? ", archived included" : ""
+        }`}
+        actions={
           <Link
             href={showArchived ? "/requests" : "/requests?archived=1"}
-            className="flex min-h-[var(--tap-min)] items-center rounded-lg border border-[var(--color-border)] px-4 text-sm font-medium text-[var(--color-ink-muted)]"
+            className={`${btn()} text-[var(--color-ink-muted)]`}
           >
             {showArchived ? "Hide archived" : "Show archived"}
           </Link>
-          <Link
-            href="/requests/bulk"
-            className="flex min-h-[var(--tap-min)] items-center rounded-lg border border-[var(--color-brand-600)] px-4 text-sm font-medium text-[var(--color-brand-700)]"
-          >
-            Send to many
-          </Link>
-          <Link
-            href="/requests/new"
-            className="flex min-h-[var(--tap-min)] items-center rounded-lg bg-[var(--color-brand-600)] px-4 text-sm font-medium text-white hover:bg-[var(--color-brand-700)]"
-          >
-            New request
-          </Link>
-        </div>
-      </header>
+        }
+      />
+
+      {/* The two ways to start something, side by side and full width on a
+          phone. They were in the header with "Show archived", which put three
+          buttons of equal weight above the fold and none of them obviously
+          first. */}
+      <div className="flex gap-2">
+        <Link
+          href="/requests/new"
+          className={`${btn({ tone: "primary" })} flex-1`}
+        >
+          New request
+        </Link>
+        <Link
+          href="/requests/bulk"
+          className={`${btn()} flex-1 border-[var(--color-brand-600)] text-[var(--color-brand-700)]`}
+        >
+          Send to many
+        </Link>
+      </div>
 
       {/* Selection lives in the form, not in React state, because DataTable is
           a server component. See components/admin/BulkBar. */}
@@ -156,6 +162,57 @@ export default async function RequestsPage({
           href={(request) => `/requests/${request.id}`}
           empty="No requests yet. Create one and you get a link to send on WhatsApp."
           select={{ name: "id", value: (request) => request.id }}
+          /* On a phone the row is not seven labelled values, it is one line of
+             who it is about, the request, and then everything that changes
+             over time as a run of monospace facts the eye can compare down the
+             column. The "to review" count is plain text here rather than the
+             table's link — the whole card is already a link, and a nested one
+             swallows whichever tap lands on it. */
+          card={(request) => (
+            <>
+              <div className="text-xs font-medium text-[var(--color-ink-muted)]">
+                {request.audienceLabel}
+              </div>
+              <div className="mt-0.5 text-base font-medium">
+                {request.title}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--color-ink-muted)]">
+                <span>{request.teacher}</span>
+                <span
+                  className={`font-mono ${
+                    request.studentsAnswered >= request.rosterSize &&
+                    request.rosterSize > 0
+                      ? "font-medium text-[var(--color-success)]"
+                      : ""
+                  }`}
+                >
+                  {request.studentsAnswered}/{request.rosterSize}
+                </span>
+                <span
+                  className={`font-mono ${
+                    request.dueDate < today && request.status === "open"
+                      ? "font-medium text-[var(--color-danger)]"
+                      : ""
+                  }`}
+                >
+                  due {request.dueDate}
+                </span>
+                <span className="rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 font-mono">
+                  {request.status}
+                </span>
+                {request.archivedAt ? (
+                  <span className="rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 font-mono">
+                    archived
+                  </span>
+                ) : null}
+                {request.changesPending > 0 ? (
+                  <span className="rounded bg-[var(--color-correct-bg)] px-1.5 py-0.5 font-mono font-medium text-[var(--color-correct-fg)]">
+                    {request.changesPending} to review
+                  </span>
+                ) : null}
+              </div>
+            </>
+          )}
         />
       </RequestBulkBar>
 

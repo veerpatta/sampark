@@ -149,8 +149,10 @@ export default async function AuditPage({
   return (
     <div className="space-y-8">
       <header>
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-display font-semibold tracking-tight">Audit log</h1>
+        <h1 className="text-display font-semibold">Audit log</h1>
+        {/* Sibling settings pages, on a pointer only — below md the Settings
+            tab lands on an index of all six. See settings/users/page.tsx. */}
+        <div className="mt-1 hidden flex-wrap items-baseline gap-3 md:flex">
           <Link
             href="/settings/fields"
             className="text-sm text-[var(--color-brand-600)] hover:underline"
@@ -170,7 +172,7 @@ export default async function AuditPage({
             subjects
           </Link>
         </div>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+        <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
           {total.toLocaleString("en-IN")} decision{total === 1 ? "" : "s"}
           {student ? ` for ${student}` : ""} · append-only, enforced by database
           grants rather than by this application behaving itself

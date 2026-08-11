@@ -28,7 +28,7 @@ export default async function StudentImportPage() {
     <div className="space-y-8">
       <header>
         <div className="flex items-baseline gap-3">
-          <h1 className="text-display font-semibold tracking-tight">
+          <h1 className="text-display font-semibold">
             Import students
           </h1>
           <Link
@@ -38,7 +38,7 @@ export default async function StudentImportPage() {
             back to the list
           </Link>
         </div>
-        <p className="mt-1 max-w-prose text-sm text-[var(--color-ink-muted)]">
+        <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
           Rows are matched on Student ID first, then SR number — never on name.
           A blank cell means &ldquo;no change&rdquo;, so an export with only two
           filled columns will only ever touch those two. Nothing is written
@@ -50,7 +50,7 @@ export default async function StudentImportPage() {
           followed by a per-row diff over five hundred students; there is no
           version of it that is pleasant on a 390px phone, and pretending
           otherwise would waste someone's afternoon before they found out. */}
-      <p className="rounded-[var(--radius-card)] border border-[var(--color-warning)] bg-amber-50 px-4 py-3 text-sm text-[var(--color-warning-fg)] md:hidden">
+      <p className="rounded-[var(--radius-card)] border border-[var(--color-warning)] bg-[var(--color-correct-bg)] px-4 py-3 text-sm text-[var(--color-warning-fg)] md:hidden">
         Importing means checking a few hundred rows before you confirm them.
         Use a computer for this one.
       </p>

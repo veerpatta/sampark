@@ -12,6 +12,17 @@ import Link from "next/link";
  * One component rather than ten copies of the breakpoint logic, and the
  * loading skeleton uses the same two-shape structure so what appears while
  * waiting matches what arrives.
+ *
+ * SEPARATE CARDS ON A PHONE, ONE FRAME ON A DESKTOP. The rows used to be
+ * divided lines inside a single bordered box at both widths, which is right for
+ * a table — the frame is the table — and wrong for a stack, where the frame is
+ * a second border wrapped around content that already has edges. Each row is
+ * one record you act on, so each gets its own card.
+ *
+ * `card` is the escape hatch for the three boards whose phone row is not a
+ * title over some labelled values: a student is a face, a name and a
+ * completeness bar; a request is an audience over a run of mono metadata. The
+ * generic assembly stays the default so no board has to opt in to it.
  */
 export type Column<T> = {
   key: string;
@@ -55,6 +66,7 @@ export function DataTable<T>({
   href,
   empty,
   select,
+  card: renderCard,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -63,6 +75,12 @@ export function DataTable<T>({
   href?: (row: T) => string;
   empty?: React.ReactNode;
   select?: Selection<T>;
+  /**
+   * The phone card's body, when the generic title/subtitle/values assembly is
+   * not what this board's row is. Never affects the table at md and up — the
+   * columns are still the single source of truth for that.
+   */
+  card?: (row: T) => React.ReactNode;
 }) {
   if (rows.length === 0 && empty) {
     return (
@@ -85,7 +103,7 @@ export function DataTable<T>({
   );
 
   return (
-    <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
+    <div className="md:overflow-hidden md:rounded-[var(--radius-card)] md:border md:border-[var(--color-border)] md:bg-[var(--color-surface)] md:shadow-card">
       {/* ------------------------------------------------------ md and up */}
       <table className="hidden w-full text-sm md:table">
         <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
@@ -145,9 +163,11 @@ export function DataTable<T>({
       </table>
 
       {/* ------------------------------------------------------ below md */}
-      <ul className="divide-y divide-[var(--color-border)] md:hidden">
+      <ul className="flex flex-col gap-2.5 md:hidden">
         {rows.map((row) => {
-          const card = (
+          const contents = renderCard ? (
+            renderCard(row)
+          ) : (
             <>
               {primary ? (
                 <div className="font-medium">{primary.cell(row)}</div>
@@ -180,19 +200,28 @@ export function DataTable<T>({
             // a 48px-tall card is a better tap target than six words.
             <Link
               href={href(row)}
-              className="block px-4 py-4 active:bg-[var(--color-surface-muted)]"
+              className="block px-4 py-3.5 active:bg-[var(--color-surface-muted)]"
             >
-              {card}
+              {contents}
             </Link>
           ) : (
-            <div className="px-4 py-4">{card}</div>
+            <div className="px-4 py-3.5">{contents}</div>
           );
 
-          if (!select) return <li key={rowKey(row)}>{body}</li>;
+          const shell =
+            "overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card";
+
+          if (!select) {
+            return (
+              <li key={rowKey(row)} className={shell}>
+                {body}
+              </li>
+            );
+          }
 
           return (
-            <li key={rowKey(row)} className="flex items-start">
-              <span className="flex min-h-[var(--tap-min)] shrink-0 items-center pl-4 pt-4">
+            <li key={rowKey(row)} className={`flex items-start ${shell}`}>
+              <span className="flex min-h-[var(--tap-min)] shrink-0 items-center pl-4 pt-3.5">
                 {select.disabled?.(row) ? (
                   <span className="h-5 w-5" />
                 ) : (

@@ -18,9 +18,9 @@ export default async function LoginPage() {
       lang="en"
       className="flex min-h-screen items-center justify-center bg-[var(--color-surface-muted)] p-6"
     >
-      <div className="w-full max-w-sm rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-8">
-        <h1 className="text-xl font-semibold tracking-tight">Sampark</h1>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+      <div className="w-full max-w-sm rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-8 shadow-card">
+        <h1 className="text-title font-semibold">Sampark</h1>
+        <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
           VPPS Data Desk — office sign in
         </p>
         <LoginForm />

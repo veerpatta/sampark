@@ -36,7 +36,7 @@ export default async function TeacherDonePage({
 
       <Link
         href={`/r/${token}`}
-        className="mt-4 flex w-full flex-col items-center justify-center rounded-lg border-2 border-[var(--color-border)] px-4 py-2 font-medium"
+        className="mt-4 flex w-full flex-col items-center justify-center rounded-[var(--radius-control)] border-2 border-[var(--color-border)] px-4 py-2 font-medium"
       >
         <Bi t={T.seeListAgain} />
       </Link>

@@ -14,7 +14,7 @@ export default function NewRequestLoading() {
         <SkeletonBlock className="h-4 w-32" />
         <div className="mt-4 flex flex-wrap gap-2">
           {Array.from({ length: 11 }, (_, index) => (
-            <SkeletonBlock key={index} className="h-10 w-24 rounded-lg" />
+            <SkeletonBlock key={index} className="h-10 w-24 rounded-[var(--radius-control)]" />
           ))}
         </div>
       </section>

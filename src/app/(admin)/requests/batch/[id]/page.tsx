@@ -53,7 +53,7 @@ export default async function BatchPage({
     <div className="space-y-8">
       <header>
         <div className="flex items-baseline gap-3">
-          <h1 className="text-display font-semibold tracking-tight">
+          <h1 className="text-display font-semibold">
             {batch.title}
           </h1>
           <Link
@@ -63,7 +63,7 @@ export default async function BatchPage({
             back to the board
           </Link>
         </div>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+        <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
           {groups.length} {groups.length === 1 ? "message" : "messages"} ·{" "}
           {links.length} {links.length === 1 ? "link" : "links"} · due{" "}
           {batch.dueDate}
@@ -85,7 +85,7 @@ export default async function BatchPage({
       <section className="space-y-3">
         <div>
           <h2 className="text-title font-semibold">Clear this round</h2>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+          <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
             Close the links that are done, then archive them. Anything that
             collected answers keeps them — only the row leaves the boards.
           </p>

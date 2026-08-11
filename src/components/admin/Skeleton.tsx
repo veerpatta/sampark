@@ -51,17 +51,17 @@ export function SkeletonPageHeader({ wide = false }: { wide?: boolean }) {
   );
 }
 
-/** Matches the dashboard's `grid gap-4 sm:grid-cols-2 lg:grid-cols-4`. */
+/** Matches the dashboard's `grid grid-cols-2 gap-3 lg:grid-cols-4`. */
 export function SkeletonStatGrid({ n = 4 }: { n?: number }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
       {Array.from({ length: n }, (_, index) => (
         <div
           key={index}
-          className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-5"
+          className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4"
         >
-          <SkeletonBlock className="h-9 w-16" />
-          <SkeletonBlock className="mt-2 h-4 w-32" />
+          <SkeletonBlock className="h-8 w-14" />
+          <SkeletonBlock className="mt-2 h-4 w-24" />
         </div>
       ))}
     </div>
@@ -105,7 +105,7 @@ export function SkeletonTable({
   rows?: number;
 }) {
   return (
-    <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
+    <div className="md:overflow-hidden md:rounded-[var(--radius-card)] md:border md:border-[var(--color-border)] md:bg-[var(--color-surface)] md:shadow-card">
       <table className="hidden w-full text-sm md:table">
         <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
           <tr>
@@ -132,9 +132,13 @@ export function SkeletonTable({
         </tbody>
       </table>
 
-      <ul className="divide-y divide-[var(--color-border)] md:hidden">
+      {/* Separate cards, matching DataTable's phone stack. */}
+      <ul className="flex flex-col gap-2.5 md:hidden">
         {Array.from({ length: Math.min(rows, 6) }, (_, row) => (
-          <li key={row} className="space-y-2 p-4">
+          <li
+            key={row}
+            className="space-y-2 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-card"
+          >
             <SkeletonBlock className="h-5 w-40" />
             <SkeletonBlock className="h-4 w-28" />
           </li>
@@ -148,8 +152,8 @@ export function SkeletonTable({
 export function SkeletonFilterBar() {
   return (
     <div className="flex flex-wrap gap-2">
-      <SkeletonBlock className="h-10 w-64 rounded-lg" />
-      <SkeletonBlock className="h-10 w-40 rounded-lg" />
+      <SkeletonBlock className="h-10 w-64 rounded-[var(--radius-control)]" />
+      <SkeletonBlock className="h-10 w-40 rounded-[var(--radius-control)]" />
     </div>
   );
 }

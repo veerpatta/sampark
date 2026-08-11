@@ -189,7 +189,7 @@ export function StudentRow({
             aria-hidden
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-semibold ${
               active
-                ? "bg-[var(--color-brand-600)] text-white shadow-[0_4px_12px_rgba(37,99,235,0.2)]"
+                ? "bg-[var(--color-brand-600)] text-white shadow-[var(--shadow-badge)]"
                 : "bg-[var(--color-surface-muted)] text-[var(--color-ink-muted)]"
             }`}
           >
@@ -465,14 +465,14 @@ export function StudentRow({
               <button
                 type="button"
                 onClick={answer(onConfirm)}
-                className="min-h-12 flex-1 rounded-lg border border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-2 font-semibold text-[var(--color-confirm-fg)] transition-transform active:scale-[0.98]"
+                className="min-h-[52px] flex-1 rounded-[var(--radius-control)] border border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] px-4 py-2 font-semibold text-[var(--color-confirm-fg)] transition-transform active:scale-[0.98]"
               >
                 <Bi t={T.correct} />
               </button>
               <button
                 type="button"
                 onClick={onEdit}
-                className="min-h-12 flex-1 rounded-lg border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-2 font-semibold text-[var(--color-correct-fg)] transition-transform active:scale-[0.98]"
+                className="min-h-[52px] flex-1 rounded-[var(--radius-control)] border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-2 font-semibold text-[var(--color-correct-fg)] transition-transform active:scale-[0.98]"
               >
                 <Bi t={T.change} />
               </button>
@@ -485,7 +485,7 @@ export function StudentRow({
             <button
               type="button"
               onClick={onReopen}
-              className="flex min-h-12 w-full items-center justify-between rounded-lg px-2 py-2 text-sm font-medium text-[var(--color-brand-600)] transition-transform active:scale-[0.98]"
+              className="flex min-h-12 w-full items-center justify-between rounded-[var(--radius-control)] px-2 py-2 text-sm font-medium text-[var(--color-brand-600)] transition-transform active:scale-[0.98]"
             >
               <Bi t={T.lookAgain} />
               <CaretRight aria-hidden size={22} weight="bold" />
@@ -633,7 +633,7 @@ function SuggestChip({
       {/* The label is a value she is reading (a number, a route), so it stays
           as it is; only the instruction attached to it is bilingual. */}
       <span className="min-w-0 text-[var(--color-ink-muted)]">{label}</span>
-      <span className="shrink-0 rounded-lg border border-[var(--color-brand-500)] px-3 py-2 text-center text-[var(--color-brand-600)]">
+      <span className="shrink-0 rounded-[var(--radius-control)] border border-[var(--color-brand-500)] px-3 py-2 text-center text-[var(--color-brand-600)]">
         <Bi t={T.useThis} />
       </span>
     </button>
@@ -733,7 +733,7 @@ function FieldInput({
                 tick();
                 onChange(option.value);
               }}
-              className={`min-h-12 flex-1 rounded-lg border px-4 py-2 font-semibold transition-transform active:scale-[0.98] ${
+              className={`min-h-[52px] flex-1 rounded-[var(--radius-control)] border px-4 py-2 font-semibold transition-transform active:scale-[0.98] ${
                 value === option.value
                   ? "border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
                   : "border-[var(--color-border)]"
@@ -773,7 +773,7 @@ function FieldInput({
             autoComplete="off"
             autoCapitalize="words"
             placeholder={T.typeToSearch}
-            className={`mt-2 min-h-14 w-full rounded-lg border bg-white px-3 text-base outline-none transition-shadow focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] ${border}`}
+            className={`mt-2 min-h-14 w-full rounded-[var(--radius-control)] border bg-white px-3 text-base outline-none transition-shadow focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] ${border}`}
           />
           <datalist id={`options-${field.key}`}>
             {options.map((option) => (
@@ -805,7 +805,7 @@ function FieldInput({
           onFocus={(event) => keepInView(event.currentTarget)}
           onKeyDown={onEnterGoNext}
           {...{ [TEACHER_INPUT]: "" }}
-          className={`mt-2 min-h-14 w-full rounded-lg border bg-white px-3 text-base outline-none transition-shadow focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] ${border}`}
+          className={`mt-2 min-h-14 w-full rounded-[var(--radius-control)] border bg-white px-3 text-base outline-none transition-shadow focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] ${border}`}
         >
           {/* An <option> cannot hold two lines, so this one carries both
               languages on one, separated. It is the only string on the surface
@@ -875,7 +875,7 @@ function FieldInput({
           // "+91 98765 43210" to its first ten CHARACTERS before clean() ever saw
           // it, leaving a mangled number. clean() caps the digits instead.
           maxLength={isNumeric ? undefined : (field.exactLen ?? undefined)}
-          className={`min-h-14 w-full rounded-lg border bg-white px-3 text-base outline-none transition-shadow placeholder:text-[var(--color-ink-muted)]/80 focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] ${border} ${
+          className={`min-h-14 w-full rounded-[var(--radius-control)] border bg-white px-3 text-base outline-none transition-shadow placeholder:text-[var(--color-ink-muted)]/80 focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] ${border} ${
             isNumeric ? "font-mono" : ""
           } ${field.inputType === "tel" ? "pr-12" : ""}`}
         />

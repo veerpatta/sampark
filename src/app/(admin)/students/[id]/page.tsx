@@ -7,7 +7,8 @@ import { IMPORT_COLUMNS } from "@/lib/students-import";
 import { readStudentColumn } from "@/lib/student-columns";
 import { titleCaseName } from "@/lib/classes";
 import { HouseChip } from "@/components/HouseChip";
-import { StudentPhoto } from "@/components/admin/StudentPhoto";
+import { Avatar } from "@/components/admin/Avatar";
+import { Card } from "@/components/admin/Card";
 import type { Student } from "../../../../../drizzle/schema";
 
 export const metadata = { title: "Student — Sampark" };
@@ -84,21 +85,22 @@ export default async function StudentDetailPage({
   if (!student) notFound();
 
   return (
-    <div className="space-y-8">
-      <header className="flex items-start gap-4">
+    <div className="space-y-5 md:space-y-8">
+      <header className="flex items-start gap-3.5">
         {/* The face, next to the name. This is the screen you open when a
             parent rings, and a photograph is the fastest recognition aid there
             is. Deliberately NOT in the IMPORT_COLUMNS list below — a blob
-            pathname printed as text would be noise. */}
-        <StudentPhoto
+            pathname printed as text would be noise. Initials when there is no
+            photograph: two thirds of these children have none, and a column of
+            grey circles gives the eye nothing to land on. */}
+        <Avatar
           pathname={student.photoPath}
           name={titleCaseName(student.name)}
-          className="h-24 w-24"
-          size="full"
+          size="page"
         />
         <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-3">
-          <h1 className="text-display font-semibold tracking-tight">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h1 className="text-[1.625rem] font-semibold leading-8 tracking-[-0.02em]">
             {titleCaseName(student.name)}
           </h1>
           <Link
@@ -128,19 +130,16 @@ export default async function StudentDetailPage({
         </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr]">
-        <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
-            What we hold
-          </h2>
-          <dl className="mt-4 space-y-2 text-sm">
+      <div className="grid gap-5 md:gap-6 lg:grid-cols-[1fr_1.3fr]">
+        <Card title="What we hold">
+          <dl className="space-y-2 text-sm">
             {IMPORT_COLUMNS.map((spec) => {
               const value = readStudentColumn(
                 student as Student,
                 dbNameFor(spec.column),
               );
               return (
-                <div key={spec.column} className="grid grid-cols-[9rem_1fr] gap-3">
+                <div key={spec.column} className="grid grid-cols-[8rem_1fr] gap-3">
                   <dt className="text-[var(--color-ink-muted)]">{spec.label}</dt>
                   <dd className={value === null ? "text-[var(--color-warning)]" : "font-medium"}>
                     {value ?? "missing"}
@@ -154,14 +153,11 @@ export default async function StudentDetailPage({
             a change typed here would carry no proposal, no reviewer and no
             audit trail.
           </p>
-        </section>
+        </Card>
 
-        <div className="space-y-8">
+        <div className="space-y-5 md:space-y-8">
           {records.length > 0 ? (
-            <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
-              <h2 className="border-b border-[var(--color-border)] px-4 py-3 text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
-                Marks and answers
-              </h2>
+            <Card title="Marks and answers" flush>
               <table className="w-full text-sm">
                 <tbody>
                   {records.map((row) => (
@@ -193,13 +189,10 @@ export default async function StudentDetailPage({
                   ))}
                 </tbody>
               </table>
-            </section>
+            </Card>
           ) : null}
 
-          <section className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
-            <h2 className="border-b border-[var(--color-border)] px-4 py-3 text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
-              Change history
-            </h2>
+          <Card title="Change history" flush>
             {history.length === 0 ? (
               <p className="p-4 text-sm text-[var(--color-ink-muted)]">
                 Nothing has been approved or rejected for this student. Values
@@ -207,50 +200,47 @@ export default async function StudentDetailPage({
                 decisions, and an import is not one.
               </p>
             ) : (
-              <table className="w-full text-sm">
-                <tbody>
-                  {history.map((row) => (
-                    <tr
-                      key={row.entry.id}
-                      className="border-b border-[var(--color-border)] last:border-0"
+              /* A list, not a table. Five columns — when, who, field, the
+                 diff, the decision — is 700px of content on a 360px screen,
+                 and the diff is the column that was being pushed off the
+                 right edge. Every entry is one decision, so it reads down. */
+              <ul>
+                {history.map((row) => (
+                  <li
+                    key={row.entry.id}
+                    className="border-b border-[var(--color-border)] px-4 py-3 last:border-0"
+                  >
+                    <div className="font-mono text-xs text-[var(--color-ink-muted)]">
+                      {formatWhen(row.entry.decidedAt)} · {row.decidedByName}
+                    </div>
+                    <div className="mt-1 text-sm">
+                      {row.fieldLabel ?? row.entry.fieldKey}
+                    </div>
+                    <div className="mt-0.5 font-mono text-xs">
+                      <span className="line-through opacity-60">
+                        {row.entry.fromValue ?? "empty"}
+                      </span>
+                      <span className="mx-2" aria-hidden>
+                        →
+                      </span>
+                      <span className="font-medium">
+                        {row.entry.toValue ?? "empty"}
+                      </span>
+                    </div>
+                    <span
+                      className={`mt-1.5 inline-block rounded px-2 py-0.5 text-xs font-medium ${
+                        row.entry.decision === "approved"
+                          ? "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
+                          : "bg-[var(--color-absent-bg)] text-[var(--color-absent-fg)]"
+                      }`}
                     >
-                      <td className="px-4 py-2 whitespace-nowrap text-xs text-[var(--color-ink-muted)]">
-                        {formatWhen(row.entry.decidedAt)}
-                      </td>
-                      <td className="px-4 py-2">
-                        {row.fieldLabel ?? row.entry.fieldKey}
-                      </td>
-                      <td className="px-4 py-2 font-mono text-xs">
-                        <span className="line-through opacity-60">
-                          {row.entry.fromValue ?? "empty"}
-                        </span>
-                        <span className="mx-2" aria-hidden>
-                          →
-                        </span>
-                        <span className="font-medium">
-                          {row.entry.toValue ?? "empty"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
-                        <span
-                          className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                            row.entry.decision === "approved"
-                              ? "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
-                              : "bg-[var(--color-absent-bg)] text-[var(--color-absent-fg)]"
-                          }`}
-                        >
-                          {row.entry.decision}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-right text-xs text-[var(--color-ink-muted)]">
-                        {row.decidedByName}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      {row.entry.decision}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             )}
-          </section>
+          </Card>
         </div>
       </div>
     </div>

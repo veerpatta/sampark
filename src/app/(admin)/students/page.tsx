@@ -16,6 +16,9 @@ import {
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { FilterBar, type ChipGroup } from "@/components/admin/FilterBar";
 import { StudentPhoto } from "@/components/admin/StudentPhoto";
+import { Avatar } from "@/components/admin/Avatar";
+import { PageHeader } from "@/components/admin/PageHeader";
+import { btn, eyebrow, field } from "@/components/ui/controls";
 import { HouseChip } from "@/components/HouseChip";
 
 export const metadata = { title: "Students — Sampark" };
@@ -174,49 +177,12 @@ export default async function StudentsPage({
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-baseline justify-between gap-3">
-        <div>
-          <h1 className="text-display font-semibold tracking-tight">Students</h1>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-            {total.toLocaleString("en-IN")} record{total === 1 ? "" : "s"}
-            {query.statuses?.length ? "" : ", active only"}
-            {active ? " matching these filters" : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {total > 0 ? (
-            <a
-              href={`/api/export/students.xlsx${exportQuery.size > 0 ? `?${exportQuery}` : ""}`}
-              className="inline-flex min-h-[var(--tap-min)] items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
-            >
-              Export these {total.toLocaleString("en-IN")} to Excel
-            </a>
-          ) : null}
-          {/* The photographs are the slow part of that file — one blob read per
-              child — so the way to get the columns in a hurry is offered next
-              to it rather than left as an undocumented query parameter. */}
-          {total > 0 ? (
-            <a
-              href={`/api/export/students.xlsx?${(() => {
-                const fast = new URLSearchParams(exportQuery);
-                fast.set("photos", "0");
-                return fast;
-              })()}`}
-              className="inline-flex min-h-[var(--tap-min)] items-center px-2 text-sm text-[var(--color-ink-muted)] hover:underline"
-            >
-              without photos
-            </a>
-          ) : null}
-          {canImport ? (
-            <Link
-              href="/students/import"
-              className="inline-flex min-h-[var(--tap-min)] items-center rounded-lg bg-[var(--color-brand-600)] px-4 text-sm font-medium text-white hover:bg-[var(--color-brand-700)]"
-            >
-              Import from PSP
-            </Link>
-          ) : null}
-        </div>
-      </header>
+      <PageHeader
+        title="Students"
+        subtitle={`${total.toLocaleString("en-IN")} record${total === 1 ? "" : "s"}${
+          query.statuses?.length ? "" : ", active only"
+        }${active ? " matching these filters" : ""}`}
+      />
 
       <QuickViews facets={facets} />
 
@@ -230,7 +196,7 @@ export default async function StudentsPage({
               name="q"
               defaultValue={query.search}
               placeholder="Name, ID, SR, admission no., mobile, father"
-              className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)] sm:w-80"
+              className={`${field()} mt-1 sm:w-80`}
             />
           </label>
 
@@ -241,7 +207,7 @@ export default async function StudentsPage({
             <select
               name="sort"
               defaultValue={query.sort}
-              className="mt-1 min-h-[var(--tap-min)] rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+              className={`${field()} mt-1 w-auto`}
             >
               {SORTS.map((value) => (
                 <option key={value} value={value}>
@@ -258,7 +224,7 @@ export default async function StudentsPage({
             <select
               name="size"
               defaultValue={String(size)}
-              className="mt-1 min-h-[var(--tap-min)] rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+              className={`${field()} mt-1 w-auto`}
             >
               {PAGE_SIZES.map((value) => (
                 <option key={value} value={value}>
@@ -287,6 +253,40 @@ export default async function StudentsPage({
           rows={students}
           rowKey={(student) => student.id}
           href={(student) => `/students/${encodeURIComponent(student.id)}`}
+          /* Nine columns is the right shape for a laptop and the wrong one for
+             a thumb. What the office is doing on a phone is finding one child
+             and seeing whether their record is any good, so the card is a face,
+             a name, where they sit, and the two facts that decide whether this
+             child needs chasing: a number, and how full the record is. */
+          card={(student) => (
+            <div className="flex items-center gap-3">
+              <Avatar
+                pathname={student.photoPath}
+                name={titleCaseName(student.name)}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-base font-medium">
+                  {titleCaseName(student.name)}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-[var(--color-ink-muted)]">
+                  {student.classLabel}
+                  {student.section ? ` ${student.section}` : ""}
+                  {student.rollNo ? ` · Roll ${student.rollNo}` : ""}
+                  {student.fatherName ? ` · ${student.fatherName}` : ""}
+                </span>
+              </span>
+              <span className="flex shrink-0 flex-col items-end gap-1.5">
+                <span
+                  className={`font-mono text-xs ${
+                    student.phone ? "" : "text-[var(--color-warning-fg)]"
+                  }`}
+                >
+                  {student.phone ?? "no number"}
+                </span>
+                <CompletenessBar student={student} />
+              </span>
+            </div>
+          )}
         />
       )}
 
@@ -302,6 +302,43 @@ export default async function StudentsPage({
             Next →
           </PageLink>
         </nav>
+      ) : null}
+
+      {/* Below the board rather than beside the heading. These act on the whole
+          filtered set, so they only make sense once you have seen what the set
+          is — and on a phone they were three buttons pushing the first child
+          off the screen. */}
+      {total > 0 || canImport ? (
+        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-border)] pt-4">
+          {total > 0 ? (
+            <a
+              href={`/api/export/students.xlsx${exportQuery.size > 0 ? `?${exportQuery}` : ""}`}
+              className={`${btn()} flex-1 sm:flex-none`}
+            >
+              Export these {total.toLocaleString("en-IN")} to Excel
+            </a>
+          ) : null}
+          {/* The photographs are the slow part of that file — one blob read per
+              child — so the way to get the columns in a hurry is offered next
+              to it rather than left as an undocumented query parameter. */}
+          {total > 0 ? (
+            <a
+              href={`/api/export/students.xlsx?${(() => {
+                const fast = new URLSearchParams(exportQuery);
+                fast.set("photos", "0");
+                return fast;
+              })()}`}
+              className="inline-flex min-h-[var(--tap-min)] items-center px-2 text-sm text-[var(--color-ink-muted)] hover:underline"
+            >
+              without photos
+            </a>
+          ) : null}
+          {canImport ? (
+            <Link href="/students/import" className={btn({ tone: "primary" })}>
+              Import
+            </Link>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -339,10 +376,8 @@ function QuickViews({
 
   return (
     <section>
-      <h2 className="text-xs font-medium uppercase tracking-wider text-[var(--color-ink-muted)]">
-        Work left
-      </h2>
-      <div className="mt-1.5 flex flex-wrap gap-2">
+      <h2 className={eyebrow()}>Work left</h2>
+      <div className="mt-2 flex flex-wrap gap-2">
         {views.map((view) => (
           <Link
             key={view.href}
@@ -374,7 +409,7 @@ function CompletenessBar({
   const { filled, total, percent } = completeness(student);
   return (
     <span className="flex items-center gap-2" title={`${filled} of ${total} fields`}>
-      <span className="h-1.5 w-12 overflow-hidden rounded-full bg-[var(--color-surface-muted)]">
+      <span className="h-1.5 w-11 overflow-hidden rounded-full bg-[var(--color-surface-sunken)]">
         <span
           className={`block h-full rounded-full ${
             percent >= 80

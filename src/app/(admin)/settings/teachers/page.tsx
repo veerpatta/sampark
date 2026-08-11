@@ -9,6 +9,7 @@ import { BUS_ROUTES } from "@/lib/routes";
 import { saveTeacher, setTeacherActive } from "./actions";
 import { TeacherLinkPanel } from "./TeacherLinkPanel";
 import { RevokeAllLinks } from "./RevokeAllLinks";
+import { btn } from "@/components/ui/controls";
 
 export const metadata = { title: "Teachers — Sampark" };
 export const dynamic = "force-dynamic";
@@ -48,8 +49,8 @@ export default async function TeachersPage() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-display font-semibold tracking-tight">Teachers</h1>
-        <p className="mt-1 max-w-prose text-sm text-[var(--color-ink-muted)]">
+        <h1 className="text-display font-semibold">Teachers</h1>
+        <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
           Phone numbers are 10 digits with no country code — the WhatsApp link
           builder adds 91. Tick the classes a teacher owns; tick a house or a bus
           route only for the teacher who should receive a link for that whole
@@ -58,7 +59,7 @@ export default async function TeachersPage() {
       </header>
 
       <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4 md:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-muted)]">
           Add a teacher
         </h2>
         <form action={saveTeacher} className="mt-4 space-y-4">
@@ -77,7 +78,7 @@ export default async function TeachersPage() {
           <input type="hidden" name="active" value="on" />
           <button
             type="submit"
-            className="min-h-[var(--tap-min)] w-full rounded-lg bg-[var(--color-brand-600)] px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] hover:bg-[var(--color-brand-700)] md:w-auto"
+            className={`${btn({ tone: "primary" })} w-full md:w-auto`}
           >
             Add teacher
           </button>
@@ -159,7 +160,7 @@ export default async function TeachersPage() {
 
                     <button
                       type="submit"
-                      className="min-h-[var(--tap-min)] w-full rounded-lg bg-[var(--color-brand-600)] px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] hover:bg-[var(--color-brand-700)] md:w-auto"
+                      className={`${btn({ tone: "primary" })} w-full md:w-auto`}
                     >
                       Save {teacher.name}
                     </button>
@@ -339,7 +340,7 @@ function Field({
         required={required}
         defaultValue={defaultValue}
         inputMode={inputMode}
-        className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 text-sm outline-none focus:border-[var(--color-brand-600)]"
+        className="mt-1 min-h-[var(--tap-min)] w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 text-sm outline-none focus:border-[var(--color-brand-600)]"
       />
     </label>
   );

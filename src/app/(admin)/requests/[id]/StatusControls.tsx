@@ -3,6 +3,7 @@
 import { useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
+import { btn } from "@/components/ui/controls";
 import { setRequestStatus } from "./actions";
 
 /**
@@ -71,11 +72,7 @@ export function StatusControls({
         type="button"
         onClick={() => change(closed ? "open" : "closed")}
         disabled={pending}
-        className={`min-h-[var(--tap-min)] rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${
-          closed
-            ? "bg-[var(--color-brand-600)] text-white hover:bg-[var(--color-brand-700)]"
-            : "border border-[var(--color-border)] text-[var(--color-danger)] hover:bg-[var(--color-surface-muted)]"
-        }`}
+        className={btn({ tone: closed ? "primary" : "danger" })}
       >
         {closed ? "Reopen the link" : "Close the request"}
       </button>

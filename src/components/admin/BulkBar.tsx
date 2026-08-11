@@ -132,7 +132,7 @@ export function BulkBar({
                 type="button"
                 disabled={pending}
                 onClick={() => run(action)}
-                className={`min-h-[var(--tap-min)] rounded-lg border px-4 text-sm font-medium disabled:opacity-50 ${
+                className={`min-h-[var(--tap-min)] rounded-[var(--radius-control)] border px-4 text-sm font-medium disabled:opacity-50 ${
                   action.tone === "danger"
                     ? "border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)]"
                     : "border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]"

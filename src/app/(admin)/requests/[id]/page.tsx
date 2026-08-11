@@ -11,6 +11,9 @@ import {
   buildRequestMessage,
   buildWhatsAppLink,
 } from "@/lib/whatsapp";
+import { PageHeader } from "@/components/admin/PageHeader";
+import { Card } from "@/components/admin/Card";
+import { btn } from "@/components/ui/controls";
 import { SharePanel } from "./SharePanel";
 import { StatusControls } from "./StatusControls";
 import { RemoveControls } from "./RemoveControls";
@@ -57,30 +60,26 @@ export default async function RequestDetailPage({
   });
 
   return (
-    <div className="space-y-8">
-      <header>
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-display font-semibold tracking-tight">
-            {request.title}
-          </h1>
+    <div className="space-y-5 md:space-y-8">
+      {/* No "back to the board" link: the app bar carries a back chevron on a
+          phone and the nav is one tap away at every width. */}
+      <PageHeader
+        size="detail"
+        title={request.title}
+        subtitle={`${request.audienceLabel} · ${teacher.name} · due ${request.dueDate}`}
+        actions={
           <Link
             href="/requests"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
+            className="hidden text-sm text-[var(--color-brand-600)] hover:underline md:inline"
           >
             back to the board
           </Link>
-        </div>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          {request.audienceLabel} · {teacher.name} · due {request.dueDate}
-        </p>
-      </header>
+        }
+      />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-        <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
-            What was frozen
-          </h2>
-          <dl className="mt-4 space-y-3 text-sm">
+      <div className="grid gap-5 md:gap-6 lg:grid-cols-[1fr_1.2fr]">
+        <Card title="What was frozen">
+          <dl className="space-y-3 text-sm">
             <Row label="Students in the roster">
               {rosterSize}
               <span className="ml-2 text-xs text-[var(--color-ink-muted)]">
@@ -169,9 +168,9 @@ export default async function RequestDetailPage({
             master record now, the review screen will still show what the teacher
             actually saw.
           </p>
-        </section>
+        </Card>
 
-        <div className="space-y-8">
+        <div className="space-y-5 md:space-y-8">
           {/* contactPhone is set only when the office deliberately overrode
               her saved number for this one request. */}
           <SharePanel
@@ -187,13 +186,10 @@ export default async function RequestDetailPage({
             reminder={started}
           />
 
-          <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
-              Export
-            </h2>
+          <Card title="Export">
             <a
               href={`/api/export/request/${request.id}.xlsx`}
-              className="mt-3 inline-block rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
+              className={btn()}
             >
               Download what this collected (.xlsx)
             </a>
@@ -201,7 +197,7 @@ export default async function RequestDetailPage({
               One row per student, with both the value sent to the teacher and
               the value she gave back, so a correction stays readable later.
             </p>
-          </section>
+          </Card>
         </div>
       </div>
     </div>

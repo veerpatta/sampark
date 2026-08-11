@@ -2,6 +2,7 @@
 
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
+import { CheckCircle } from "@phosphor-icons/react";
 import { buildRoundMessage, buildWhatsAppLink } from "@/lib/whatsapp";
 import type { QueueGroup } from "@/lib/send-queue";
 
@@ -136,7 +137,7 @@ export function SendQueue({
         <h2 className="text-title font-semibold">
           {done} of {rows.length} {rows.length === 1 ? "message" : "messages"} sent
         </h2>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-muted)]">
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-sunken)]">
           <div
             className="h-full rounded-full bg-[var(--color-success)] transition-[width] duration-300"
             style={{
@@ -236,9 +237,10 @@ export function SendQueue({
                     onClick={() => untick(group)}
                     disabled={pending}
                     title="Not actually sent? Tap to put it back in the queue."
-                    className="flex min-h-[var(--tap-min)] items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-[var(--color-success)] transition-transform active:scale-[0.98]"
+                    className="flex min-h-[var(--tap-min)] shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-confirm-bg)] px-3 text-sm font-semibold text-[var(--color-confirm-fg)] transition-transform active:scale-[0.98]"
                   >
-                    ✓ sent
+                    <CheckCircle aria-hidden size={16} weight="fill" />
+                    Sent
                   </button>
                 ) : (
                   <a
@@ -246,7 +248,7 @@ export function SendQueue({
                     target="_blank"
                     rel="noreferrer noopener"
                     onClick={() => handOver(group)}
-                    className={`flex min-h-[var(--tap-min)] shrink-0 items-center rounded-lg px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] ${
+                    className={`flex min-h-[var(--tap-min)] shrink-0 items-center rounded-[var(--radius-control)] px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] ${
                       isNext
                         ? "bg-[var(--color-success)]"
                         : "bg-[var(--color-brand-600)]"

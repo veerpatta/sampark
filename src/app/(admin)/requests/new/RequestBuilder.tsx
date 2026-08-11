@@ -6,6 +6,9 @@ import type { Template } from "@/lib/templates";
 import { hasPhone, isCompletePhone, normalisePhone, samePhone } from "@/lib/phone";
 import { chooseTeacherForClass, partitionByClass } from "@/lib/teachers";
 import { AddQuestion } from "@/components/admin/AddQuestion";
+import { Card } from "@/components/admin/Card";
+// `field` is the loop variable over this screen's field options, hence the alias.
+import { btn, chip, field as fieldClass } from "@/components/ui/controls";
 
 type FieldOption = {
   key: string;
@@ -219,7 +222,7 @@ export function RequestBuilder({
 
   return (
     <form onSubmit={onSubmit} className="space-y-5">
-      <Card step="1" title="Which class?">
+      <Card step={1} title="Which class?">
         <div className="flex flex-wrap gap-2">
           {classes.map((option) => (
             <button
@@ -232,11 +235,7 @@ export function RequestBuilder({
                   : undefined
               }
               onClick={() => chooseClass(option.label)}
-              className={`rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
-                classLabel === option.label
-                  ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
-                  : "border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]"
-              }`}
+              className={`${chip({ on: classLabel === option.label })} disabled:cursor-not-allowed disabled:opacity-40`}
             >
               {option.label}
               <span className="ml-2 font-mono text-xs text-[var(--color-ink-muted)]">
@@ -247,14 +246,14 @@ export function RequestBuilder({
         </div>
       </Card>
 
-      <Card step="2" title="What are you asking for?">
+      <Card step={2} title="What are you asking for?">
         <div className="flex flex-wrap gap-2">
           {templates.map((template) => (
             <button
               key={template.name}
               type="button"
               onClick={() => applyTemplate(template)}
-              className="rounded-lg border border-dashed border-[var(--color-border)] px-3 py-1.5 text-sm hover:bg-[var(--color-surface-muted)]"
+              className="rounded-[var(--radius-control)] border border-dashed border-[var(--color-border)] px-3 py-2 text-[13px] hover:bg-[var(--color-surface-muted)]"
             >
               {template.name}
             </button>
@@ -266,7 +265,7 @@ export function RequestBuilder({
           {fields.map((field) => (
             <label
               key={field.key}
-              className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+              className={`flex min-h-[var(--tap-min)] cursor-pointer items-center gap-2.5 rounded-[var(--radius-control)] border px-3 py-2 text-sm ${
                 fieldKeys.includes(field.key)
                   ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)]"
                   : "border-[var(--color-border)]"
@@ -308,13 +307,13 @@ export function RequestBuilder({
               value={period}
               onChange={(event) => setPeriod(event.target.value)}
               placeholder="2026-27/FA1"
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+              className={`${fieldClass()} mt-1`}
             />
           </label>
         ) : null}
       </Card>
 
-      <Card step="3" title="Who is filling it in, and by when?">
+      <Card step={3} title="Who is filling it in, and by when?">
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="text-xs font-medium text-[var(--color-ink-muted)]">
@@ -324,7 +323,7 @@ export function RequestBuilder({
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Mobile number update"
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+              className={`${fieldClass()} mt-1`}
             />
           </label>
 
@@ -338,7 +337,7 @@ export function RequestBuilder({
                 chooseTeacher(event.target.value, { keepEditedPhone: false });
                 setTeacherNote(null);
               }}
-              className="mt-1 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+              className={`${fieldClass()} mt-1`}
             >
               <option value="">Choose…</option>
               {owners.length > 0 ? (
@@ -382,7 +381,7 @@ export function RequestBuilder({
               autoComplete="off"
               placeholder="10 digits"
               disabled={!teacherId}
-              className={`mt-1 min-h-[var(--tap-min)] w-full rounded-lg border px-3 py-2 font-mono text-sm disabled:opacity-50 ${
+              className={`mt-1 min-h-[var(--tap-min)] w-full rounded-[var(--radius-control)] border px-3 py-2 font-mono text-sm disabled:opacity-50 ${
                 phone && !phoneComplete
                   ? "border-[var(--color-danger)]"
                   : "border-[var(--color-border)]"
@@ -407,7 +406,7 @@ export function RequestBuilder({
               type="date"
               value={dueDate}
               onChange={(event) => setDueDate(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+              className={`${fieldClass()} mt-1`}
             />
             <span className="mt-1 block text-xs text-[var(--color-ink-muted)]">
               Keep it short. Five days works; three weeks gets forgotten.
@@ -419,31 +418,31 @@ export function RequestBuilder({
       {error ? (
         <p
           role="alert"
-          className="rounded-lg border border-[var(--color-danger)] bg-red-50 px-4 py-3 text-sm text-[var(--color-danger)]"
+          className="rounded-[var(--radius-control)] border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger)]"
         >
           {error}
         </p>
       ) : null}
 
-      <div className="flex items-center gap-3">
+      <div className="space-y-2">
         <button
           type="submit"
           disabled={!ready || busy}
-          className="rounded-lg bg-[var(--color-brand-600)] px-5 py-2.5 text-sm font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+          className={btn({ shape: "commit", tone: "primary", full: true })}
         >
           {busy ? "Creating…" : "Create request and get the link"}
         </button>
-        <span className="text-xs text-[var(--color-ink-muted)]">
+        <p className="text-xs text-[var(--color-ink-muted)]">
           The class list is frozen at this moment — later changes to master will
           not alter what the teacher sees.
-        </span>
+        </p>
       </div>
 
       {/* The reason to keep collecting, said out loud where the decision is
           made. Every field filled makes every later request easier to answer,
           and that compounding is invisible unless someone points at it. */}
       {classLabel ? (
-        <p className="rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-xs text-[var(--color-ink-muted)]">
+        <p className="rounded-[var(--radius-control)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-xs text-[var(--color-ink-muted)]">
           <strong className="font-medium text-[var(--color-ink)]">
             Recognition context.
           </strong>{" "}
@@ -463,28 +462,6 @@ function defaultDueDate(): string {
   const date = new Date();
   date.setDate(date.getDate() + 5);
   return date.toISOString().slice(0, 10);
-}
-
-function Card({
-  step,
-  title,
-  children,
-}: {
-  step: string;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
-      <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-surface-muted)] font-mono text-xs">
-          {step}
-        </span>
-        {title}
-      </h2>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
 }
 
 function Empty({ children }: { children: React.ReactNode }) {

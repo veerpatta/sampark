@@ -43,7 +43,7 @@ export function TeacherLinkPanel({
         </p>
         <button
           type="submit"
-          className="mt-2 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-4 text-sm font-medium hover:bg-[var(--color-surface-muted)] md:w-auto"
+          className="mt-2 min-h-[var(--tap-min)] w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-4 text-sm font-medium hover:bg-[var(--color-surface-muted)] md:w-auto"
         >
           Issue a personal link
         </button>
@@ -79,7 +79,7 @@ export function TeacherLinkPanel({
   return (
     <div className="mt-3 border-t border-[var(--color-border)] pt-3">
       <p className="text-label font-medium">Personal link</p>
-      <code className="mt-1 block min-w-0 break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 font-mono text-xs">
+      <code className="mt-1 block min-w-0 break-all rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 font-mono text-xs">
         {url}
       </code>
       {issuedAt ? (
@@ -93,14 +93,14 @@ export function TeacherLinkPanel({
           href={buildWhatsAppLink(phone, message)}
           target="_blank"
           rel="noreferrer noopener"
-          className="flex min-h-[var(--tap-min)] items-center rounded-lg bg-[var(--color-success)] px-3 text-sm font-medium text-white transition-transform active:scale-[0.98]"
+          className="flex min-h-[var(--tap-min)] items-center rounded-[var(--radius-control)] bg-[var(--color-success)] px-3 text-sm font-medium text-white transition-transform active:scale-[0.98]"
         >
           Send it on WhatsApp
         </a>
         <button
           type="button"
           onClick={() => void copy()}
-          className="min-h-[var(--tap-min)] rounded-lg border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
+          className="min-h-[var(--tap-min)] rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
         >
           {copied ? "Copied" : "Copy"}
         </button>

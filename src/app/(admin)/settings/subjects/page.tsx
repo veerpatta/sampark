@@ -61,8 +61,8 @@ export default async function SubjectsSettingsPage() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-display font-semibold tracking-tight">Subjects</h1>
-        <p className="mt-1 max-w-prose text-sm text-[var(--color-ink-muted)]">
+        <h1 className="text-display font-semibold">Subjects</h1>
+        <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
           Who teaches what. A marks request sent to subject teachers uses this to
           work out who gets which link — one per teacher per subject, carrying
           only her own classes.
@@ -88,7 +88,7 @@ export default async function SubjectsSettingsPage() {
       ) : null}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-muted)]">
           By teacher
         </h2>
         {teachers.map((teacher) => {
@@ -130,7 +130,7 @@ export default async function SubjectsSettingsPage() {
                     />
                     <button
                       type="submit"
-                      className="mt-2 min-h-[var(--tap-min)] w-full rounded-lg border border-[var(--color-border)] px-4 text-sm font-medium hover:bg-[var(--color-surface-muted)] md:w-auto"
+                      className="mt-2 min-h-[var(--tap-min)] w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-4 text-sm font-medium hover:bg-[var(--color-surface-muted)] md:w-auto"
                     >
                       Save {subject.en}
                     </button>
@@ -143,7 +143,7 @@ export default async function SubjectsSettingsPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-muted)]">
           By subject
         </h2>
         <p className="text-xs text-[var(--color-ink-muted)]">

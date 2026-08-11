@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { btn, eyebrow } from "@/components/ui/controls";
 
 /**
  * Every way to narrow the school down, as chips you can tap.
@@ -59,7 +60,7 @@ export function FilterBar({
       ))}
 
       {secondary.length > 0 ? (
-        <details open={anySecondary} className="rounded-lg">
+        <details open={anySecondary}>
           <summary className="inline-flex min-h-[var(--tap-min)] cursor-pointer items-center text-sm font-medium text-[var(--color-brand-600)]">
             More filters
             {anySecondary ? (
@@ -77,10 +78,7 @@ export function FilterBar({
       ) : null}
 
       {/* The no-JavaScript path, and the keyboard one. Never hidden. */}
-      <button
-        type="submit"
-        className="min-h-[var(--tap-min)] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
-      >
+      <button type="submit" className={btn()}>
         Apply filters
       </button>
     </form>
@@ -92,10 +90,8 @@ function Chips({ group, onChange }: { group: ChipGroup; onChange: () => void }) 
 
   return (
     <fieldset>
-      <legend className="text-xs font-medium uppercase tracking-wider text-[var(--color-ink-muted)]">
-        {group.label}
-      </legend>
-      <div className="mt-1.5 flex flex-wrap gap-1.5">
+      <legend className={eyebrow()}>{group.label}</legend>
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {group.values.map((entry) => (
           <label key={entry.value} className="cursor-pointer">
             <input

@@ -7,6 +7,9 @@ import { CLASS_LABELS } from "@/lib/classes";
 import { TEMPLATES } from "@/lib/templates";
 import { QuickSend } from "@/components/admin/QuickSend";
 import { StatusBoard } from "@/components/admin/StatusBoard";
+import { PageHeader } from "@/components/admin/PageHeader";
+import { Card } from "@/components/admin/Card";
+import { card } from "@/components/ui/controls";
 
 export const dynamic = "force-dynamic";
 
@@ -42,13 +45,11 @@ export default async function DashboardPage() {
   );
 
   return (
-    <div className="space-y-8">
-      <header>
-        <h1 className="text-display font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          Shri Veer Patta Senior Secondary School, Amet
-        </p>
-      </header>
+    <div className="space-y-5 md:space-y-8">
+      <PageHeader
+        title="Dashboard"
+        subtitle="Shri Veer Patta Senior Secondary School, Amet"
+      />
 
       {/* The two things worth doing from a phone, above the numbers. */}
       <QuickSend
@@ -67,7 +68,11 @@ export default async function DashboardPage() {
 
       <StatusBoard requests={requests} />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Two across on a phone, not one. Four counts stacked vertically is a
+          screenful of scrolling for four numbers, and the pairs read against
+          each other — students against how many have no number, requests open
+          against how many are waiting on the office. */}
+      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
         <Stat label="Students on record" value={students?.total ?? 0} href="/students" />
         <Stat
           label="Missing a mobile number"
@@ -93,11 +98,8 @@ export default async function DashboardPage() {
       ) : null}
 
       {overdue.length > 0 ? (
-        <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
-            Past their due date
-          </h2>
-          <ul className="mt-3 space-y-2 text-sm">
+        <Card title="Past their due date">
+          <ul className="space-y-2 text-sm">
             {overdue.map((request) => (
               <li key={request.id} className="flex items-baseline gap-3">
                 <Link
@@ -113,11 +115,11 @@ export default async function DashboardPage() {
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       ) : null}
 
       {students?.total === 0 ? (
-        <section className="rounded-[var(--radius-card)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-6 text-sm">
+        <section className="rounded-[var(--radius-card)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm md:p-6">
           <p className="font-medium">Nothing loaded yet.</p>
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-[var(--color-ink-muted)]">
             <li>
@@ -166,12 +168,14 @@ function Stat({
   return (
     <Link
       href={href}
-      className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-5 hover:border-[var(--color-brand-600)]"
+      className={`${card()} p-4 hover:border-[var(--color-brand-600)]`}
     >
-      <div className={`text-3xl font-semibold ${colour}`}>
+      <div className={`text-display font-semibold ${colour}`}>
         {value.toLocaleString("en-IN")}
       </div>
-      <div className="mt-1 text-sm text-[var(--color-ink-muted)]">{label}</div>
+      <div className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
+        {label}
+      </div>
     </Link>
   );
 }

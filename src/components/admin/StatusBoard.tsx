@@ -6,6 +6,7 @@ import {
   buildReminderMessage,
   buildWhatsAppLink,
 } from "@/lib/whatsapp";
+import { btn, card } from "@/components/ui/controls";
 
 /**
  * "8 of 11 classes submitted", readable at a glance on a phone.
@@ -30,30 +31,35 @@ import {
 
 type Tone = "waiting" | "progress" | "overdue" | "done";
 
-const TONE: Record<Tone, { label: string; pill: string; bar: string; rail: string }> = {
+/**
+ * The 4px coloured rail down the left of each row is gone.
+ *
+ * It said the same thing as the pill immediately beside it, in the one channel
+ * — colour alone — that this file's own rule forbids as a sole carrier. What it
+ * cost was 12px of horizontal room on a 360px screen, which is where the
+ * teacher's name was being truncated. The pill keeps the word and the colour
+ * together; the bar keeps the tone.
+ */
+const TONE: Record<Tone, { label: string; pill: string; bar: string }> = {
   waiting: {
     label: "not started",
     pill: "bg-[var(--color-surface-muted)] text-[var(--color-ink-muted)]",
     bar: "bg-[var(--color-border)]",
-    rail: "border-l-[var(--color-border)]",
   },
   progress: {
     label: "in progress",
     pill: "bg-[var(--color-correct-bg)] text-[var(--color-correct-fg)]",
     bar: "bg-[var(--color-warning)]",
-    rail: "border-l-[var(--color-warning)]",
   },
   overdue: {
     label: "overdue",
     pill: "bg-[var(--color-danger-bg)] text-[var(--color-danger)]",
     bar: "bg-[var(--color-danger)]",
-    rail: "border-l-[var(--color-danger)]",
   },
   done: {
     label: "complete",
     pill: "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]",
     bar: "bg-[var(--color-success)]",
-    rail: "border-l-[var(--color-success)]",
   },
 };
 export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
@@ -136,14 +142,14 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
   }
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4 md:p-6">
-      <h2 className="text-xl font-semibold tracking-tight">
+    <section className={`${card()} p-4 md:p-6`}>
+      <h2 className="text-title font-semibold">
         {submitted.length} of {open.length}{" "}
         {open.length === 1 ? "group has" : "groups have"} submitted
       </h2>
 
       {waiting.length > 0 ? (
-        <ul className="mt-4 divide-y divide-[var(--color-border)]">
+        <ul className="mt-3 divide-y divide-[var(--color-border)]">
           {waiting.map((request) => {
             const tone = TONE[toneOf(request)];
             const percent =
@@ -155,7 +161,7 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
             return (
               <li
                 key={request.id}
-                className={`flex items-center gap-3 border-l-[4px] py-3 pl-3 first:pt-0 ${tone.rail}`}
+                className="flex items-center gap-3 py-3 first:pt-0"
               >
                 {/* The whole block is the target. It was a bare inline link
                     about twenty pixels tall, with the teacher's name, the
@@ -180,7 +186,7 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
                     {tone.label}
                   </span>
                   <div className="mt-1 flex items-center gap-2">
-                    <div className="h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-muted)] sm:w-24 sm:flex-none">
+                    <div className="h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-sunken)] sm:w-24 sm:flex-none">
                       {/* Takes the row's tone, not a fixed green. A green bar
                           sitting at 40% tells the office the opposite of what
                           the number beside it says. */}
@@ -198,7 +204,7 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
                   href={remindHref(request)}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="flex min-h-[var(--tap-min)] shrink-0 items-center rounded-lg border border-[var(--color-border)] px-3 text-sm font-medium transition-transform active:scale-[0.98]"
+                  className={`${btn()} shrink-0 px-3 text-[13px]`}
                 >
                   Remind
                 </a>

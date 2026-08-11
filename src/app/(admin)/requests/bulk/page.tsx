@@ -53,7 +53,7 @@ export default async function BulkSendPage() {
     <div className="space-y-8">
       <header>
         <div className="flex items-baseline gap-3">
-          <h1 className="text-display font-semibold tracking-tight">
+          <h1 className="text-display font-semibold">
             Send to many
           </h1>
           <Link
@@ -63,7 +63,7 @@ export default async function BulkSendPage() {
             back to the board
           </Link>
         </div>
-        <p className="mt-1 max-w-prose text-sm text-[var(--color-ink-muted)]">
+        <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
           One question, asked of several groups at once. Each teacher still gets
           her own link with only her own children on it.
         </p>

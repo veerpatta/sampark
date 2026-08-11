@@ -47,6 +47,22 @@ const baseHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  /**
+   * Phosphor is a barrel of ~9,000 icon components.
+   *
+   * A bare `import { House } from "@phosphor-icons/react"` asks the bundler to
+   * evaluate that whole index; without this it costs enough to have been the
+   * reason the console was still drawing its navigation with ◉ ✉ ✓ ☰ ⚙ typed
+   * as literal characters. This rewrites each named import to its own deep
+   * path, so a screen ships the five icons it renders and nothing else.
+   *
+   * globals.css records that a 50 kB animation library was rejected over its
+   * shared-bundle cost; the same standard applies here.
+   */
+  experimental: {
+    optimizePackageImports: ["@phosphor-icons/react"],
+  },
+
   async headers() {
     return [
       { source: "/:path*", headers: baseHeaders },

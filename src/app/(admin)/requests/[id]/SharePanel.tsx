@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { btn, card, eyebrow } from "@/components/ui/controls";
 
 /**
  * The share panel.
@@ -43,8 +44,8 @@ export function SharePanel({
   }
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
+    <section className={`${card()} p-4 md:p-6`}>
+      <h2 className={eyebrow()}>
         {reminder ? `Remind ${teacherName}` : `Send it to ${teacherName}`}
       </h2>
 
@@ -58,13 +59,13 @@ export function SharePanel({
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <code className="min-w-0 flex-1 break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 font-mono text-xs">
+        <code className="min-w-0 flex-1 break-all rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 font-mono text-xs">
           {url}
         </code>
         <button
           type="button"
           onClick={() => copy(url, "link")}
-          className="min-h-[var(--tap-min)] rounded-lg border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
+          className={`${btn()} px-3`}
         >
           {copied === "link" ? "Copied" : "Copy link"}
         </button>
@@ -75,7 +76,7 @@ export function SharePanel({
       </p>
       <pre
         lang="hi"
-        className="mt-1 whitespace-pre-wrap rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm"
+        className="mt-1 whitespace-pre-wrap rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm"
       >
         {message}
       </pre>
@@ -89,14 +90,14 @@ export function SharePanel({
           href={whatsappUrl}
           target="_blank"
           rel="noreferrer noopener"
-          className="flex min-h-[var(--tap-min)] flex-1 items-center justify-center rounded-lg bg-[var(--color-success)] px-3 text-sm font-medium text-white transition-transform active:scale-[0.98] hover:opacity-90 sm:flex-none"
+          className={`${btn({ tone: "go" })} flex-1 sm:flex-none`}
         >
-          Send on WhatsApp
+          {reminder ? "Nudge on WhatsApp" : "Send on WhatsApp"}
         </a>
         <button
           type="button"
           onClick={() => copy(message, "message")}
-          className="min-h-[var(--tap-min)] rounded-lg border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
+          className={`${btn()} px-3`}
         >
           {copied === "message" ? "Copied" : "Copy message"}
         </button>

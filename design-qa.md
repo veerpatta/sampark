@@ -59,3 +59,89 @@ Focused checks were made on the header/instruction strip, active student fields,
 ## Final result
 
 final result: passed
+
+---
+
+# The console follows the same language (2026-08-11)
+
+Source: the Claude Design project `72d18a0c-8f49-4c0c-823b-7bf7db1ec0a9`,
+"Sampark Mobile" — option `1a` is the whole admin console on a 428×908 Android
+frame, option `1b` is the teacher form.
+
+The mock introduced **no new colour, font or shadow**. Every value in it was
+already a token in `src/styles/tokens.css`. What it contributed was a
+systematised, mobile-first application of that language to the console, which
+until now was a desktop screen that merely shrank.
+
+## The control vocabulary
+
+`src/components/ui/controls.ts` — class-string helpers, not components,
+because four of the things this app styles as buttons are an `<a>`, a `<label>`
+wrapping a file input, a `<Link>`, and a `<label>` over a `peer sr-only`
+checkbox that has to keep working with JavaScript switched off.
+
+- `btn({shape, tone, full})` — two shapes and four tones, and that is the
+  whole set. `action` is the ordinary 48px control; `commit` is the 52px
+  full-width button that does the irreversible thing. `primary` is the one
+  forward move on a screen, `go` is reserved for sends that leave the app
+  (WhatsApp, approving into master), `quiet` is everything else, `danger` is
+  bordered and never filled.
+- `chip({on, pill})` — `pill` narrows a list you are looking at (36px); the
+  default picks something (44px). Selected is a border and a tint, never a
+  fill: these appear six at a time.
+- `field()`, `eyebrow()`, `card()`, `mono()`, `stepBadge()`.
+
+If a screen needs a sixth shape, decide it there rather than writing a class
+string in a 700-line page — that is how 118 separate `rounded-lg border …`
+strings and two competing chip idioms got here in the first place.
+
+## Tokens added
+
+`--radius-control` (8px) and `--radius-commit` (10px) join `--radius-card` and
+`--radius-chip`; `--color-surface-sunken` and `--color-ink-faint`;
+`--shadow-rail`, `--shadow-cta` and `--shadow-badge`, which were four raw
+`rgba()` values that had drifted apart (the teacher rail and the console's
+action bar lifted content by different amounts on the same phone); and
+letter-spacing on the display/title/name sizes, which fifteen h1s were each
+applying by hand. `--admin-nav-h` went 52px → 56px.
+
+## Decisions worth not reversing
+
+- **Below md, DataTable is separate cards; at md and up it is still a table.**
+  A frame around rows that already have edges is a second border. Requests,
+  Students and Audit supply their own phone card through the `card` render-prop
+  — a student is a face, a name and a completeness bar, not seven labelled
+  values.
+- **The phone app bar says where you are, not what the app is called.** A fixed
+  strip holding only a wordmark is the most valuable 52px on the screen spent
+  on nothing. The back control is a real `<Link>` to the parent section, not
+  `history.back()` — the office opens these from WhatsApp, so the previous
+  entry is frequently WhatsApp.
+- **`/settings` is now an index of six.** With the nav at the bottom and no
+  room for a seventh tab, the field registry had no route to it from a phone.
+  The sibling cross-links on each settings page are `md`-only, so the same
+  navigation is not offered twice.
+- **The console's nav icons are Phosphor, not `◉ ✉ ✓ ☰ ⚙`.** Those are ordinary
+  characters, so what the office saw was whichever glyph their phone's fallback
+  font carried. Icons cross the server/client boundary as a NAME — a component
+  reference cannot be serialised as a prop.
+- **StatusBoard's 4px left rail is gone.** It repeated the pill beside it in the
+  one channel this file's own rule forbids as a sole carrier, and cost 12px on
+  a 360px screen where the teacher's name was truncating.
+- **The last emoji is gone.** `PhotoField`'s 🙂 is a Phosphor `UserCircle`.
+
+## Teacher surface
+
+Unchanged in shape, per the mock. Measurements only: answer buttons 48 → 52px,
+"Confirm all" and the review send button to 56px at the card radius, the four
+raw shadows onto tokens. Nothing in `RequestForm`'s state, autosave, upload or
+review logic was touched, `Bi.tsx`'s two-line English-over-Hindi structure
+stands, and every decision recorded above in this file still holds — no per-row
+card chrome, suggestion after the fields.
+
+## Verification
+
+`npm run typecheck`, `npm run lint` and `npm test` (404 tests) all pass, and
+`npm run build` compiles every route. Every new token was confirmed present in
+the browser's computed `:root` — Tailwind v4 prunes theme variables it cannot
+see used, which silently dropped the house colours once before.

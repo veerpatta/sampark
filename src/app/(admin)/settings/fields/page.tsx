@@ -36,10 +36,10 @@ export default async function FieldSettingsPage() {
   return (
     <div className="space-y-8">
       <header>
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-display font-semibold tracking-tight">
-            Field registry
-          </h1>
+        <h1 className="text-display font-semibold">Field registry</h1>
+        {/* Sibling settings pages, on a pointer only — below md the Settings
+            tab lands on an index of all six. See settings/users/page.tsx. */}
+        <div className="mt-1 hidden flex-wrap items-baseline gap-3 md:flex">
           <Link
             href="/settings/teachers"
             className="text-sm text-[var(--color-brand-600)] hover:underline"
@@ -65,7 +65,7 @@ export default async function FieldSettingsPage() {
             audit log
           </Link>
         </div>
-        <p className="mt-1 max-w-prose text-sm text-[var(--color-ink-muted)]">
+        <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
           Adding something new to collect is a row here, not a deployment.{" "}
           <strong>Verify</strong> means the school already holds a value and
           wants it confirmed; <strong>collect</strong> means it holds nothing.
@@ -76,7 +76,7 @@ export default async function FieldSettingsPage() {
       </header>
 
       <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-muted)]">
           Add or update a field
         </h2>
         <form action={saveField} className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -123,7 +123,7 @@ export default async function FieldSettingsPage() {
             </label>
             <button
               type="submit"
-              className="ml-auto rounded-lg bg-[var(--color-brand-600)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-brand-700)]"
+              className="ml-auto rounded-[var(--radius-control)] bg-[var(--color-brand-600)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-brand-700)]"
             >
               Save
             </button>
@@ -213,10 +213,10 @@ export default async function FieldSettingsPage() {
 
       {questions.length > 0 ? (
         <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4 md:p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-muted)]">
             One-off questions
           </h2>
-          <p className="mt-1 max-w-prose text-sm text-[var(--color-ink-muted)]">
+          <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
             Added from the request builder by anyone who can send a request.
             These never write to a student record — answers are stored against
             the request that asked them — which is why they do not need an owner
@@ -297,7 +297,7 @@ function Field({
         lang={lang}
         placeholder={placeholder}
         required={required}
-        className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)]"
+        className="mt-1 w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand-600)]"
       />
     </label>
   );
@@ -321,7 +321,7 @@ function Select({
       </span>
       <select
         name={name}
-        className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+        className="mt-1 w-full rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 py-2 text-sm"
       >
         {options.map((option) => (
           <option key={option} value={option}>

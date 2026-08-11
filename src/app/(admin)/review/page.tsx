@@ -1,5 +1,6 @@
 import { canApproveIntoMaster, currentUser } from "@/lib/auth/session";
 import { listPendingReview } from "@/lib/submissions";
+import { PageHeader } from "@/components/admin/PageHeader";
 import { ReviewQueue } from "./ReviewQueue";
 
 export const metadata = { title: "Review — Sampark" };
@@ -28,18 +29,18 @@ export default async function ReviewPage({
   const actionable = items.filter((item) => !item.superseded);
 
   return (
-    <div className="space-y-8">
-      <header>
-        <h1 className="text-display font-semibold tracking-tight">Review</h1>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          {actionable.length === 0
+    <div className="space-y-5 md:space-y-8">
+      <PageHeader
+        title="Review"
+        subtitle={
+          actionable.length === 0
             ? "Nothing waiting."
-            : `${actionable.length} proposed change${actionable.length === 1 ? "" : "s"} waiting`}
-        </p>
-      </header>
+            : `${actionable.length} proposed change${actionable.length === 1 ? "" : "s"} waiting. Nothing is in the master record until you approve it.`
+        }
+      />
 
       {items.length === 0 ? (
-        <section className="rounded-[var(--radius-card)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-6 text-sm text-[var(--color-ink-muted)]">
+        <section className="rounded-[var(--radius-card)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-ink-muted)] md:p-6">
           <p className="font-medium text-[var(--color-ink)]">
             The queue is empty.
           </p>
