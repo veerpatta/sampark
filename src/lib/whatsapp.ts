@@ -320,6 +320,109 @@ export function buildRoundMessage(input: RoundMessageInput): string {
   return lines.join("\n");
 }
 
+/** One outstanding form on a reminder that carries several. */
+export type ReminderItem = {
+  audience: MessageAudience;
+  title: string;
+  dueDate: Date | string;
+  /** This one request's link. Only used when she has no durable page. */
+  url: string;
+  /** How far along she is, for the "5 of 24 done" half-line. */
+  answered: number;
+  rosterSize: number;
+};
+
+export type RoundReminderInput = {
+  teacherName: string;
+  items: ReminderItem[];
+  /** Her durable page. When she has one it REPLACES every per-form link. */
+  teacherPageUrl?: string;
+};
+
+/**
+ * Everything one teacher still owes, in ONE message.
+ *
+ * A teacher who teaches maths to three classes had three rows on the dashboard
+ * and therefore three Remind buttons, which sent her three near-identical
+ * WhatsApp messages within about four seconds of each other. From her end that
+ * is not three reminders, it is one person spamming her — and the natural
+ * response to it is to stop reading any of them. The office also had no way to
+ * see that it had just done so, because each row only knew about itself.
+ *
+ * ONE LINK DELEGATES, byte for byte, exactly as buildRoundMessage does and for
+ * the same reason: most teachers owe exactly one form and must keep receiving
+ * the message they always have. There is a test on that equality.
+ *
+ * PER-ITEM DUE DATES, which is the one place this cannot follow
+ * buildRoundMessage. That builder describes a single round, so it carries one
+ * title and one deadline for the lot. A reminder spans whatever happens to be
+ * outstanding — an FA round due Friday and a phone check that was due last
+ * week — so the deadline belongs on the line it applies to, and a single "Due:"
+ * footer would be wrong for every line but one.
+ *
+ * PROGRESS IS ON THE LINE because "still pending" is not the same fact as
+ * "half done", and a teacher who has entered twenty of twenty-four needs to be
+ * told that rather than accused of not having started.
+ */
+export function buildRoundReminderMessage(input: RoundReminderInput): string {
+  if (input.items.length === 1 && !input.teacherPageUrl) {
+    const only = input.items[0]!;
+    return buildReminderMessage({
+      teacherName: input.teacherName,
+      audience: only.audience,
+      title: only.title,
+      dueDate: only.dueDate,
+      url: only.url,
+    });
+  }
+
+  const count = input.items.length;
+  const lines = [
+    `Namaste ${input.teacherName},`,
+    `नमस्ते ${input.teacherName} जी,`,
+    ``,
+    ...(count === 1
+      ? [`This is still pending:`, `यह अभी बाकी है:`]
+      : [
+          `${count} lists are still pending:`,
+          `आपकी ${count} सूचियाँ अभी बाकी हैं:`,
+        ]),
+    ``,
+  ];
+
+  input.items.forEach((item, index) => {
+    const en = describeAudienceLine(item.audience);
+    const hi = describeAudienceLineHi(item.audience);
+    const due = formatDue(item.dueDate);
+    lines.push(`${index + 1}) ${en}${hi === en ? "" : ` · ${hi}`} — ${item.title}`);
+    lines.push(`   ${progressLine(item)} · due ${due} · अंतिम तिथि ${due}`);
+    // Her durable page carries all of them, so a per-form link underneath it
+    // would be the same wall of links this message exists to collapse.
+    if (!input.teacherPageUrl) lines.push(item.url);
+    lines.push(``);
+  });
+
+  if (input.teacherPageUrl) {
+    lines.push(
+      `All of them are on your page:`,
+      `ये सब आपके पेज पर हैं:`,
+      input.teacherPageUrl,
+      ``,
+    );
+  }
+
+  lines.push(SIGN_OFF);
+  return lines.join("\n");
+}
+
+/** "not started" / "12 of 24 done", in both languages on one line. */
+function progressLine(item: ReminderItem): string {
+  if (item.rosterSize === 0 || item.answered === 0) {
+    return `not started · अभी शुरू नहीं`;
+  }
+  return `${item.answered} of ${item.rosterSize} done · ${item.rosterSize} में से ${item.answered} हो गए`;
+}
+
 /** The nudge for teachers who have not submitted yet. */
 export function buildReminderMessage(input: RequestMessageInput): string {
   const due = formatDue(input.dueDate);
@@ -334,6 +437,19 @@ export function buildReminderMessage(input: RequestMessageInput): string {
     ``,
     SIGN_OFF,
   ].join("\n");
+}
+
+/**
+ * Her durable page, as a URL.
+ *
+ * Three files were building this string inline — the dashboard, the send queue
+ * and the teacher settings panel — which is three places to remember if the
+ * route ever moves, and three chances for one of them to hand out a URL that
+ * 404s. It is one line, and it being one line is exactly why it kept getting
+ * retyped rather than imported.
+ */
+export function teacherPageUrl(origin: string, token: string): string {
+  return `${origin}/t/${token}`;
 }
 
 /** A click-to-chat link that opens WhatsApp with the message pre-filled. */

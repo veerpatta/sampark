@@ -3,43 +3,49 @@
 import Link from "next/link";
 import type { RequestBoardRow } from "@/lib/requests";
 import {
-  buildReminderMessage,
+  groupRemindersByTeacher,
+  type PendingForm,
+  type TeacherReminder,
+} from "@/lib/reminders";
+import {
+  buildRoundReminderMessage,
   buildWhatsAppLink,
+  teacherPageUrl,
 } from "@/lib/whatsapp";
 import { btn, card } from "@/components/ui/controls";
 
 /**
- * "8 of 11 classes submitted", readable at a glance on a phone.
+ * Who still owes the school something, readable at a glance on a phone.
  *
  * This is the screen the office checks most, and the one that does the actual
  * enforcing — the number shared in the staff group is worth more than ten
  * individual reminders.
+ *
+ * ONE BLOCK PER TEACHER, NOT PER GROUP, AND THAT IS THE POINT OF THIS FILE.
+ * It used to be one row per class with a Remind button on each, so a teacher
+ * who takes maths for three classes had three buttons — and pressing them sent
+ * her three near-identical WhatsApp messages within a few seconds. From her end
+ * that is not three reminders, it is one person spamming her, and the sensible
+ * response is to stop reading any of them. The office could not see it happen
+ * either, because every row only knew about itself.
+ *
+ * So the grouping is by person and the nudge is one message carrying everything
+ * she owes. Her classes are still listed underneath with their own progress —
+ * that detail is why the office comes here — but they are information, not
+ * eleven separate things to press.
  *
  * SUBMITTED IS DERIVED, NOT READ. `requests.status` only ever holds open or
  * closed; nothing in the codebase writes "submitted", so trusting that column
  * would render "0 of 11" forever. A class has submitted when every student on
  * its frozen roster has been answered for.
  *
- * The ones that have NOT submitted come first, overdue first within that,
- * because those are the rows that need a person to do something. Each carries
- * its own reminder button so nudging a teacher is one tap and no navigation.
- *
  * EVERY ROW SAYS ITS STATE IN A WORD as well as a colour. This screen gets read
- * on a phone in a corridor between periods, and a office worker who cannot
+ * on a phone in a corridor between periods, and an office worker who cannot
  * separate the amber from the red still has to know which teacher to chase.
  */
 
 type Tone = "waiting" | "progress" | "overdue" | "done";
 
-/**
- * The 4px coloured rail down the left of each row is gone.
- *
- * It said the same thing as the pill immediately beside it, in the one channel
- * — colour alone — that this file's own rule forbids as a sole carrier. What it
- * cost was 12px of horizontal room on a 360px screen, which is where the
- * teacher's name was being truncated. The pill keeps the word and the colour
- * together; the bar keeps the tone.
- */
 const TONE: Record<Tone, { label: string; pill: string; bar: string }> = {
   waiting: {
     label: "not started",
@@ -62,81 +68,71 @@ const TONE: Record<Tone, { label: string; pill: string; bar: string }> = {
     bar: "bg-[var(--color-success)]",
   },
 };
-export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
+
+const toneOf = (form: PendingForm): Tone =>
+  form.overdue ? "overdue" : form.answered > 0 ? "progress" : "waiting";
+
+export function StatusBoard({
+  requests,
+  origin,
+}: {
+  requests: RequestBoardRow[];
+  /**
+   * Handed down from the server, NEVER read off `window` here.
+   *
+   * This component renders on the server first, where `window` does not exist,
+   * so a render-time `window.location.origin` resolves to "" and bakes a
+   * relative `/t/abc` into the href — which React then keeps through hydration.
+   * The button looks fine and the message it composes carries a path that means
+   * nothing once it is in WhatsApp. That was a real bug on this button. See
+   * lib/request-origin.ts.
+   */
+  origin: string;
+}) {
   const today = new Date().toISOString().slice(0, 10);
 
-  // One row per group: the newest open request for it. Keyed by kind as well as
-  // label, because a house and a class could in principle share a name and they
-  // are not the same collection.
-  const newestPerGroup = new Map<string, RequestBoardRow>();
-  for (const request of requests) {
-    if (request.status !== "open") continue;
-    const key = `${request.audienceKind}|${request.audienceLabel}`;
-    if (!newestPerGroup.has(key)) newestPerGroup.set(key, request);
-  }
-  const open = [...newestPerGroup.values()];
+  const open = requests.filter((request) => request.status === "open");
   if (open.length === 0) return null;
 
-  // studentsAnswered now means "answered for every field asked about" — see
-  // coveredStudentsQuery in lib/requests.ts. This predicate did not have to
-  // change when a half-filled card stopped counting, which is the reason that
-  // definition lives in the query rather than in each reader.
   const done = (request: RequestBoardRow) =>
     request.rosterSize > 0 && request.studentsAnswered >= request.rosterSize;
 
-  // Overdue outranks in-progress: it is the row that needs a person to do
-  // something today, and how far along it is does not change that.
-  const toneOf = (request: RequestBoardRow): Tone =>
-    done(request)
-      ? "done"
-      : request.dueDate < today
-        ? "overdue"
-        : request.studentsAnswered > 0
-          ? "progress"
-          : "waiting";
-
   const submitted = open.filter(done);
-  const waiting = open
-    .filter((request) => !done(request))
-    .sort((a, b) => {
-      const aLate = a.dueDate < today ? 0 : 1;
-      const bLate = b.dueDate < today ? 0 : 1;
-      if (aLate !== bLate) return aLate - bLate;
-      return a.studentsAnswered / (a.rosterSize || 1) -
-        b.studentsAnswered / (b.rosterSize || 1);
-    });
+  // groupRemindersByTeacher drops the finished ones, so this is exactly the
+  // people someone still has to chase.
+  const teachers = groupRemindersByTeacher(open, today);
 
   /**
-   * The nudge, addressed to her.
+   * The nudge, addressed to her, carrying everything she owes.
    *
    * A real link rather than a handler, so the tap goes straight to that
    * teacher's WhatsApp chat. It used to open the OS share sheet, which carries
    * text and no recipient — one tap became "now find Gourisha in your
    * contacts", eleven times down an overdue list.
-   *
-   * `origin` comes from the window because this is a client component and the
-   * board is rendered for whatever host the office is actually on.
    */
-  function remindHref(request: RequestBoardRow) {
-    const origin = typeof window === "undefined" ? "" : window.location.origin;
-    // Her durable page when she has one, the single request otherwise. A nudge
-    // is exactly the moment to reinforce the page she should be checking, and
-    // it means the office never has to think about which link to send.
-    const url = request.teacherLinkToken
-      ? `${origin}/t/${request.teacherLinkToken}`
-      : `${origin}/r/${request.token}`;
+  function remindHref(teacher: TeacherReminder) {
     return buildWhatsAppLink(
-      request.teacherPhone,
-      buildReminderMessage({
-        teacherName: request.teacher,
-        audience: {
-          kind: request.audienceKind,
-          label: request.audienceLabel,
-          fieldKeys: request.fieldKeys,
-        },
-        title: request.title,
-        dueDate: request.dueDate,
-        url,
+      teacher.phone,
+      buildRoundReminderMessage({
+        teacherName: teacher.teacherName,
+        // Her durable page when she has one: it already carries every form, so
+        // sending it instead of N per-request links is the same collapse this
+        // component does on screen. Without one, each form brings its own link.
+        teacherPageUrl: teacher.linkToken
+          ? teacherPageUrl(origin, teacher.linkToken)
+          : undefined,
+        items: teacher.forms.map((form) => ({
+          audience: {
+            kind: form.audienceKind,
+            label: form.audienceLabel,
+            fieldKeys: form.fieldKeys,
+          },
+          title: form.title,
+          dueDate: form.dueDate,
+          url: `${origin}/r/${form.token}`,
+          answered: form.answered,
+          rosterSize: form.rosterSize,
+        })),
       }),
     );
   }
@@ -148,69 +144,81 @@ export function StatusBoard({ requests }: { requests: RequestBoardRow[] }) {
         {open.length === 1 ? "group has" : "groups have"} submitted
       </h2>
 
-      {waiting.length > 0 ? (
+      {teachers.length > 0 ? (
         <ul className="mt-3 divide-y divide-[var(--color-border)]">
-          {waiting.map((request) => {
-            const tone = TONE[toneOf(request)];
-            const percent =
-              request.rosterSize === 0
-                ? 0
-                : Math.round(
-                    (request.studentsAnswered / request.rosterSize) * 100,
-                  );
-            return (
-              <li
-                key={request.id}
-                className="flex items-center gap-3 py-3 first:pt-0"
-              >
-                {/* The whole block is the target. It was a bare inline link
-                    about twenty pixels tall, with the teacher's name, the
-                    status and the bar all sitting outside it and doing
-                    nothing. Nothing inside is interactive, so there is no
-                    nested-anchor problem. */}
-                <Link
-                  href={`/requests/${request.id}`}
-                  className="block min-w-0 flex-1 py-1 hover:text-[var(--color-brand-600)]"
-                >
-                  <span className="font-medium">{request.audienceLabel}</span>
+          {teachers.map((teacher) => (
+            <li key={teacher.key} className="py-3 first:pt-0">
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <span className="font-medium">{teacher.teacherName}</span>
                   <span className="ml-2 text-sm text-[var(--color-ink-muted)]">
-                    {request.teacher}
+                    {teacher.forms.length === 1
+                      ? "1 list"
+                      : `${teacher.forms.length} lists`}
+                    {teacher.outstanding > 0
+                      ? ` · ${teacher.outstanding} to go`
+                      : ""}
                   </span>
-                  {/* The word, next to the teacher whose row it is. This is what
-                      makes the colour redundant rather than load-bearing, and
-                      it folds in the standalone "overdue" label that used to
-                      sit apart from everything else that said the same. */}
-                  <span
-                    className={`ml-2 rounded-[var(--radius-chip)] px-2 py-0.5 text-xs font-medium ${tone.pill}`}
-                  >
-                    {tone.label}
-                  </span>
-                  <div className="mt-1 flex items-center gap-2">
-                    <div className="h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-sunken)] sm:w-24 sm:flex-none">
-                      {/* Takes the row's tone, not a fixed green. A green bar
-                          sitting at 40% tells the office the opposite of what
-                          the number beside it says. */}
-                      <div
-                        className={`h-full rounded-full transition-[width] duration-300 ${tone.bar}`}
-                        style={{ width: `${percent}%` }}
-                      />
-                    </div>
-                    <span className="shrink-0 font-mono text-xs text-[var(--color-ink-muted)]">
-                      {request.studentsAnswered} of {request.rosterSize}
+                  {/* Said out loud, because a nudge going to a covering
+                      teacher's phone rather than to hers is exactly the thing
+                      the office must not discover afterwards. */}
+                  {teacher.overridden ? (
+                    <span className="ml-2 rounded-[var(--radius-chip)] bg-[var(--color-surface-muted)] px-2 py-0.5 text-xs text-[var(--color-ink-muted)]">
+                      to {teacher.phone}
                     </span>
-                  </div>
-                </Link>
+                  ) : null}
+                </div>
+                {/* ONE button for the person, whatever she owes. */}
                 <a
-                  href={remindHref(request)}
+                  href={remindHref(teacher)}
                   target="_blank"
                   rel="noreferrer noopener"
                   className={`${btn()} shrink-0 px-3 text-[13px]`}
                 >
                   Remind
                 </a>
-              </li>
-            );
-          })}
+              </div>
+
+              <ul className="mt-2 space-y-1.5">
+                {teacher.forms.map((form) => {
+                  const tone = TONE[toneOf(form)];
+                  const percent =
+                    form.rosterSize === 0
+                      ? 0
+                      : Math.round((form.answered / form.rosterSize) * 100);
+                  return (
+                    <li key={form.requestId}>
+                      <Link
+                        href={`/requests/${form.requestId}`}
+                        className="block py-0.5 hover:text-[var(--color-brand-600)]"
+                      >
+                        <span className="text-sm">{form.audienceLabel}</span>
+                        <span
+                          className={`ml-2 rounded-[var(--radius-chip)] px-2 py-0.5 text-xs font-medium ${tone.pill}`}
+                        >
+                          {tone.label}
+                        </span>
+                        <div className="mt-1 flex items-center gap-2">
+                          <div className="h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-sunken)] sm:w-24 sm:flex-none">
+                            {/* Takes the row's tone, not a fixed green. A green
+                                bar sitting at 40% tells the office the opposite
+                                of what the number beside it says. */}
+                            <div
+                              className={`h-full rounded-full transition-[width] duration-300 ${tone.bar}`}
+                              style={{ width: `${percent}%` }}
+                            />
+                          </div>
+                          <span className="shrink-0 font-mono text-xs text-[var(--color-ink-muted)]">
+                            {form.answered} of {form.rosterSize}
+                          </span>
+                        </div>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </li>
+          ))}
         </ul>
       ) : (
         <p className="mt-2 text-sm text-[var(--color-confirm-fg)]">

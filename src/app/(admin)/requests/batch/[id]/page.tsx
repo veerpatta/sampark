@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { canCreateRequests, currentUser } from "@/lib/auth/session";
+import { requestOrigin } from "@/lib/request-origin";
 import { getBatch } from "@/lib/batches";
 import { groupLinksByRecipient } from "@/lib/send-queue";
 import { DataTable, type Column } from "@/components/admin/DataTable";
@@ -23,8 +23,7 @@ export default async function BatchPage({
   const detail = await getBatch(id);
   if (!detail) notFound();
 
-  const host = (await headers()).get("host") ?? "";
-  const origin = `${host.startsWith("localhost") ? "http" : "https"}://${host}`;
+  const origin = await requestOrigin();
 
   const { batch, links } = detail;
 

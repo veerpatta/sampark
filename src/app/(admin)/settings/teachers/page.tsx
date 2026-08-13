@@ -1,7 +1,7 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { asc } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import { requestOrigin } from "@/lib/request-origin";
 import { canManageSettings, currentUser } from "@/lib/auth/session";
 import { CLASS_LABELS } from "@/lib/classes";
 import { HOUSES } from "@/lib/houses";
@@ -41,9 +41,8 @@ export default async function TeachersPage() {
     .orderBy(asc(schema.teachers.name));
 
   // The host the office is actually on, so the link she copies is the link that
-  // works. Same approach as the batch send queue.
-  const host = (await headers()).get("host") ?? "";
-  const origin = `${host.startsWith("localhost") ? "http" : "https"}://${host}`;
+  // works.
+  const origin = await requestOrigin();
   const withLinks = teachers.filter((teacher) => teacher.linkToken).length;
 
   return (

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { asc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { listRequests } from "@/lib/requests";
+import { requestOrigin } from "@/lib/request-origin";
 import { countByClass } from "@/lib/students";
 import { CLASS_LABELS } from "@/lib/classes";
 import { TEMPLATES } from "@/lib/templates";
@@ -20,6 +21,8 @@ export const dynamic = "force-dynamic";
  */
 export default async function DashboardPage() {
   const today = new Date().toISOString().slice(0, 10);
+
+  const origin = await requestOrigin();
 
   const [requests, [students], counts, teachers] = await Promise.all([
     listRequests(),
@@ -66,7 +69,7 @@ export default async function DashboardPage() {
         templates={TEMPLATES}
       />
 
-      <StatusBoard requests={requests} />
+      <StatusBoard requests={requests} origin={origin} />
 
       {/* Two across on a phone, not one. Four counts stacked vertically is a
           screenful of scrolling for four numbers, and the pairs read against

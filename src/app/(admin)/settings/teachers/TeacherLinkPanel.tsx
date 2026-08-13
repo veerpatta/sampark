@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { buildWhatsAppLink } from "@/lib/whatsapp";
+import { buildWhatsAppLink, teacherPageUrl } from "@/lib/whatsapp";
 import { issueTeacherLink, revokeTeacherLink } from "./actions";
 
 /**
@@ -51,7 +51,7 @@ export function TeacherLinkPanel({
     );
   }
 
-  const url = `${origin}/t/${token}`;
+  const url = teacherPageUrl(origin, token);
   // Bilingual, English line over Hindi line, exactly like every other message
   // in lib/whatsapp.ts and like the page this link opens.
   const message = [

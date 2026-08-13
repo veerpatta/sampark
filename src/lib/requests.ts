@@ -437,11 +437,26 @@ export type RequestBoardRow = {
   audienceLabel: string;
   audienceKind: string;
   teacher: string;
+  /**
+   * Her id, because the dashboard groups her rows into one reminder and a name
+   * is not a key — two teachers can share one. See lib/reminders.ts.
+   */
+  teacherId: string;
   dueDate: string;
   status: string;
   /** For the one-tap reminder on the dashboard, without a second page load. */
   token: string;
   teacherPhone: string;
+  /**
+   * The per-request override, or null when this went to her saved number.
+   *
+   * Kept SEPARATE from the coalesced `teacherPhone` above, which cannot answer
+   * "was this redirected" — an override that happens to equal her saved number
+   * and no override at all look identical once coalesced. The dashboard says so
+   * out loud, because a nudge going to a covering teacher's phone should not be
+   * silent about it.
+   */
+  contactPhone: string | null;
   /** What this request asks for — names the subject in a subject link's message. */
   fieldKeys: string[];
   /** Her durable page, when she has one. The nudge prefers it. */
@@ -520,12 +535,14 @@ export async function listRequests(
       audienceLabel: schema.requests.audienceLabel,
       audienceKind: schema.requests.audienceKind,
       teacher: schema.teachers.name,
+      teacherId: schema.teachers.id,
       dueDate: schema.requests.dueDate,
       status: schema.requests.status,
       token: schema.requests.token,
       // contact_phone when the office overrode it for this request, her saved
       // number otherwise. One extra projection on a join that already exists.
       teacherPhone: sql<string>`coalesce(nullif(${schema.requests.contactPhone}, ''), ${schema.teachers.phone})`,
+      contactPhone: sql<string | null>`nullif(${schema.requests.contactPhone}, '')`,
       fieldKeys: schema.requests.fieldKeys,
       teacherLinkToken: schema.teachers.linkToken,
       archivedAt: schema.requests.archivedAt,
@@ -592,10 +609,12 @@ export async function listRequests(
     audienceLabel: row.audienceLabel,
     audienceKind: row.audienceKind,
     teacher: row.teacher,
+    teacherId: row.teacherId,
     dueDate: row.dueDate,
     status: row.status,
     token: row.token,
     teacherPhone: row.teacherPhone,
+    contactPhone: row.contactPhone,
     fieldKeys: row.fieldKeys,
     teacherLinkToken: row.teacherLinkToken,
     rosterSize: sizes.get(row.id) ?? 0,

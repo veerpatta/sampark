@@ -57,6 +57,16 @@ const requestIds: string[] = [];
  * So: drop the scripts, drop the comments, drop the tags, collapse the space.
  * What is left is the sentence the office reads.
  */
+/** The five entities an href can carry once React has escaped it into HTML. */
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;|&#39;/g, "'");
+}
+
 function visibleText(html: string): string {
   return html
     .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
@@ -311,6 +321,57 @@ async function main() {
     );
     assert.ok(text.includes("not started"), "the header does not count them");
     return "Hemlata Meena · 0 / 24";
+  });
+
+  /* ------------------------------------------------------------------ */
+  console.log("\nOne nudge per teacher, not per form");
+
+  await step("the dashboard sends one reminder per teacher", async () => {
+    /*
+     * At this point Sunita owes two things — the fixture FA1 round and the
+     * round this script just created — and Hemlata owes two of her own. Four
+     * open forms, and the dashboard used to put a Remind button on each, which
+     * meant tapping through them sent each teacher two near-identical WhatsApp
+     * messages seconds apart. Two buttons is the fix.
+     */
+    const html = await (await signedIn("/")).text();
+    const hrefs = [...html.matchAll(/href="(https:\/\/wa\.me\/[^"]+)"/g)].map((m) =>
+      decodeHtml(m[1]!),
+    );
+
+    assert.equal(hrefs.length, 2, `${hrefs.length} Remind buttons, expected one per teacher`);
+
+    const phones = hrefs.map((href) => new URL(href).pathname);
+    assert.equal(new Set(phones).size, 2, "two buttons pointed at the same number");
+    return `2 buttons → ${phones.join(", ")}`;
+  });
+
+  await step("one teacher's message carries everything she owes, once", async () => {
+    const html = await (await signedIn("/")).text();
+    const hrefs = [...html.matchAll(/href="(https:\/\/wa\.me\/[^"]+)"/g)].map((m) =>
+      decodeHtml(m[1]!),
+    );
+
+    const sunita = hrefs
+      .map((href) => new URL(href).searchParams.get("text") ?? "")
+      .find((text) => text.includes("Sunita Sharma"));
+    assert.ok(sunita, "no message addressed to her");
+
+    assert.ok(sunita!.includes("2 lists are still pending"), "her two forms were not collapsed");
+    assert.ok(sunita!.includes("Smoke FA maths"), "the round this script made is missing");
+
+    /*
+     * EXACTLY ONE URL, and it must be absolute. She has a durable page, so it
+     * carries both forms and per-form links would be the wall this collapses.
+     * The absolute check is the regression guard: this component renders on the
+     * server, where `window` does not exist, and a render-time
+     * window.location.origin baked a relative "/t/abc" into the href that React
+     * then kept through hydration — a link that means nothing in WhatsApp.
+     */
+    const urls = sunita!.match(/https?:\/\/\S+/g) ?? [];
+    assert.equal(urls.length, 1, `${urls.length} links in one reminder: ${urls}`);
+    assert.match(urls[0]!, /^https?:\/\/[^/]+\/t\//, `not an absolute /t/ link: ${urls[0]}`);
+    return "1 message, 1 absolute link";
   });
 
   /* ------------------------------------------------------------------ */

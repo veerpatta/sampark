@@ -3,7 +3,11 @@
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { CheckCircle } from "@phosphor-icons/react";
-import { buildRoundMessage, buildWhatsAppLink } from "@/lib/whatsapp";
+import {
+  buildRoundMessage,
+  buildWhatsAppLink,
+  teacherPageUrl,
+} from "@/lib/whatsapp";
 import type { QueueGroup } from "@/lib/send-queue";
 
 import { useToast } from "@/components/ui/Toast";
@@ -95,7 +99,7 @@ export function SendQueue({
         // lines, it is idempotent, and it re-teaches the habit for free on
         // every round the office does choose to push.
         teacherPageUrl: group.linkToken
-          ? `${origin}/t/${group.linkToken}`
+          ? teacherPageUrl(origin, group.linkToken)
           : undefined,
       }),
     );

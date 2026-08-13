@@ -86,9 +86,26 @@ async function main() {
     });
   console.log(`  user      ${TEST_USER.email} (${TEST_USER.role})`);
 
+  /*
+   * Durable links for everybody, because that is the workflow the school is
+   * meant to be on — she saves one page and whatever is asked of her appears on
+   * it. It also makes the fixtures exercise the branch that matters: with a
+   * durable link a reminder carries ONE url, without one it carries a link per
+   * form, and only one of those two shapes is covered if every fixture teacher
+   * has a null token.
+   *
+   * Deterministic per teacher rather than random, so re-seeding does not
+   * silently invalidate a link somebody has open in a tab.
+   */
+  const teachers = TEST_TEACHERS.map((teacher) => ({
+    ...teacher,
+    linkToken: fixtureToken(teacher.id),
+    linkIssuedAt: new Date(),
+  }));
+
   await db
     .insert(schema.teachers)
-    .values(TEST_TEACHERS)
+    .values(teachers)
     .onConflictDoUpdate({
       target: schema.teachers.id,
       set: {
@@ -98,9 +115,11 @@ async function main() {
         houses: excluded("houses"),
         routes: excluded("routes"),
         active: excluded("active"),
+        linkToken: excluded("link_token"),
+        linkIssuedAt: excluded("link_issued_at"),
       },
     });
-  console.log(`  teachers  ${TEST_TEACHERS.length}`);
+  console.log(`  teachers  ${TEST_TEACHERS.length}, each with a durable link`);
 
   for (const chunk of chunked(students, 100)) {
     await db
@@ -317,6 +336,32 @@ async function passwordHash(): Promise<string> {
 }
 
 const excluded = (column: string) => sql.raw(`excluded."${column}"`);
+
+/**
+ * A stable 16-character token for a fixture teacher.
+ *
+ * Same shape as a real one — the resolver's guard is /^[A-Za-z0-9_-]{16}$/ and
+ * it must pass — but derived from her id rather than from randomness, so
+ * re-seeding does not invalidate a link somebody has open in a tab.
+ *
+ * NOT generateToken, deliberately: that mints 96 bits of real entropy for a
+ * bearer credential, and these guard nothing but invented children. Making a
+ * fixture reproducible matters more here than making it unguessable.
+ */
+function fixtureToken(teacherId: string): string {
+  const seed = `${teacherId}-sampark-fixture`;
+  let out = "";
+  for (let i = 0; out.length < 16; i += 1) {
+    // A plain rolling hash: this is a fixture identifier, not a secret, and it
+    // never guards anything that is not invented data.
+    let h = 2166136261 ^ i;
+    for (const ch of seed) {
+      h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+    }
+    out += (h >>> 0).toString(36);
+  }
+  return out.slice(0, 16).padEnd(16, "0");
+}
 
 function chunked<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];

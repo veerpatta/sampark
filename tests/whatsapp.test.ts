@@ -4,7 +4,9 @@ import {
   buildReminderMessage,
   buildRequestMessage,
   buildRoundMessage,
+  buildRoundReminderMessage,
   buildWhatsAppLink,
+  teacherPageUrl,
   describeAudienceEn,
   describeAudienceHi,
   describeAudienceLineHi,
@@ -350,5 +352,129 @@ describe("describeAudienceLineHi", () => {
     ]) {
       assert.equal(describeAudienceLineHi(audience), describeAudienceHi(audience));
     }
+  });
+});
+
+describe("buildRoundReminderMessage", () => {
+  /**
+   * One nudge per teacher, not per form.
+   *
+   * A teacher who takes maths for three classes used to get three Remind
+   * buttons on the dashboard and therefore three near-identical WhatsApp
+   * messages a few seconds apart. That is not three reminders — it is one
+   * person spamming her, and the sensible response is to stop reading any.
+   */
+  const item = {
+    audience: { kind: "class" as const, label: "Class 8" },
+    title: "फ़ोन नंबर",
+    dueDate: "2026-08-20",
+    url: "https://x.invalid/r/a",
+    answered: 0,
+    rosterSize: 24,
+  };
+
+  it("delegates to buildReminderMessage, byte for byte, for a single form", () => {
+    // The compatibility contract, the same one buildRoundMessage carries: most
+    // teachers owe exactly one thing and must not notice anything changed.
+    assert.equal(
+      buildRoundReminderMessage({ teacherName: "Sunita", items: [item] }),
+      buildReminderMessage({
+        teacherName: "Sunita",
+        audience: item.audience,
+        title: item.title,
+        dueDate: item.dueDate,
+        url: item.url,
+      }),
+    );
+  });
+
+  it("sends her durable page ONCE instead of a link per form", () => {
+    const message = buildRoundReminderMessage({
+      teacherName: "Prateek",
+      teacherPageUrl: "https://x.invalid/t/abc",
+      items: [
+        { ...item, audience: { kind: "class", label: "Class 8" }, url: "https://x.invalid/r/a" },
+        { ...item, audience: { kind: "class", label: "Class 9" }, url: "https://x.invalid/r/b" },
+        { ...item, audience: { kind: "class", label: "Class 10" }, url: "https://x.invalid/r/c" },
+      ],
+    });
+
+    assert.equal(
+      (message.match(/https:\/\/x\.invalid/g) ?? []).length,
+      1,
+      "her page carries all three, so per-form links would be the wall this collapses",
+    );
+    assert.ok(message.includes("https://x.invalid/t/abc"));
+    assert.ok(!message.includes("/r/a"), "a per-form link survived alongside her page");
+  });
+
+  it("falls back to one link per form when she has no page", () => {
+    const message = buildRoundReminderMessage({
+      teacherName: "Prateek",
+      items: [
+        { ...item, audience: { kind: "class", label: "Class 8" }, url: "https://x.invalid/r/a" },
+        { ...item, audience: { kind: "class", label: "Class 9" }, url: "https://x.invalid/r/b" },
+      ],
+    });
+    assert.ok(message.includes("https://x.invalid/r/a"));
+    assert.ok(message.includes("https://x.invalid/r/b"));
+  });
+
+  it("puts the deadline on the line it applies to", () => {
+    // The one place this cannot copy buildRoundMessage: a reminder spans
+    // whatever is outstanding, so a single "Due:" footer would be wrong for
+    // every line but one.
+    const message = buildRoundReminderMessage({
+      teacherName: "Prateek",
+      items: [
+        { ...item, dueDate: "2026-08-14", audience: { kind: "class", label: "Class 8" } },
+        { ...item, dueDate: "2026-09-01", audience: { kind: "class", label: "Class 9" } },
+      ],
+    });
+    assert.ok(message.includes("14 Aug"), "the first deadline is missing");
+    assert.ok(message.includes("1 Sept"), "the second deadline is missing");
+  });
+
+  it("says how far along she is, rather than accusing her of not starting", () => {
+    const message = buildRoundReminderMessage({
+      teacherName: "Prateek",
+      items: [
+        { ...item, answered: 20, rosterSize: 24, audience: { kind: "class", label: "Class 8" } },
+        { ...item, answered: 0, rosterSize: 24, audience: { kind: "class", label: "Class 9" } },
+      ],
+    });
+    assert.ok(message.includes("20 of 24 done"), "a teacher nearly finished was told nothing");
+    assert.ok(message.includes("not started"));
+  });
+
+  it("names each group, in both languages, once per form", () => {
+    const message = buildRoundReminderMessage({
+      teacherName: "Prateek",
+      items: [
+        { ...item, audience: { kind: "subject", label: "Maths", fieldKeys: ["fa_maths"] } },
+        { ...item, audience: { kind: "class", label: "Class 9" } },
+      ],
+    });
+    assert.ok(message.includes("Maths"), "the subject is not named");
+    assert.ok(message.includes("गणित"), "the Hindi subject name is missing");
+    assert.ok(message.includes("Class 9"));
+  });
+
+  it("keeps Devanagari numerals out, like every other teacher-facing string", () => {
+    const message = buildRoundReminderMessage({
+      teacherName: "Prateek",
+      teacherPageUrl: "https://x.invalid/t/abc",
+      items: [
+        { ...item, answered: 20, audience: { kind: "class", label: "Class 8" } },
+        { ...item, audience: { kind: "class", label: "Class 9" } },
+      ],
+    });
+    assert.ok(!/[०-९]/.test(message), "Devanagari numerals reached a teacher");
+  });
+});
+
+describe("teacherPageUrl", () => {
+  it("is the one place the /t/ route is spelled", () => {
+    assert.equal(teacherPageUrl("https://x.invalid", "abc"), "https://x.invalid/t/abc");
   });
 });
