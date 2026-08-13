@@ -143,11 +143,12 @@ describe("creating a bulk send", () => {
     const scenario = await createFanOutScenario({
       houses: ["Rana Pratap", "Rana Pratap"],
     });
+    const house = scenario.houses[0]!;
 
     // One teacher is in-charge of the house; both classes' children are hers.
     await db
       .update(schema.teachers)
-      .set({ houses: ["Rana Pratap"] })
+      .set({ houses: [house] })
       .where(eq(schema.teachers.id, scenario.groups[0]!.teacherId));
 
     const result = await createBatch({
@@ -163,7 +164,7 @@ describe("creating a bulk send", () => {
 
     const [row] = await requestsIn(result.batchId);
     assert.equal(row!.audienceKind, "house");
-    assert.equal(row!.audienceLabel, "Rana Pratap");
+    assert.equal(row!.audienceLabel, house);
     assert.equal(
       row!.classLabel,
       null,
@@ -176,15 +177,15 @@ describe("creating a bulk send", () => {
   });
 
   test("children with no house are left out loudly, not silently", async () => {
-    // A different house from the test above on purpose: class labels here are
-    // fixture-scoped strings, but house names are the real four and shared, so
-    // two tests claiming the same one would give it two in-charges and block it.
+    // The name is a label, not a literal — createFanOutScenario suffixes it per
+    // run, so this no longer has to pick a different house from the test above
+    // to avoid giving one house two in-charges.
     const scenario = await createFanOutScenario({
       houses: ["Bappa Rawal", null],
     });
     await db
       .update(schema.teachers)
-      .set({ houses: ["Bappa Rawal"] })
+      .set({ houses: [scenario.houses[0]!] })
       .where(eq(schema.teachers.id, scenario.groups[0]!.teacherId));
 
     const preview = await previewBatch({
@@ -395,13 +396,12 @@ describe("filling a gap from the preview", () => {
     // The same hole exists outside subject mode: a house with no in-charge had
     // no picker either. Naming someone there belongs in her houses array, which
     // is exactly what Settings would have written.
-    // Rana Kumbha, unclaimed by the tests above: class labels are
-    // fixture-scoped strings but house names are the real four and shared, so
-    // two tests claiming one would give it two in-charges and block it. The
-    // audience stays scoped to the fixture's own classes for the same reason —
-    // the real roster has children in every house.
+    // The house name is suffixed per run by createFanOutScenario, so no two
+    // tests can claim the same one. The audience still stays scoped to the
+    // fixture's own classes — a real roster has children in every house.
     const scenario = await createFanOutScenario({ houses: ["Rana Kumbha", null] });
     const [group] = scenario.groups;
+    const house = scenario.houses[0]!;
 
     const input = {
       title: "House check",
@@ -416,7 +416,7 @@ describe("filling a gap from the preview", () => {
 
     await createBatch({
       ...input,
-      overrides: { "house|Rana Kumbha": { teacherId: group!.teacherId } },
+      overrides: { [`house|${house}`]: { teacherId: group!.teacherId } },
       remember: true,
     });
 
@@ -425,7 +425,7 @@ describe("filling a gap from the preview", () => {
       .from(schema.teachers)
       .where(eq(schema.teachers.id, group!.teacherId));
     assert.ok(
-      teacher!.houses.includes("Rana Kumbha"),
+      teacher!.houses.includes(house),
       "the choice belongs on her row, not only on this batch",
     );
     assert.deepEqual(

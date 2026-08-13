@@ -650,6 +650,9 @@ describe("idempotency", () => {
 
 describe("collect-mode fields", () => {
   test("marks land in student_records against the period, not on students", async () => {
+    // They no longer wait for an approval to get there — see marks.test.ts for
+    // that path in full. What this still guards is the DESTINATION: a mark is
+    // period-scoped data and must never be written onto the students row.
     const scenario = await createScenario({
       fieldKeys: ["fa_maths"],
       period: "2026-27/FA1",
@@ -661,13 +664,6 @@ describe("collect-mode fields", () => {
       [{ studentId: first!.studentId, values: { fa_maths: "18" } }],
       null,
     );
-
-    const pending = (await submissionsFor(scenario.requestId))
-      .filter((row) => row.reviewStatus === "pending")
-      .map((row) => row.id);
-
-    assert.equal(pending.length, 1);
-    await decideSubmissions(pending, "approved", scenario.userId);
 
     const { db, schema } = await import("../src/lib/db");
     const { and, eq } = await import("drizzle-orm");
@@ -684,6 +680,57 @@ describe("collect-mode fields", () => {
     assert.equal(records.length, 1);
     assert.equal(records[0]!.value, "18");
     assert.equal(records[0]!.period, "2026-27/FA1");
+  });
+
+  test("a marks row left pending from before the change still approves", async () => {
+    /*
+     * THE BACKLOG DRAIN. Marks apply at submit now, so decideSubmissions'
+     * student_records branch is unreachable for anything new — but whatever was
+     * sitting in the queue when that shipped is still there and still has to
+     * approve correctly. Nothing else exercises that branch any more, so
+     * without this test it would rot silently and take the backlog with it.
+     *
+     * The row is inserted directly because recordSubmissions can no longer
+     * produce one.
+     */
+    const scenario = await createScenario({
+      fieldKeys: ["fa_maths"],
+      period: "2026-27/FA1",
+    });
+    const [first] = scenario.resolved.roster;
+    const { db, schema } = await import("../src/lib/db");
+    const { and, eq } = await import("drizzle-orm");
+
+    const [legacy] = await db
+      .insert(schema.submissions)
+      .values({
+        requestId: scenario.requestId,
+        studentId: first!.studentId,
+        fieldKey: "fa_maths",
+        action: "changed",
+        oldValue: null,
+        newValue: "24",
+        reviewStatus: "pending",
+      })
+      .returning();
+
+    const queued = await listPendingReview(scenario.requestId);
+    assert.equal(queued.length, 1, "an old pending mark must still be visible");
+
+    await decideSubmissions([legacy!.id], "approved", scenario.userId);
+
+    const records = await db
+      .select()
+      .from(schema.studentRecords)
+      .where(
+        and(
+          eq(schema.studentRecords.studentId, first!.studentId),
+          eq(schema.studentRecords.fieldKey, "fa_maths"),
+        ),
+      );
+
+    assert.equal(records.length, 1);
+    assert.equal(records[0]!.value, "24");
   });
 
   test("marks over the maximum are refused", async () => {

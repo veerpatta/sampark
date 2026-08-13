@@ -417,6 +417,15 @@ export const requests = pgTable(
      * data — and the mitigations that remain are the short expiry, the 3-day
      * grace cut-off, close/reopen, and the fact that no link reaches more than
      * one class. Worth revisiting before an Aadhaar collection round.
+     *
+     * RECONSIDERED when marks began applying without review: a forwarded link
+     * now writes a stored value with no human in the loop, where before the
+     * office saw everything first. Judged still proportionate. What such a link
+     * can reach is one period's marks for one group, validated against the
+     * registry's range, overwritable by the real teacher, and leaving an
+     * append-only submissions row naming the request and the device. Master
+     * fields are unchanged, so a leaked link still cannot alter a phone number,
+     * a parent's name or a photograph.
      */
     status: text("status").notNull().default("open"), // open | submitted | closed | expired
     /**
@@ -524,7 +533,17 @@ export const submissions = pgTable(
     action: text("action").notNull(), // confirmed | changed | not_present | absent
     oldValue: text("old_value"),
     newValue: text("new_value"),
-    reviewStatus: text("review_status").notNull().default("pending"), // pending | approved | rejected | auto
+    /**
+     * pending | approved | rejected | auto | applied
+     *
+     * 'auto'    — she confirmed what we showed her; there was nothing to decide.
+     * 'applied' — it went straight into student_records at submit time, with no
+     *             human in the loop. Only ever a field with no target_column: a
+     *             mark, or an answer to a one-off question. See the note at the
+     *             top of lib/submissions.ts for why that is safe and why this is
+     *             a distinct value rather than a reuse of 'auto'.
+     */
+    reviewStatus: text("review_status").notNull().default("pending"),
     submittedAt: timestamp("submitted_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

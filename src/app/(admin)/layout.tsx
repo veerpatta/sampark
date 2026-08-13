@@ -18,6 +18,11 @@ const NAV: NavItem[] = [
   { href: "/", label: "Home", icon: "home" },
   { href: "/requests", label: "Requests", icon: "requests" },
   { href: "/review", label: "Review", icon: "review" },
+  // Marks sits beside Review rather than under it. They are the two halves of
+  // "what came back": Review is what needs a decision, Marks is what does not.
+  // Since marks stopped queueing there is no other screen that says a marks
+  // round is in progress at all.
+  { href: "/marks", label: "Marks", icon: "marks" },
   { href: "/students", label: "Students", icon: "students" },
 ];
 

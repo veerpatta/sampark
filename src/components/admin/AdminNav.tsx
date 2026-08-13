@@ -6,6 +6,7 @@ import {
   CheckCircle,
   Gear,
   House,
+  ListChecks,
   PaperPlaneTilt,
   Users,
   type Icon,
@@ -47,12 +48,19 @@ import {
  * that font drew it. design-qa.md already ruled glyph and emoji substitutes
  * out on the teacher surface; this closes the console side.
  */
-export type NavIcon = "home" | "requests" | "review" | "students" | "settings";
+export type NavIcon =
+  | "home"
+  | "requests"
+  | "review"
+  | "marks"
+  | "students"
+  | "settings";
 
 const ICONS: Record<NavIcon, Icon> = {
   home: House,
   requests: PaperPlaneTilt,
   review: CheckCircle,
+  marks: ListChecks,
   students: Users,
   settings: Gear,
 };

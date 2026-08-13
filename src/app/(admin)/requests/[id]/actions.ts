@@ -116,8 +116,10 @@ async function removeOne(id: string): Promise<RemoveOutcome> {
 
   if (answers === 0) {
     // request_students cascades (drizzle/schema.ts). Nothing else points here:
-    // student_records.request_id is written only when a change is APPROVED, and
-    // no submission means no approval.
+    // a student_records row is only ever written alongside the submission that
+    // produced it — in the same batch at submit time for a mark, in the same
+    // transaction at approval for the backlog — so no submission means no
+    // record. The count above is the whole guard.
     await db.delete(schema.requests).where(eq(schema.requests.id, id));
   } else {
     await db

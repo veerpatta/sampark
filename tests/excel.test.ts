@@ -163,3 +163,55 @@ describe("buildWorkbook — photographs in cells", () => {
     assert.equal(sheet.getRow(2).getCell(2).value, "no photo");
   });
 });
+
+/**
+ * Sheet names.
+ *
+ * Excel caps a name at 31 characters and refuses two the same. The marks export
+ * is one sheet per teacher and two teachers can share a name outright, so a
+ * workbook that quietly dropped or overwrote a sheet would lose a teacher's
+ * whole round with nothing on screen to say so.
+ */
+describe("sheet names", () => {
+  const columns = [{ header: "A", width: 10, value: (row: { a: string }) => row.a }];
+
+  async function namesOf(sheetNames: string[]): Promise<string[]> {
+    const file = await buildWorkbook(
+      sheetNames.map((name) => ({ name, rows: [{ a: "x" }] })),
+      columns,
+    );
+    const read = new ExcelJS.Workbook();
+    await read.xlsx.load(
+      file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer,
+    );
+    return read.worksheets.map((sheet) => sheet.name);
+  }
+
+  test("keeps both sheets when two teachers share a name", async () => {
+    const names = await namesOf(["Sunita Sharma", "Sunita Sharma"]);
+    assert.equal(names.length, 2, "a sheet went missing");
+    assert.equal(new Set(names).size, 2, "the two sheets ended up with one name");
+    assert.equal(names[0], "Sunita Sharma", "the first one should keep the plain name");
+  });
+
+  test("separates names that differ only past the 31-character cap", async () => {
+    // Both truncate to the same 31 characters, so to the file they are one name.
+    const long = "Lakshmi Narayan Vishwakarma Prasad";
+    const names = await namesOf([`${long} Devi`, `${long} Singh`]);
+    assert.equal(new Set(names).size, 2, "truncation collapsed two teachers into one sheet");
+    for (const name of names) {
+      assert.ok(name.length <= 31, `"${name}" is longer than Excel allows`);
+    }
+  });
+
+  test("keeps every sheet when a name repeats more than twice", async () => {
+    const names = await namesOf(["Class 8", "Class 8", "Class 8", "Class 8"]);
+    assert.equal(new Set(names).size, 4);
+  });
+
+  test("still strips the punctuation Excel refuses", async () => {
+    // A period reads '2026-27/FA1', and that slash would corrupt the file.
+    const [name] = await namesOf(["2026-27/FA1"]);
+    assert.ok(!name!.includes("/"), `"${name}" still carries a slash`);
+  });
+});

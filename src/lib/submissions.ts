@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { db, schema, withTransaction } from "./db";
-import { validateField } from "./fields";
+import { isMasterField, validateField } from "./fields";
 import { photoBelongsTo } from "./photos";
 import { teacherOrigin, type OriginWrite } from "./precedence";
 import { STUDENT_COLUMN_BY_DB_NAME } from "./student-columns";
@@ -22,6 +22,29 @@ import type { FieldDef } from "../../drizzle/schema";
  *   not_present — is decided HERE, by comparing against the frozen snapshot.
  *   A client that claims "confirmed" while sending a different value gets a
  *   'changed' row, because the comparison is ours.
+ *
+ * TWO DESTINATIONS, AND ONLY ONE OF THEM IS REVIEWED.
+ *
+ * A field with a target_column is master data and goes through the queue exactly
+ * as it always has — Rule 3 is a rule about the `students` table, and it is
+ * untouched. A field WITHOUT one (a subject mark, a one-off question) is written
+ * straight to student_records here, at submit, and never appears in /review.
+ *
+ * That is not a hole in Rule 3, because every reason the rule exists is a
+ * property of master data and not of this table:
+ *
+ *   - nothing else writes student_records, so there is no import to lose an
+ *     argument to and no precedence to get wrong (lib/precedence.ts stamps
+ *     value_sources, which a mark never gets);
+ *   - there is no prior value to destroy — a mark is collected, not confirmed;
+ *   - the row is keyed by (student, field, period), so a correction overwrites
+ *     the one value it is about and nothing else.
+ *
+ * What it buys is the whole point: a marks round is forty-six children times
+ * four subjects, and asking the office to approve a hundred and eighty rows it
+ * has no way to check is asking it to click Approve without reading. A review
+ * nobody can actually perform is worse than no review, because the record then
+ * claims someone checked.
  */
 
 export type StudentAnswer = {
@@ -68,6 +91,24 @@ export async function recordSubmissions(
   const roster = new Map(request.roster.map((row) => [row.studentId, row]));
   const failures: ValidationFailure[] = [];
 
+  /*
+   * A period-scoped request with no period should be impossible: resolvePeriod
+   * (lib/requests.ts) throws at creation rather than let one exist. Say so out
+   * loud if one turns up anyway.
+   *
+   * statusFor keeps her answer as 'pending' in that case, so it lands in
+   * /review where a human will find it instead of being written nowhere. This
+   * is the failure the field registry's own note calls out as the worst kind —
+   * a teacher gets a 201 and the work is gone, with nothing anywhere to show it
+   * ever arrived.
+   */
+  if (!request.period && request.fields.some((field) => !isMasterField(field))) {
+    console.error(
+      `Request ${request.requestId} collects a period-scoped field but has no period; ` +
+        `those answers will queue for review instead of being recorded.`,
+    );
+  }
+
   type Row = typeof schema.submissions.$inferInsert;
   const rows: Row[] = [];
 
@@ -79,6 +120,11 @@ export async function recordSubmissions(
       const frozen = normalise(field, student.values[field.key] ?? null);
 
       if (answer.notPresent) {
+        // 'pending' EVEN FOR A MARK, which is the one place the auto-apply rule
+        // above does not reach. It carries no value to write, so there is
+        // nothing to apply — and "this child is not in my class" is precisely
+        // the kind of thing the office has to see, whatever field raised it. A
+        // roster is wrong and someone has to fix it.
         rows.push({
           requestId: request.requestId,
           studentId: student.studentId,
@@ -175,7 +221,7 @@ export async function recordSubmissions(
         action: "changed",
         oldValue: frozen,
         newValue: checked.value,
-        reviewStatus: "pending",
+        reviewStatus: statusFor(field, request.period),
         clientHash,
       });
     }
@@ -198,13 +244,111 @@ export async function recordSubmissions(
   // of pending changes for the office to wade through. A NULL key (anything
   // written before Phase 5) never collides, because Postgres treats NULLs in a
   // unique index as distinct.
-  for (let i = 0; i < rows.length; i += 200) {
-    await db
-      .insert(schema.submissions)
-      .values(rows.slice(i, i + 200))
-      .onConflictDoNothing();
+  /*
+   * The values that go straight into the record, keyed so a repeat collapses.
+   *
+   * DEDUPED BECAUSE POSTGRES REFUSES an ON CONFLICT DO UPDATE that would touch
+   * the same row twice in one statement, and the upsert below is one statement
+   * over many rows. parseAnswers (api/r/[token]/route.ts) does not dedupe and
+   * the roster lookup succeeds on both entries, so a stale tab naming a student
+   * twice reaches here. Last one wins. Exactly the guard recordOrigins already
+   * carries for value_sources — see the note at lib/precedence.ts:182.
+   *
+   * Only 'applied' rows, which by construction means action 'changed' on a
+   * non-master field. A CONFIRMED mark is deliberately absent: the value it
+   * confirms is already in student_records (it is what loadPriorRecords
+   * prefilled), so the write would be a no-op on `value` while re-stamping
+   * `request_id` — quietly re-attributing a mark to whoever last confirmed it
+   * rather than to whoever entered it. That column is the only attribution the
+   * marks export has.
+   */
+  const records = new Map<string, typeof schema.studentRecords.$inferInsert>();
+  for (const row of rows) {
+    if (row.reviewStatus !== "applied") continue;
+    records.set(`${row.studentId}|${row.fieldKey}`, {
+      studentId: row.studentId,
+      fieldKey: row.fieldKey,
+      period: request.period!,
+      value: row.newValue,
+      requestId: request.requestId,
+    });
   }
 
+  // A round that collects nothing but master data pays for none of the above.
+  if (records.size === 0) {
+    for (let i = 0; i < rows.length; i += 200) {
+      await db
+        .insert(schema.submissions)
+        .values(rows.slice(i, i + 200))
+        .onConflictDoNothing();
+    }
+    return tally(rows);
+  }
+
+  /*
+   * ONE BATCH, so a mark and the row that records it land together.
+   *
+   * db.batch sends the lot as a single atomic request over the HTTP driver.
+   * NOT withTransaction: that opens a WebSocket pool per call, and its own doc
+   * comment (lib/db.ts) says it exists for the approval path, which has to READ
+   * a result partway through and branch on it. Nothing here branches — every
+   * value is computed before the first statement — and this is the one path in
+   * the app that runs on a village phone on a bad signal, so it does not get to
+   * pay for a capability it never uses. Same shape as the importer's writes:
+   * see applyPreview in lib/students-import.ts.
+   */
+  const statements = [
+    ...chunks(rows, 200).map((chunk) =>
+      db.insert(schema.submissions).values(chunk).onConflictDoNothing(),
+    ),
+    ...chunks([...records.values()], 200).map((chunk) =>
+      db
+        .insert(schema.studentRecords)
+        .values(chunk)
+        /*
+         * The same upsert the approval path uses, for the same reason: a
+         * teacher who re-opens her link and corrects a mark before the round
+         * closes must overwrite the one she typed first, not add a second. What
+         * she originally sent is never lost — it is a submissions row, and that
+         * table is append-only.
+         *
+         * `excluded.*` rather than the literal decideSubmissions uses, because
+         * this statement carries many rows and a literal would write one row's
+         * value over all of them.
+         *
+         * LAST ARRIVAL WINS, which is weaker than the review path's ordering.
+         * newestByKey/isSuperseded stop an older answer landing on top of a
+         * newer one; here two batches flushed out of order by a phone that was
+         * offline would apply the older mark last. Accepted rather than fixed
+         * with a version counter: she is looking at the number she just typed,
+         * and re-sending it is one tap.
+         */
+        .onConflictDoUpdate({
+          target: [
+            schema.studentRecords.studentId,
+            schema.studentRecords.fieldKey,
+            schema.studentRecords.period,
+          ],
+          set: {
+            value: sql`excluded."value"`,
+            requestId: sql`excluded."request_id"`,
+          },
+        }),
+    ),
+  ];
+
+  await db.batch(statements as [(typeof statements)[number], ...typeof statements]);
+
+  return tally(rows);
+}
+
+function chunks<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+function tally(rows: (typeof schema.submissions.$inferInsert)[]): RecordResult {
   return {
     recorded: rows.length,
     changed: rows.filter((row) => row.action === "changed").length,
@@ -214,12 +358,38 @@ export async function recordSubmissions(
 }
 
 /**
+ * Where a corrected value goes: the review queue, or straight into the record.
+ *
+ * 'applied' IS A DISTINCT STATUS, NOT A REUSE OF 'auto'. They are different
+ * facts about a row and the difference is the whole audit trail for a mark:
+ * 'auto' means she confirmed what we showed her and there was nothing to
+ * decide, 'applied' means this went into the record without anyone deciding.
+ * Fold them together and nothing downstream can tell a mark that landed from a
+ * phone number that was already right. The column is plain text with no enum
+ * and no check constraint, so a third value costs nothing.
+ *
+ * The `period` guard is belt and braces. resolvePeriod (lib/requests.ts) makes
+ * a period-scoped request without one impossible at creation, but if one ever
+ * existed the record write would be skipped — and a row claiming 'applied' when
+ * nothing was applied is the one lie this status must not tell. It queues
+ * instead, where a human will notice it.
+ */
+function statusFor(field: FieldDef, period: string | null): "pending" | "applied" {
+  return isMasterField(field) || !period ? "pending" : "applied";
+}
+
+/**
  * A confirmation that matches the snapshot is not a reviewable change.
  *
  * It lands with review_status 'auto' so it never appears in the queue — the
  * office should only ever be asked to look at things that actually differ.
  * The row is still written, because "she checked it and it was right" is the
  * single most useful fact this system collects.
+ *
+ * 'auto' FOR A MARK TOO, never 'applied'. A confirmed mark is one she was shown
+ * and left alone, so the value is already in student_records — writing it again
+ * would change nothing except request_id, and that column is what the marks
+ * export uses to say who entered a number. See the note on `records` above.
  */
 function confirmation(
   request: ResolvedRequest,
@@ -503,6 +673,12 @@ export type DecisionResult = {
  *   3. one change_log row per claimed submission — the audit trail
  *   4. write master data: students for fields with a target column,
  *      student_records for period-scoped ones
+ *
+ * THE student_records BRANCH IN STEP 4 IS NOW A DRAIN, NOT A PATH. Since marks
+ * apply at submit time (see recordSubmissions), nothing new arrives here with a
+ * target column of NULL. It stays because rows that were already pending when
+ * that changed are still in the queue and still have to approve correctly, and
+ * because it costs nothing to leave. Do not build anything new on it.
  */
 export async function decideSubmissions(
   ids: string[],

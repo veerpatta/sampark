@@ -94,6 +94,17 @@ export const isNonAcademic = (name: string): boolean =>
 export const SUBJECT_FIELD_KEYS: string[] = SUBJECTS.map((s) => s.fieldKey);
 
 /**
+ * The `field_defs.record_kind` a mark is filed under.
+ *
+ * QUERY ON THIS, NOT ON SUBJECT_FIELD_KEYS, anywhere that reads marks back out.
+ * Rule 11 says a collectable field is a row, not a deployment — a seventeenth
+ * subject added to field_defs must show up in the board and the export without
+ * anyone shipping code, and matching against the hard-coded list above would
+ * silently leave it out. The list stays what it is for: labels and order.
+ */
+export const FA_MARKS_KIND = "fa_marks";
+
+/**
  * Who teaches this subject to this class?
  *
  * The same contract as chooseTeacherForScope in lib/ownership.ts — one, many,

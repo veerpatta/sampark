@@ -67,6 +67,17 @@ export default async function StudentDetailPage({
         // the request already knows what it was called.
         requestTitle: schema.requests.title,
         requestId: schema.requests.id,
+        /**
+         * Who entered it.
+         *
+         * A mark is written the moment the teacher submits and leaves no
+         * change_log row — there is no deciding user to put in one, and
+         * inventing a system user would make the audit log assert that nobody
+         * decided something rather than that a named person entered it. So this
+         * is the screen that answers "who put this number here", and it is the
+         * screen someone actually opens to ask. See lib/submissions.ts.
+         */
+        teacherName: schema.teachers.name,
       })
       .from(schema.studentRecords)
       .innerJoin(
@@ -77,6 +88,7 @@ export default async function StudentDetailPage({
         schema.requests,
         eq(schema.requests.id, schema.studentRecords.requestId),
       )
+      .leftJoin(schema.teachers, eq(schema.teachers.id, schema.requests.teacherId))
       .where(eq(schema.studentRecords.studentId, studentId))
       .orderBy(desc(schema.studentRecords.period), asc(schema.studentRecords.fieldKey)),
   ]);
@@ -181,7 +193,14 @@ export default async function StudentDetailPage({
                           <span className="font-mono">{row.record.period}</span>
                         )}
                       </td>
-                      <td className="px-4 py-2">{row.fieldLabel}</td>
+                      <td className="px-4 py-2">
+                        {row.fieldLabel}
+                        {row.teacherName ? (
+                          <span className="block text-xs text-[var(--color-ink-muted)]">
+                            entered by {row.teacherName}
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-2 text-right font-mono">
                         {row.record.value ?? "—"}
                       </td>

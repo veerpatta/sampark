@@ -11,10 +11,18 @@ export const dynamic = "force-dynamic";
 const PAGE_SIZE = 100;
 
 /**
- * The change log.
+ * The change log: every DECISION taken about the master record.
  *
  * Success criterion 5 from the plan: every change to a student record has a
  * name and a timestamp attached to it. This is the screen that proves it.
+ *
+ * MARKS ARE NOT HERE, and their absence is not a gap. A change_log row records
+ * that a named user decided something, and nobody decides a mark — it is
+ * written the moment the teacher submits it (lib/submissions.ts). The name that
+ * matters for a mark is the teacher's, and she has no users row to reference,
+ * so a row here could only ever name an office clerk who did not do the work.
+ * A mark's own trail is the append-only submission behind it and the request it
+ * came from; both are surfaced on the student's page and on /marks.
  *
  * Read-only, and it could not be anything else — `app_rw` holds no UPDATE or
  * DELETE on change_log, so there is no code path from this application that
@@ -174,8 +182,17 @@ export default async function AuditPage({
         </div>
         <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
           {total.toLocaleString("en-IN")} decision{total === 1 ? "" : "s"}
-          {student ? ` for ${student}` : ""} · append-only, enforced by database
-          grants rather than by this application behaving itself
+          {student ? ` for ${student}` : ""} about the master record ·
+          append-only, enforced by database grants rather than by this
+          application behaving itself · marks are not decided, so they are
+          on{" "}
+          <Link
+            href="/marks"
+            className="text-[var(--color-brand-600)] hover:underline"
+          >
+            Marks
+          </Link>{" "}
+          instead
         </p>
       </header>
 

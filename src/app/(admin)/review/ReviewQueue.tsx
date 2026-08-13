@@ -42,10 +42,10 @@ export function ReviewQueue({
   /**
    * Narrowing, not a second selection.
    *
-   * At the end of a marks round this queue is several hundred rows across
-   * nineteen classes, and "approve the phone numbers but look at the photos
-   * properly" is the normal way to work through it. Three dimensions is enough:
-   * which group it came from, which field it is, and what the teacher did.
+   * A school-wide round is several hundred rows across nineteen classes, and
+   * "approve the phone numbers but look at the photos properly" is the normal
+   * way to work through it. Three dimensions is enough: which group it came
+   * from, which field it is, and what the teacher did.
    *
    * A filter CHANGES THE SELECTION rather than hiding rows that stay ticked.
    * Approving a hidden row because it was ticked before a filter was applied is
@@ -254,9 +254,10 @@ export function ReviewQueue({
               {group.audienceLabel} · {group.teacherName} ·{" "}
               {group.items.length} item{group.items.length === 1 ? "" : "s"}
             </span>
-            {/* Approving one class at a time is how the office actually works
-                through a marks round, and it beats unticking two hundred rows
-                to get at nineteen. */}
+            {/* Approving one class at a time beats unticking two hundred rows
+                to get at nineteen. It earned its place on marks rounds, which
+                no longer queue at all; a school-wide phone round is still
+                nineteen classes deep and still wants it. */}
             <button
               type="button"
               onClick={() =>

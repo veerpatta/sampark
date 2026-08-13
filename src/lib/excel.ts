@@ -327,16 +327,27 @@ const IMAGE_ROW_POINTS = (IMAGE_PX + 8) * 0.75;
  * supposed to remove.
  */
 export async function buildWorkbook<T>(
-  sheets: { name: string; rows: T[] }[],
+  /**
+   * `columns` per sheet OVERRIDES the shared set, for a workbook whose sheets
+   * genuinely do not have the same shape. The marks export is the case: one
+   * sheet per teacher, each carrying only the subjects she actually entered,
+   * behind a summary sheet that shares none of those columns. Sixteen columns on
+   * every sheet so they could share one header row would be fifteen empty ones
+   * for most teachers, which is not a spreadsheet anybody reads.
+   */
+  sheets: { name: string; rows: T[]; columns?: ExportColumn<T>[] }[],
   columns: ExportColumn<T>[],
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Sampark — VPPS Data Desk";
   workbook.created = new Date();
 
+  const used = new Set<string>();
+
   for (const sheet of sheets) {
-    const worksheet = workbook.addWorksheet(safeSheetName(sheet.name));
-    worksheet.columns = columns.map((column) => ({
+    const shape = sheet.columns ?? columns;
+    const worksheet = workbook.addWorksheet(uniqueSheetName(sheet.name, used));
+    worksheet.columns = shape.map((column) => ({
       header: column.header,
       key: column.header,
       width: column.width,
@@ -345,13 +356,13 @@ export async function buildWorkbook<T>(
     worksheet.getRow(1).font = { bold: true };
     worksheet.views = [{ state: "frozen", ySplit: 1 }];
 
-    const imageColumns = columns
+    const imageColumns = shape
       .map((column, index) => ({ column, index }))
       .filter((entry) => entry.column.image);
 
     for (const [offset, row] of sheet.rows.entries()) {
       const added = worksheet.addRow(
-        columns.map((column) => column.value(row) ?? ""),
+        shape.map((column) => column.value(row) ?? ""),
       );
 
       if (imageColumns.length === 0) continue;
@@ -389,23 +400,69 @@ export async function buildWorkbook<T>(
 
     worksheet.autoFilter = {
       from: { row: 1, column: 1 },
-      to: { row: 1, column: columns.length },
+      to: { row: 1, column: shape.length },
     };
   }
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
+/** Excel's hard cap on a sheet name. */
+const SHEET_NAME_MAX = 31;
+
 /**
  * Excel refuses : \ / ? * [ ] in a sheet name and caps it at 31 characters.
  * A class label like '12 Sci' is fine; this is here so a future label with a
  * slash in it fails to export rather than corrupting the file.
  */
-function safeSheetName(name: string): string {
+export function safeSheetName(name: string): string {
   const cleaned = name.replace(/[:\\/?*[\]]/g, "-").trim();
-  return (cleaned || "Sheet").slice(0, 31);
+  return (cleaned || "Sheet").slice(0, SHEET_NAME_MAX);
 }
 
+/**
+ * The same name, guaranteed not to collide with one already in this workbook.
+ *
+ * UNIQUENESS IS PART OF WHAT EXCEL ACCEPTS, as hard a rule as the 31-character
+ * cap and the punctuation ban, so it belongs here beside them rather than in
+ * whichever route happened to hit it first. Deduping correctly means truncating
+ * to make ROOM for the suffix, which needs the cap — and a second copy of `31`
+ * in an export route is exactly the drift this module exists to prevent.
+ *
+ * The marks export is what forced it: one sheet per teacher, and two teachers
+ * can share a name outright (teachers.id is the key, not the name). The
+ * students export has been one duplicate class label away from the same failure
+ * since it was written.
+ *
+ * Names that DIFFER only past character 31 collide here too, which is the point
+ * — they are the same name as far as the file is concerned.
+ *
+ * This disambiguates STRINGS. Telling the reader which of two people a sheet
+ * belongs to is the caller's job: it is the only one that knows they are
+ * different people rather than the same name twice.
+ */
+export function uniqueSheetName(name: string, used: Set<string>): string {
+  const base = safeSheetName(name);
+  if (!used.has(base)) {
+    used.add(base);
+    return base;
+  }
+
+  for (let n = 2; ; n += 1) {
+    const suffix = `~${n}`;
+    const candidate = base.slice(0, SHEET_NAME_MAX - suffix.length) + suffix;
+    if (!used.has(candidate)) {
+      used.add(candidate);
+      return candidate;
+    }
+  }
+}
+
+// NOT to be confused with /api/export/marks.xlsx, which shipped and is a
+// different file for a different reader: the office's own per-teacher workbook
+// for a period, in this module's ordinary shape. The one below is LEAD's, and
+// it is still blocked.
+//
 // TODO (Phase 4, blocked): exportFaMarksWorkbook(requestId) must reproduce
 // FA_Marks_Pattern.xlsx exactly — header rows for school name / course type /
 // exam date / total marks, then

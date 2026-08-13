@@ -208,6 +208,13 @@ export type FanOutScenario = {
     teacherName: string;
     studentIds: string[];
   }[];
+  /**
+   * The house names actually written, in the order they were asked for.
+   *
+   * ASSERT AGAINST THESE, never against the literal you passed in — see the
+   * note on `houses` in createFanOutScenario. Empty when none were requested.
+   */
+  houses: (string | null)[];
 };
 
 /**
@@ -219,12 +226,23 @@ export type FanOutScenario = {
  * real teacher who owns it — turning "one owner" into "two owners" and blocking
  * the group. Isolating the vocabulary makes the test deterministic against
  * whatever the dev database happens to hold.
+ *
+ * `houses` GETS THE SAME TREATMENT, and for the same reason — it did not always,
+ * and the day the dev branch acquired a teacher holding Rana Pratap the
+ * house-wide test started failing on data it had never heard of. A house name
+ * passed in here is a LABEL, not a literal: it is suffixed before it is written,
+ * so two groups asking for the same name land in the same house and two asking
+ * for different ones do not, while neither can collide with a real house. Read
+ * the names back off `scenario.houses`.
  */
 export async function createFanOutScenario(options?: {
   houses?: (string | null)[];
 }): Promise<FanOutScenario> {
   const suffix = generateToken().slice(0, 6).replace(/[^A-Za-z0-9]/g, "x");
   const userId = `${PREFIX}U${suffix}`;
+  const house = (label: string | null) =>
+    label === null ? null : `${PREFIX}H${label.replace(/[^A-Za-z0-9]/g, "")}${suffix}`;
+  const houses = options?.houses?.map(house) ?? [];
 
   await db.insert(schema.users).values({
     id: userId,
@@ -261,12 +279,12 @@ export async function createFanOutScenario(options?: {
         classLabel: group.classLabel,
         phone: position === 0 ? "9111111111" : null,
         fatherName: `Test Father ${index}${position}`,
-        house: options?.houses?.[index] ?? null,
+        house: houses[index] ?? null,
       })),
     ),
   );
 
-  return { userId, groups };
+  return { userId, groups, houses };
 }
 
 /** Remove everything any scenario has ever created, in dependency order. */
@@ -343,6 +361,14 @@ export async function submissionsFor(requestId: string) {
     .select()
     .from(schema.submissions)
     .where(eq(schema.submissions.requestId, requestId));
+}
+
+/** What is actually stored for a student — marks and one-off answers. */
+export async function recordsFor(studentId: string) {
+  return db
+    .select()
+    .from(schema.studentRecords)
+    .where(eq(schema.studentRecords.studentId, studentId));
 }
 
 export async function changeLogFor(submissionIds: string[]) {
