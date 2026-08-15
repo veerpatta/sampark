@@ -68,12 +68,25 @@ export default async function RequestDetailPage({
         title={request.title}
         subtitle={`${request.audienceLabel} · ${teacher.name} · due ${request.dueDate}`}
         actions={
-          <Link
-            href="/requests"
-            className="hidden text-sm text-[var(--color-brand-600)] hover:underline md:inline"
-          >
-            back to the board
-          </Link>
+          <span className="hidden items-center gap-3 md:inline-flex">
+            {/* This link is one group of a send-to-many. The round is where its
+                siblings, its send queue and its export live, and the board only
+                shows the round now — so without this the way back is a guess. */}
+            {request.batchId ? (
+              <Link
+                href={`/requests/batch/${request.batchId}`}
+                className="text-sm text-[var(--color-brand-600)] hover:underline"
+              >
+                back to the round
+              </Link>
+            ) : null}
+            <Link
+              href="/requests"
+              className="text-sm text-[var(--color-brand-600)] hover:underline"
+            >
+              back to the board
+            </Link>
+          </span>
         }
       />
 

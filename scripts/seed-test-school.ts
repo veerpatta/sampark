@@ -257,7 +257,33 @@ async function seedRounds() {
     "seed-phones",
   );
 
-  console.log(`  rounds    3 (marks 19/24 entered, 4 phone changes to review)`);
+  /*
+   * A REAL SEND-TO-MANY, because the board collapses one differently from the
+   * three one-offs above and there is no other way to look at that. Four
+   * classes through createBatch is one request_batches row and four requests
+   * carrying its batchId — which the board must show as a single line.
+   */
+  const { createBatch } = await import("../src/lib/batches");
+  const round = await createBatch({
+    title: "Bus route check",
+    audience: { classes: ["Class 7", "Class 8", "Class 9", "Class 10"] },
+    fieldKeys: ["bus_route"],
+    dueDate: due,
+    recipientMode: "class_teacher",
+    createdBy: TEST_USER.id,
+  });
+
+  // One of the four handed over, so "1/4 sent" has something to say.
+  const first = round.created[0];
+  if (first) {
+    const { markSent } = await import("../src/lib/batches");
+    await markSent(first.requestId, TEST_USER.id, true);
+  }
+
+  console.log(
+    `  rounds    3 one-off (marks 19/24, 4 phone changes to review)` +
+      ` + 1 send-to-many over ${round.created.length} classes`,
+  );
   console.log(`\n  Teacher links, no login needed:`);
   console.log(`    Sunita, Class 8 maths   /r/${maths.token}`);
   console.log(`    Hemlata, Class 9 phones /r/${phones.token}`);
@@ -296,6 +322,18 @@ async function dropPreviousRounds() {
     .delete(schema.requestStudents)
     .where(inArray(schema.requestStudents.requestId, ids));
   await owner.delete(schema.requests).where(inArray(schema.requests.id, ids));
+
+  /*
+   * The rounds themselves, AFTER their links.
+   *
+   * requests.batch_id is ON DELETE SET NULL, so deleting a batch first would
+   * quietly orphan its links instead of failing — and leaving the batch rows
+   * behind entirely means every re-seed accumulates another set of rounds that
+   * no longer have any links to show.
+   */
+  await owner
+    .delete(schema.requestBatches)
+    .where(eq(schema.requestBatches.createdBy, TEST_USER.id));
 }
 
 /**

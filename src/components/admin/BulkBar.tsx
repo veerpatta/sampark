@@ -63,11 +63,29 @@ export function BulkBar({
       ) ?? [],
     );
 
-  const selected = () => boxes().filter((box) => box.checked).map((box) => box.value);
+  const ticked = () => boxes().filter((box) => box.checked);
+
+  /**
+   * The ids the actions will actually receive.
+   *
+   * ONE CHECKBOX CAN STAND FOR SEVERAL RECORDS. The requests board shows a
+   * send-to-many round as a single line, and ticking it has to close or archive
+   * every link in that round — so a row's value may be a comma-joined list, and
+   * this expands it. The actions have always spoken flat request ids and are
+   * unchanged; they also already de-duplicate, so a round and one of its own
+   * children both being ticked is harmless.
+   *
+   * A comma is safe as the separator because every id this bar carries is a
+   * UUID or a student id, and neither contains one.
+   */
+  const selected = () => ticked().flatMap((box) => box.value.split(","));
 
   // Read off the DOM rather than mirrored into state: the boxes ARE the state,
   // and a mirror is one more thing that can disagree with what is on screen.
-  const recount = () => setCount(selected().length);
+  //
+  // ROWS, not records. "1 selected of 5" counts what you ticked; how many
+  // records that turns out to be is what the confirm and the toast say.
+  const recount = () => setCount(ticked().length);
 
   function toggleAll() {
     const all = boxes();
@@ -79,6 +97,9 @@ export function BulkBar({
   function run(action: BulkAction) {
     const ids = selected();
     if (ids.length === 0) return;
+    // The EXPANDED count, so a confirm reads "Clear 19 selected requests?" for
+    // one ticked round. The number in that sentence is the blast radius, and
+    // one ticked line destroying nineteen things is exactly what it must say.
     if (action.confirm && !window.confirm(action.confirm(ids.length))) return;
 
     startTransition(async () => {

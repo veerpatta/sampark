@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import {
   classesByRequest,
@@ -731,41 +731,4 @@ export async function markGroupSent(
         : { sentAt: null, sentBy: null },
     )
     .where(inArray(schema.requests.id, requestIds));
-}
-
-/** Batches for the board, newest first, with how far each has been sent. */
-export async function listBatches(limit = 20) {
-  const batches = await db
-    .select()
-    .from(schema.requestBatches)
-    .orderBy(sql`${schema.requestBatches.createdAt} desc`)
-    .limit(limit);
-
-  if (batches.length === 0) return [];
-
-  const counts = await db
-    .select({
-      batchId: schema.requests.batchId,
-      links: sql<number>`count(*)::int`,
-      sent: sql<number>`count(${schema.requests.sentAt})::int`,
-    })
-    .from(schema.requests)
-    .where(
-      and(
-        isNotNull(schema.requests.batchId),
-        inArray(
-          schema.requests.batchId,
-          batches.map((batch) => batch.id),
-        ),
-      ),
-    )
-    .groupBy(schema.requests.batchId);
-
-  const byId = new Map(counts.map((row) => [row.batchId!, row]));
-
-  return batches.map((batch) => ({
-    ...batch,
-    links: byId.get(batch.id)?.links ?? 0,
-    sent: byId.get(batch.id)?.sent ?? 0,
-  }));
 }

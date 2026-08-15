@@ -466,6 +466,23 @@ export type RequestBoardRow = {
   changesPending: number;
   /** Set once the office has taken it off the boards. Null for a live row. */
   archivedAt: Date | null;
+  /**
+   * The round this link belongs to, or null for a one-off.
+   *
+   * The board reads it to show a nineteen-class fan-out as ONE row instead of
+   * nineteen anonymous ones. See groupBoardRows below.
+   */
+  batchId: string | null;
+  /** What the board sorts on, and what a round takes as its own date. */
+  createdAt: Date;
+  /**
+   * When the office actually handed this link over on WhatsApp.
+   *
+   * Different from "she opened it" and different from "she answered": it is the
+   * only column that can answer "did we ever send this one", which is the first
+   * question after a round that has gone quiet.
+   */
+  sentAt: Date | null;
 };
 
 /**
@@ -526,7 +543,15 @@ function coveredStudentsQuery(requestIds: string[]) {
  * a filter any of them could forget is a filter one of them eventually will.
  */
 export async function listRequests(
-  options: { includeArchived?: boolean } = {},
+  options: {
+    includeArchived?: boolean;
+    /**
+     * Narrow to one round. Used by the round export and the round's nudge card,
+     * both of which want the board's numbers for a batch's children and must not
+     * arrive at them a second way — see coveredStudentsQuery.
+     */
+    batchId?: string;
+  } = {},
 ): Promise<RequestBoardRow[]> {
   const rows = await db
     .select({
@@ -547,13 +572,16 @@ export async function listRequests(
       teacherLinkToken: schema.teachers.linkToken,
       archivedAt: schema.requests.archivedAt,
       createdAt: schema.requests.createdAt,
+      batchId: schema.requests.batchId,
+      sentAt: schema.requests.sentAt,
     })
     .from(schema.requests)
     .innerJoin(schema.teachers, eq(schema.teachers.id, schema.requests.teacherId))
     .where(
-      options.includeArchived
-        ? undefined
-        : isNull(schema.requests.archivedAt),
+      and(
+        options.includeArchived ? undefined : isNull(schema.requests.archivedAt),
+        options.batchId ? eq(schema.requests.batchId, options.batchId) : undefined,
+      ),
     )
     .orderBy(desc(schema.requests.createdAt));
 
@@ -621,7 +649,180 @@ export async function listRequests(
     studentsAnswered: answers.get(row.id) ?? 0,
     changesPending: changes.get(row.id) ?? 0,
     archivedAt: row.archivedAt,
+    batchId: row.batchId,
+    createdAt: row.createdAt,
+    sentAt: row.sentAt,
   }));
+}
+
+/* ------------------------------------------------------- the board, grouped */
+
+export type RequestBatch = typeof schema.requestBatches.$inferSelect;
+
+/** A round, as one line on the board. */
+export type BoardBatch = {
+  kind: "batch";
+  batchId: string;
+  title: string;
+  createdAt: Date;
+  dueDate: string;
+  /** Visible children. NOT the number the fan-out created — see below. */
+  groups: number;
+  /** Distinct teachers across them; fewer than `groups` in subject mode. */
+  teachers: number;
+  rosterSize: number;
+  studentsAnswered: number;
+  changesPending: number;
+  /** Children where every child on the roster has been answered for. */
+  groupsAnswered: number;
+  /** Children the office has actually handed over on WhatsApp. */
+  sentCount: number;
+  closedCount: number;
+  archivedCount: number;
+  /** The first few group names, so the board still says what is inside. */
+  sample: string[];
+  /** Every child id, for the bulk bar. */
+  requestIds: string[];
+  status: "open" | "closed";
+};
+
+export type BoardEntry = ({ kind: "single" } & RequestBoardRow) | BoardBatch;
+
+/**
+ * Collapse a fan-out's children into one line.
+ *
+ * A round is one question asked of nineteen groups, and the board used to show
+ * it as nineteen anonymous rows interleaved with everything else — nothing on
+ * them said they were one thing, and the send queue that knows they are was
+ * reachable only by the redirect immediately after the send.
+ *
+ * THE RULE THAT SETTLES EVERY EDGE CASE: a batch line is a view over exactly
+ * the child rows it was given, and nothing else. It never counts a child the
+ * caller filtered out, and it never reaches back to the database to find one.
+ * Any other rule makes the board's "12 of 19 answered" disagree with what you
+ * see on opening the round — and the whole point of the line is to be the same
+ * fact, smaller. So under the default filter an archived child is simply gone:
+ * a nineteen-group round with three swept reads as sixteen groups. Nothing is
+ * lost, because getBatch applies no archived filter and the round's own page
+ * always lists all nineteen, one tap away.
+ *
+ * PURE, and no database import, so the arithmetic that the board and the
+ * round's own page must agree on can be tested without a connection.
+ */
+export function groupBoardRows(
+  rows: RequestBoardRow[],
+  batches: Map<string, RequestBatch>,
+): BoardEntry[] {
+  const grouped = new Map<string, RequestBoardRow[]>();
+  const entries: BoardEntry[] = [];
+
+  for (const row of rows) {
+    /*
+     * A child whose batch row is gone renders as a one-off, deliberately.
+     * requests.batch_id is ON DELETE SET NULL, so a request can outlive its
+     * round — and a line linking to /requests/batch/<id> for a batch that no
+     * longer exists is a link to a 404. Showing the link itself is the honest
+     * fallback: it is still a real request that still collected real answers.
+     */
+    if (!row.batchId || !batches.has(row.batchId)) {
+      entries.push({ kind: "single", ...row });
+      continue;
+    }
+    const siblings = grouped.get(row.batchId) ?? [];
+    siblings.push(row);
+    grouped.set(row.batchId, siblings);
+  }
+
+  for (const [batchId, unordered] of grouped) {
+    const batch = batches.get(batchId)!;
+    /*
+     * Groups read in register order, not in the order the rows arrived.
+     *
+     * The board sorts newest first, and a fan-out creates its links ascending,
+     * so a round's children arrive here reversed — "Class 10, Class 9, Class 8"
+     * for a round that reads Class 6 to Class 10 everywhere else in the app.
+     * compareClassLabels puts the nineteen real labels in timetable order and
+     * falls through to a locale compare for a house or a route, so one call
+     * covers every audience kind.
+     */
+    const children = unordered
+      .slice()
+      .sort((a, b) => compareClassLabels(a.audienceLabel, b.audienceLabel));
+
+    const answered = children.filter(
+      (child) => child.rosterSize > 0 && child.studentsAnswered >= child.rosterSize,
+    );
+    const closed = children.filter((child) => child.status === "closed");
+
+    entries.push({
+      kind: "batch",
+      batchId,
+      title: batch.title,
+      createdAt: batch.createdAt,
+      dueDate: batch.dueDate,
+      groups: children.length,
+      teachers: new Set(children.map((child) => child.teacherId)).size,
+      rosterSize: sum(children, (child) => child.rosterSize),
+      studentsAnswered: sum(children, (child) => child.studentsAnswered),
+      changesPending: sum(children, (child) => child.changesPending),
+      groupsAnswered: answered.length,
+      sentCount: children.filter((child) => child.sentAt !== null).length,
+      closedCount: closed.length,
+      archivedCount: children.filter((child) => child.archivedAt !== null).length,
+      sample: children.slice(0, 3).map((child) => child.audienceLabel),
+      requestIds: children.map((child) => child.id),
+      /*
+       * Never 'expired'. Nothing in the codebase writes that value — it is read
+       * by checkRequestAccess and derived from the due date, never stored — so a
+       * line claiming it would be describing a state no child can be in.
+       *
+       * The partial case is not folded into one word either: the board shows
+       * this alongside "3/5 closed" rather than picking a side, because a chip
+       * that claims one state nineteen rows disagree about is worse than a chip
+       * that says how they disagree.
+       */
+      status: closed.length === children.length ? "closed" : "open",
+    });
+  }
+
+  // Newest first, exactly as the ungrouped board sorted. A round takes its own
+  // created_at, which is written before any of its children (createBatch), so a
+  // round never sorts above a request made after it.
+  return entries.sort(
+    (a, b) => dateOf(b).getTime() - dateOf(a).getTime(),
+  );
+}
+
+const dateOf = (entry: BoardEntry) => entry.createdAt;
+
+const sum = <T,>(items: T[], of: (item: T) => number) =>
+  items.reduce((total, item) => total + of(item), 0);
+
+/**
+ * The board: one line per one-off request, one line per round.
+ *
+ * Two statements on top of what the board already paid. The batch rows are
+ * looked up BY PRIMARY KEY for ids already present in the child set, so there
+ * is no scan and request_batches needs no index for this.
+ */
+export async function listRequestBoard(
+  options: { includeArchived?: boolean } = {},
+): Promise<BoardEntry[]> {
+  const rows = await listRequests(options);
+
+  const batchIds = [
+    ...new Set(rows.map((row) => row.batchId).filter((id): id is string => id !== null)),
+  ];
+  if (batchIds.length === 0) {
+    return groupBoardRows(rows, new Map());
+  }
+
+  const batches = await db
+    .select()
+    .from(schema.requestBatches)
+    .where(inArray(schema.requestBatches.id, batchIds));
+
+  return groupBoardRows(rows, new Map(batches.map((batch) => [batch.id, batch])));
 }
 
 /**
@@ -663,6 +864,15 @@ export type CollectedRow = {
   studentId: string;
   srNo: string | null;
   name: string;
+  /**
+   * Which register this child came from, off the frozen snapshot.
+   *
+   * A class link's sheet is already named for its class, but a subject link is
+   * eighty-four children from three registers and a house or route link spans
+   * the school. Without this the file cannot say which one a name belongs to —
+   * the same gap classesByRequest was written to close for the message.
+   */
+  classLabel: string | null;
   route: string | null;
   /** Keyed by field key: what the school held when the link was sent. */
   sent: Record<string, string | null>;
@@ -702,18 +912,42 @@ export async function collectedFor(requestId: string): Promise<{
       .orderBy(asc(schema.submissions.submittedAt)),
   ]);
 
-  // Later submissions overwrite earlier ones for the same student and field,
-  // so iterating in submitted order leaves the newest answer in the map.
-  const newest = new Map<string, (typeof subs)[number]>();
+  return { ...detail, rows: buildCollectedRows(detail.fields, roster, subs) };
+}
+
+type RosterEntry = typeof schema.requestStudents.$inferSelect;
+type SubmissionRow = typeof schema.submissions.$inferSelect;
+
+/**
+ * Turn one link's frozen roster and its submissions into export rows.
+ *
+ * Shared by the per-request export and the whole-round one so that "later
+ * submissions overwrite earlier ones for the same student and field" has a
+ * single home. Both files show what was SENT beside what came back, because a
+ * file carrying only the new value makes it impossible to see later what a
+ * correction actually corrected.
+ *
+ * `fields` must be THIS LINK'S fields, not a round's union: in subject mode
+ * each link asks for one `fa_*` key and its snapshot was narrowed to match, so
+ * passing the union gives every sheet sixteen columns with fifteen blank.
+ */
+function buildCollectedRows(
+  fields: FieldDef[],
+  roster: RosterEntry[],
+  subs: SubmissionRow[],
+): CollectedRow[] {
+  // Submissions arrive in submitted order, so the last write per key wins.
+  const newest = new Map<string, SubmissionRow>();
   for (const row of subs) {
     newest.set(`${row.studentId}|${row.fieldKey}`, row);
   }
 
-  const rows: CollectedRow[] = roster.map((entry) => {
+  const rows = roster.map((entry) => {
     const snapshot = entry.snapshot as {
       name?: string;
       srNo?: string | null;
       route?: string | null;
+      classLabel?: string | null;
       values?: Record<string, string | null>;
     };
 
@@ -722,7 +956,7 @@ export async function collectedFor(requestId: string): Promise<{
     const actions = new Set<string>();
     const statuses = new Set<string>();
 
-    for (const field of detail.fields) {
+    for (const field of fields) {
       sent[field.key] = snapshot.values?.[field.key] ?? null;
       const submission = newest.get(`${entry.studentId}|${field.key}`);
       answered[field.key] = submission?.newValue ?? null;
@@ -736,6 +970,7 @@ export async function collectedFor(requestId: string): Promise<{
       studentId: entry.studentId,
       srNo: snapshot.srNo ?? null,
       name: snapshot.name ?? entry.studentId,
+      classLabel: snapshot.classLabel ?? null,
       route: snapshot.route ?? null,
       sent,
       answered,
@@ -744,9 +979,114 @@ export async function collectedFor(requestId: string): Promise<{
     };
   });
 
-  rows.sort((a, b) => compareStudentNames(a.name, b.name));
+  return rows.sort((a, b) => compareStudentNames(a.name, b.name));
+}
 
-  return { ...detail, rows };
+/** One group's sheet in a round's workbook. */
+export type CollectedGroup = {
+  /** The board's row for this link — audience, teacher, and its numbers. */
+  link: RequestBoardRow;
+  /** What THIS link asked for, in registry order. */
+  fields: FieldDef[];
+  /** Distinct registers the children came from. */
+  classLabels: string[];
+  rows: CollectedRow[];
+};
+
+/**
+ * Everything one send-to-many round collected, for export.
+ *
+ * SEVEN STATEMENTS IN THREE WAVES, flat in the number of links. Calling
+ * collectedFor once per link would be six statements each — a thirty-eight link
+ * marks round is well over two hundred round trips against a serverless
+ * Postgres, which is a download the office would give up waiting for.
+ *
+ * The numbers come from listRequests, deliberately: they are the same numbers
+ * the board shows, arrived at by the same query, so the file can never disagree
+ * with the screen it was downloaded from. Nothing here forms a second opinion
+ * about what "answered" means — see coveredStudentsQuery.
+ *
+ * `includeArchived` is on and that is not an oversight. An archived link still
+ * collected real answers, and a round exported after the office has swept it
+ * must still be the whole round. The board is where archiving hides things.
+ */
+export async function collectedForBatch(batchId: string): Promise<{
+  batch: RequestBatch;
+  groups: CollectedGroup[];
+} | null> {
+  const [batch] = await db
+    .select()
+    .from(schema.requestBatches)
+    .where(eq(schema.requestBatches.id, batchId));
+  if (!batch) return null;
+
+  // One subquery, reused, so the roster and submission reads never wait on the
+  // id list coming back first.
+  const childIds = db
+    .select({ id: schema.requests.id })
+    .from(schema.requests)
+    .where(eq(schema.requests.batchId, batchId));
+
+  const [links, fields, roster, subs] = await Promise.all([
+    listRequests({ batchId, includeArchived: true }),
+    db
+      .select()
+      .from(schema.fieldDefs)
+      .where(inArray(schema.fieldDefs.key, batch.fieldKeys))
+      .orderBy(asc(schema.fieldDefs.sortOrder)),
+    db
+      .select()
+      .from(schema.requestStudents)
+      .where(inArray(schema.requestStudents.requestId, childIds)),
+    db
+      .select()
+      .from(schema.submissions)
+      .where(inArray(schema.submissions.requestId, childIds))
+      .orderBy(asc(schema.submissions.submittedAt)),
+  ]);
+
+  const fieldByKey = new Map(fields.map((field) => [field.key, field]));
+  const rosterBy = groupBy(roster, (row) => row.requestId);
+  const subsBy = groupBy(subs, (row) => row.requestId);
+
+  const groups = links
+    .slice()
+    .sort((a, b) => compareClassLabels(a.audienceLabel, b.audienceLabel))
+    .map((link) => {
+      const own = link.fieldKeys
+        .map((key) => fieldByKey.get(key))
+        .filter((field): field is FieldDef => Boolean(field));
+      const rows = buildCollectedRows(
+        own,
+        rosterBy.get(link.id) ?? [],
+        subsBy.get(link.id) ?? [],
+      );
+
+      return {
+        link,
+        fields: own,
+        classLabels: [
+          ...new Set(
+            rows
+              .map((row) => row.classLabel)
+              .filter((label): label is string => Boolean(label)),
+          ),
+        ].sort(compareClassLabels),
+        rows,
+      };
+    });
+
+  return { batch, groups };
+}
+
+function groupBy<T>(rows: T[], keyOf: (row: T) => string): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const row of rows) {
+    const list = out.get(keyOf(row)) ?? [];
+    list.push(row);
+    out.set(keyOf(row), list);
+  }
+  return out;
 }
 
 function describeOutcome(actions: Set<string>): string {

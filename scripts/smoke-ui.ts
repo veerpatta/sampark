@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { eq, inArray, like } from "drizzle-orm";
 import ExcelJS from "exceljs";
 import { db, schema } from "../src/lib/db";
-import { createRequest } from "../src/lib/requests";
+import { createRequest, listRequests } from "../src/lib/requests";
 import { TEST_PREFIX, TEST_USER } from "../drizzle/seed/test-school";
 import { mintSessionCookie } from "./test-session";
 
@@ -43,6 +43,7 @@ const FIXTURE_PERIOD = "2026-27/FA1";
 
 const results: { name: string; ok: boolean; detail?: string }[] = [];
 const requestIds: string[] = [];
+const batchIds: string[] = [];
 
 /**
  * What a person would actually see, from what the server actually sent.
@@ -328,22 +329,40 @@ async function main() {
 
   await step("the dashboard sends one reminder per teacher", async () => {
     /*
-     * At this point Sunita owes two things — the fixture FA1 round and the
-     * round this script just created — and Hemlata owes two of her own. Four
-     * open forms, and the dashboard used to put a Remind button on each, which
-     * meant tapping through them sent each teacher two near-identical WhatsApp
-     * messages seconds apart. Two buttons is the fix.
+     * The dashboard used to put a Remind button on every outstanding FORM, so a
+     * teacher owing three of them got three near-identical WhatsApp messages
+     * seconds apart. The invariant, not a count: one button per phone number,
+     * and fewer buttons than there are forms outstanding.
+     *
+     * Asserted this way on purpose — the fixture school gains and loses rounds
+     * as this file grows, and a hard-coded "2" would fail on a change that is
+     * not a regression. That already happened once.
      */
     const html = await (await signedIn("/")).text();
     const hrefs = [...html.matchAll(/href="(https:\/\/wa\.me\/[^"]+)"/g)].map((m) =>
       decodeHtml(m[1]!),
     );
-
-    assert.equal(hrefs.length, 2, `${hrefs.length} Remind buttons, expected one per teacher`);
+    assert.ok(hrefs.length > 0, "the dashboard offers no reminders at all");
 
     const phones = hrefs.map((href) => new URL(href).pathname);
-    assert.equal(new Set(phones).size, 2, "two buttons pointed at the same number");
-    return `2 buttons → ${phones.join(", ")}`;
+    assert.equal(
+      new Set(phones).size,
+      phones.length,
+      "two Remind buttons point at the same number — that is the spam this fixed",
+    );
+
+    const outstanding = (
+      await listRequests({ includeArchived: false })
+    ).filter(
+      (row) =>
+        row.status === "open" &&
+        !(row.rosterSize > 0 && row.studentsAnswered >= row.rosterSize),
+    ).length;
+    assert.ok(
+      hrefs.length < outstanding,
+      `${hrefs.length} buttons for ${outstanding} outstanding forms — nothing was collapsed`,
+    );
+    return `${hrefs.length} buttons for ${outstanding} forms`;
   });
 
   await step("one teacher's message carries everything she owes, once", async () => {
@@ -357,7 +376,13 @@ async function main() {
       .find((text) => text.includes("Sunita Sharma"));
     assert.ok(sunita, "no message addressed to her");
 
-    assert.ok(sunita!.includes("2 lists are still pending"), "her two forms were not collapsed");
+    // "N lists", whatever N is — she owes the fixture rounds plus whatever this
+    // script has created by now, and pinning the number pins the fixtures.
+    assert.match(
+      sunita!,
+      /\d+ lists are still pending/,
+      "her forms were not collapsed into one message",
+    );
     assert.ok(sunita!.includes("Smoke FA maths"), "the round this script made is missing");
 
     /*
@@ -372,6 +397,148 @@ async function main() {
     assert.equal(urls.length, 1, `${urls.length} links in one reminder: ${urls}`);
     assert.match(urls[0]!, /^https?:\/\/[^/]+\/t\//, `not an absolute /t/ link: ${urls[0]}`);
     return "1 message, 1 absolute link";
+  });
+
+  /* ------------------------------------------------------------------ */
+  console.log("\nA send-to-many round is one thing");
+
+  const roundBatchId = await step_("create a round over two classes", async () => {
+    const { createBatch } = await import("../src/lib/batches");
+    const created = await createBatch({
+      title: "Smoke round",
+      audience: { classes: ["Class 9", "Class 10"] },
+      fieldKeys: ["phone"],
+      dueDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
+      recipientMode: "class_teacher",
+      createdBy: TEST_USER.id,
+    });
+    for (const link of created.created) requestIds.push(link.requestId);
+    batchIds.push(created.batchId);
+    return created.batchId;
+  });
+
+  await step("the board shows the round as ONE row", async () => {
+    /*
+     * THE REGRESSION GUARD FOR THIS WHOLE FEATURE. The round's two links must
+     * not appear as their own rows — that is what the board did before, and it
+     * is the thing that is easy to reintroduce by touching the projection.
+     */
+    const html = await (await signedIn("/requests")).text();
+    const text = visibleText(html);
+
+    assert.ok(text.includes("Smoke round"), "the round is not on the board");
+    assert.ok(text.includes("2 groups"), "it is not shown as a round");
+    assert.ok(
+      html.includes(`/requests/batch/${roundBatchId}`),
+      "the row does not open the round",
+    );
+
+    for (const childId of requestIds.slice(-2)) {
+      assert.ok(
+        !html.includes(`/requests/${childId}"`),
+        `a child link is still its own row: ${childId}`,
+      );
+    }
+    return "one row, two groups";
+  });
+
+  await step("the round page opens, and lists both groups", async () => {
+    const text = visibleText(
+      await (await signedIn(`/requests/batch/${roundBatchId}`)).text(),
+    );
+    assert.ok(text.includes("Class 9") && text.includes("Class 10"));
+    assert.ok(text.includes("Still waiting"), "the round cannot be chased");
+    return "both groups, with a nudge card";
+  });
+
+  await step("a link inside the round links back to it", async () => {
+    const html = await (
+      await signedIn(`/requests/${requestIds[requestIds.length - 1]}`)
+    ).text();
+    assert.ok(
+      html.includes(`/requests/batch/${roundBatchId}`),
+      "a child request has no way back to its round",
+    );
+    return "back to the round";
+  });
+
+  await step("the round workbook downloads and parses", async () => {
+    const response = await signedIn(`/api/export/batch/${roundBatchId}.xlsx`);
+    assert.equal(response.status, 200, `got ${response.status}`);
+
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(await response.arrayBuffer());
+    const names = book.worksheets.map((sheet) => sheet.name);
+
+    assert.equal(names[0], "Summary", `first sheet is ${names[0]}`);
+    assert.equal(names.length, 3, `${names.length} sheets, expected 1 + 2 links`);
+    assert.equal(new Set(names).size, names.length, "two sheets share a name");
+
+    /*
+     * Every Sheet value names a real worksheet. One assertion covering three
+     * failures at once: a drifted header key, a truncation collision, and a
+     * label array that got out of step with the sheets it describes.
+     */
+    const summary = book.getWorksheet("Summary")!;
+    const sheetColumn = summary
+      .getRows(2, summary.rowCount - 1)!
+      .map((row) => String((row.values as unknown[])[1]));
+    for (const value of sheetColumn) {
+      assert.ok(names.includes(value), `Summary names a sheet that is not here: ${value}`);
+    }
+    return `${names.join(", ")}`;
+  });
+
+  await step("a marks round exports one column per subject", async () => {
+    /*
+     * Not the (sent)/(teacher) pair the other rounds get. A mark is collected
+     * rather than corrected, so a "(sent)" column would be blank for every
+     * child in the school — and dropping it is what turns this sheet into the
+     * marks layout without a second code path.
+     */
+    const { createBatch } = await import("../src/lib/batches");
+    const marks = await createBatch({
+      title: "Smoke marks round",
+      audience: { classes: ["Class 9", "Class 10"] },
+      fieldKeys: ["fa_maths"],
+      period: PERIOD,
+      dueDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
+      recipientMode: "class_teacher",
+      createdBy: TEST_USER.id,
+    });
+    for (const link of marks.created) requestIds.push(link.requestId);
+    batchIds.push(marks.batchId);
+
+    const response = await signedIn(`/api/export/batch/${marks.batchId}.xlsx`);
+    assert.equal(response.status, 200, `got ${response.status}`);
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(await response.arrayBuffer());
+
+    const sheet = book.worksheets.find((ws) => ws.name !== "Summary")!;
+    const headers = (sheet.getRow(1).values as unknown[])
+      .map(String)
+      .filter((header) => header !== "undefined");
+
+    assert.ok(headers.includes("FA Maths"), `no subject column: ${headers.join(" | ")}`);
+    assert.ok(
+      !headers.some((header) => header.includes("(sent)")),
+      `a marks field kept its sent column: ${headers.join(" | ")}`,
+    );
+    return headers.join(" | ");
+  });
+
+  await step("an unknown round is a readable 404", async () => {
+    const response = await signedIn(
+      "/api/export/batch/00000000-0000-0000-0000-000000000000.xlsx",
+    );
+    assert.equal(response.status, 404, `got ${response.status}`);
+    return "404";
+  });
+
+  await step("the round export refuses a signed-out visitor", async () => {
+    const response = await fetch(`${BASE}/api/export/batch/${roundBatchId}.xlsx`);
+    assert.equal(response.status, 401);
+    return "401";
   });
 
   /* ------------------------------------------------------------------ */
@@ -519,6 +686,16 @@ async function teardown() {
   await owner
     .delete(schema.studentRecords)
     .where(eq(schema.studentRecords.period, PERIOD));
+
+  /*
+   * The rounds, AFTER their links. requests.batch_id is ON DELETE SET NULL, so
+   * the other order would quietly orphan them instead of failing loudly.
+   */
+  if (batchIds.length > 0) {
+    await owner
+      .delete(schema.requestBatches)
+      .where(inArray(schema.requestBatches.id, batchIds));
+  }
 
   console.log("  removed the smoke round; the fixture school stays");
 }

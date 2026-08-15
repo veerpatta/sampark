@@ -46,6 +46,10 @@ export async function GET(
     { header: "SR no", width: 12, value: (row) => row.srNo },
     { header: "Student ID", width: 14, value: (row) => row.studentId },
     { header: "Name", width: 26, value: (row) => row.name },
+    // A subject link is eighty-four children from three registers, and a house
+    // or route link spans the school — without this the file cannot say which
+    // register a name came from.
+    { header: "Class", width: 12, value: (row) => row.classLabel },
     { header: "Route", width: 22, value: (row) => row.route },
     ...fields.flatMap((field): ExportColumn<CollectedRow>[] => [
       {

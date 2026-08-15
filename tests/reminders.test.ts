@@ -30,6 +30,9 @@ function row(over: Partial<RequestBoardRow> = {}): RequestBoardRow {
     studentsAnswered: 0,
     changesPending: 0,
     archivedAt: null,
+    batchId: null,
+    createdAt: new Date("2026-08-10T04:00:00Z"),
+    sentAt: null,
     ...over,
   };
 }

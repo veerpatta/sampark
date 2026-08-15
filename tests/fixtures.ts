@@ -44,8 +44,16 @@ const ownerDb = drizzle(neon(ownerUrl), { schema });
  * out from under it. That surfaced as a foreign-key violation on
  * request_students: not a flaky test, two teardowns racing.
  *
- * Five characters of the filename is enough to separate them and keeps the ids
- * inside the column widths.
+ * THE TAG MUST BE UNIQUE ACROSS TEST FILES, and the length is the only thing
+ * making that true. It was five characters, which was enough right up until
+ * `batch-export.test.ts` was added beside `batches.test.ts` — both truncate to
+ * "BATCH", so the two files shared a prefix and tore down each other's
+ * teachers, surfacing as a foreign-key violation on requests.teacher_id that
+ * looks exactly like a flaky test and is not one.
+ *
+ * Eight is enough for every file here and still keeps the ids readable. If a
+ * new test file collides again, widen this rather than renaming the file —
+ * a naming rule nobody can see is a trap the next person walks into too.
  */
 const FILE_TAG = (process.argv[1] ?? "x")
   .replace(/\\/g, "/")
@@ -53,9 +61,9 @@ const FILE_TAG = (process.argv[1] ?? "x")
   .pop()!
   .replace(/\.test\.ts$/, "")
   .replace(/[^a-z]/gi, "")
-  .slice(0, 5)
+  .slice(0, 8)
   .toUpperCase()
-  .padEnd(5, "X");
+  .padEnd(8, "X");
 
 const PREFIX = `ZZTEST${FILE_TAG}`;
 
