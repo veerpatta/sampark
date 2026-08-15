@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+// The /ssr entry, because this page is a Server Component: the default export
+// is a client component and would pull React into the bundle for one tick.
+// Same reasoning as components/admin/SettingsList.tsx.
+import { CheckCircle } from "@phosphor-icons/react/dist/ssr";
 import { resolveTeacherToken, type TeacherPageItem } from "@/lib/auth/token";
 import { clientIp, limitByIp, limitByTeacherToken } from "@/lib/ratelimit";
 import { describeAudienceLine } from "@/lib/whatsapp";
@@ -138,13 +142,33 @@ function RequestCard({ item }: { item: TeacherPageItem }) {
         <span className="font-mono">
           {item.answered} / {item.rosterSize}
         </span>
+        {/* Bilingual, like everything else she is told rather than reads off to
+            identify a child — strings.ts states that rule and these three lines
+            were the only place on her surface not keeping it. The Hindi was
+            already written for all of them.
+
+            The tick is a Phosphor icon and not a literal ✓ (U+2713): that is an
+            ordinary character, so what she saw was whichever glyph her phone's
+            fallback font happened to carry, at whatever weight and baseline it
+            drew it. design-qa.md has ruled against exactly this twice. */}
         {done ? (
-          <span className="font-medium text-[var(--color-confirm-fg)]">
-            ✓ {T.listDone.en}
+          /* Bi's Hindi half is a `block` span, so it has to sit inside a plain
+             child rather than directly in this flex row — as a flex item it
+             would line up BESIDE the English instead of under it. */
+          <span className="flex items-start gap-1 font-medium text-[var(--color-confirm-fg)]">
+            <CheckCircle
+              aria-hidden
+              size={16}
+              weight="fill"
+              className="mt-0.5 shrink-0"
+            />
+            <span>
+              <Bi t={T.listDone} />
+            </span>
           </span>
         ) : (
           <span className="text-[var(--color-ink-muted)]">
-            {T.listLeft(left).en}
+            <Bi t={T.listLeft(left)} />
           </span>
         )}
       </span>
@@ -156,7 +180,7 @@ function RequestCard({ item }: { item: TeacherPageItem }) {
             : "text-[var(--color-ink-muted)]"
         }`}
       >
-        {overdue ? T.overdue.en : T.dueBy(formatDue(item.dueDate)).en}
+        <Bi t={overdue ? T.overdue : T.dueBy(formatDue(item.dueDate))} />
       </span>
     </Link>
   );

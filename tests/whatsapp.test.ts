@@ -5,6 +5,7 @@ import {
   buildRequestMessage,
   buildRoundMessage,
   buildRoundReminderMessage,
+  buildRoundStatusMessage,
   buildWhatsAppLink,
   teacherPageUrl,
   describeAudienceEn,
@@ -476,5 +477,70 @@ describe("buildRoundReminderMessage", () => {
 describe("teacherPageUrl", () => {
   it("is the one place the /t/ route is spelled", () => {
     assert.equal(teacherPageUrl("https://x.invalid", "abc"), "https://x.invalid/t/abc");
+  });
+});
+
+/**
+ * The status board, as a message.
+ *
+ * Build plan section 10 calls the board the enforcement mechanism and says the
+ * headline is meant to be shared in the staff group. This is that headline,
+ * plus who it is waiting on.
+ */
+describe("buildRoundStatusMessage", () => {
+  const pending = {
+    submitted: 8,
+    total: 11,
+    outstanding: [
+      { label: "Class 7", answered: 0, rosterSize: 41 },
+      { label: "Class 9 B", answered: 20, rosterSize: 24 },
+    ],
+  };
+
+  it("leads with the sentence the build plan asks for", () => {
+    const message = buildRoundStatusMessage(pending);
+    assert.match(message, /^8 of 11 groups have submitted\./);
+  });
+
+  it("says it in Hindi too, like every other message here", () => {
+    assert.match(buildRoundStatusMessage(pending), /11 में से 8 पूरी हो चुकी हैं।/);
+  });
+
+  it("names the groups still outstanding, never the teachers", () => {
+    const message = buildRoundStatusMessage(pending);
+    assert.match(message, /Class 7/);
+    assert.match(message, /Class 9 B/);
+  });
+
+  it("separates 'not started' from 'nearly done'", () => {
+    const message = buildRoundStatusMessage(pending);
+    // A class at 20 of 24 listed flatly beside one at 0 of 41 would tell the
+    // staff group something untrue about both.
+    assert.match(message, /Class 7 — not started · अभी शुरू नहीं/);
+    assert.match(message, /Class 9 B — 20 of 24 · 24 में से 20/);
+  });
+
+  it("agrees with itself when only one group is open", () => {
+    const message = buildRoundStatusMessage({
+      submitted: 0,
+      total: 1,
+      outstanding: [{ label: "Class 7", answered: 0, rosterSize: 41 }],
+    });
+    assert.match(message, /^0 of 1 group has submitted\./);
+  });
+
+  it("thanks the room rather than listing nobody when everything is in", () => {
+    const message = buildRoundStatusMessage({
+      submitted: 11,
+      total: 11,
+      outstanding: [],
+    });
+    assert.match(message, /Everything is in/);
+    assert.doesNotMatch(message, /Still pending/);
+  });
+
+  it("keeps Devanagari numerals out, like every other message", () => {
+    // Pinned to 0-9 across the app: "११ अगस्त" on a due date is unreadable.
+    assert.doesNotMatch(buildRoundStatusMessage(pending), /[०-९]/);
   });
 });

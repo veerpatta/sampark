@@ -9,6 +9,7 @@ import {
 } from "@/lib/reminders";
 import {
   buildRoundReminderMessage,
+  buildRoundStatusMessage,
   buildWhatsAppLink,
   teacherPageUrl,
 } from "@/lib/whatsapp";
@@ -137,12 +138,55 @@ export function StatusBoard({
     );
   }
 
+  /**
+   * The headline, as something that can leave the building.
+   *
+   * Build plan section 10: "The status board is the enforcement mechanism.
+   * Share '8 of 11 classes submitted' in the staff group." Until now that
+   * sentence existed only as pixels, so sharing it meant a screenshot or
+   * retyping it — and the thing the plan calls the enforcement mechanism was
+   * the one thing on this screen with no way out of it.
+   *
+   * An empty phone on purpose, not as a fallback: wa.me with no number opens
+   * the contact picker with the body attached, which is exactly right when the
+   * destination is a group rather than a person. See lib/share.ts.
+   *
+   * A REAL LINK AND A DELIBERATE TAP. Never a handler (a real link is never
+   * popup-blocked) and never automatic — this names who is behind, and that is
+   * the office's call to make each time, not a thing that should ever happen on
+   * a schedule.
+   */
+  const shareHref = buildWhatsAppLink(
+    "",
+    buildRoundStatusMessage({
+      submitted: submitted.length,
+      total: open.length,
+      outstanding: open
+        .filter((request) => !done(request))
+        .map((request) => ({
+          label: request.audienceLabel,
+          answered: request.studentsAnswered,
+          rosterSize: request.rosterSize,
+        })),
+    }),
+  );
+
   return (
     <section className={`${card()} p-4 md:p-6`}>
-      <h2 className="text-title font-semibold">
-        {submitted.length} of {open.length}{" "}
-        {open.length === 1 ? "group has" : "groups have"} submitted
-      </h2>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-title font-semibold">
+          {submitted.length} of {open.length}{" "}
+          {open.length === 1 ? "group has" : "groups have"} submitted
+        </h2>
+        <a
+          href={shareHref}
+          target="_blank"
+          rel="noreferrer noopener"
+          className={`${btn({ tone: "go" })} shrink-0 px-3 text-[13px]`}
+        >
+          Share
+        </a>
+      </div>
 
       {teachers.length > 0 ? (
         <ul className="mt-3 divide-y divide-[var(--color-border)]">

@@ -8,6 +8,8 @@ import {
   rowReady,
   rowTouched,
   shouldFlush,
+  soleMatch,
+  terminal,
   FLUSH_AT_ROWS,
   MIN_FLUSH_INTERVAL_MS,
 } from "../src/components/teacher/autosave";
@@ -376,5 +378,97 @@ describe("shouldFlush", () => {
   it("respects the floor between uploads, whatever else is true", () => {
     // The rate limit is 30 a minute per token and a retry needs room inside it.
     assert.equal(shouldFlush(FLUSH_AT_ROWS, 99_999, 100), false);
+  });
+});
+
+/**
+ * When the caret is allowed to leave a box on its own.
+ *
+ * The rule this replaces could only ask "has a fixed-length field reached its
+ * length", which is a phone number and an Aadhaar number and nothing else. FA
+ * marks have a maximum and no fixed length, so every one of them needed an
+ * explicit Enter.
+ */
+describe("terminal", () => {
+  const marks: TeacherField = {
+    key: "fa1_hindi",
+    labelEn: "FA1 Hindi",
+    labelHi: "एफ़ए1 हिन्दी",
+    mode: "collect",
+    inputType: "number",
+    exactLen: null,
+    pattern: null,
+    maxValue: "25",
+    options: null,
+    targetColumn: null,
+  };
+
+  it("is never terminal on an empty box", () => {
+    assert.equal(terminal(phone, ""), false);
+    assert.equal(terminal(marks, ""), false);
+  });
+
+  it("still ends a fixed-length field at its length", () => {
+    assert.equal(terminal(phone, "9876543210"), true);
+    // Nine of ten. Unfinished, not wrong, and the caret stays put.
+    assert.equal(terminal(phone, "987654321"), false);
+  });
+
+  it("ends a bounded number once no further digit could be legal", () => {
+    // Out of 25: a leading 3 can only become 30 or more.
+    assert.equal(terminal(marks, "3"), true);
+    assert.equal(terminal(marks, "9"), true);
+  });
+
+  it("waits where a second digit is still live", () => {
+    // 1 could be 1, or 10 through 19. 2 could be 2, or 20 through 25.
+    assert.equal(terminal(marks, "1"), false);
+    assert.equal(terminal(marks, "2"), false);
+    assert.equal(terminal(marks, "0"), false);
+  });
+
+  it("ends a two-digit mark, which is most of them", () => {
+    assert.equal(terminal(marks, "18"), true);
+    assert.equal(terminal(marks, "25"), true);
+  });
+
+  it("never moves her on from a value that does not validate", () => {
+    // 26 is over the maximum. Advancing would scroll the error off her screen.
+    assert.equal(terminal(marks, "26"), false);
+  });
+
+  it("leaves an unbounded field alone", () => {
+    assert.equal(terminal(father, "Rana"), false);
+  });
+});
+
+/**
+ * The type-to-filter box that stands in for a select above a dozen options.
+ *
+ * Moving her on the moment the text matches an option is wrong whenever one
+ * option is a prefix of another: she would be carried off "Amet" while still
+ * four keystrokes from "Amet Road".
+ */
+describe("soleMatch", () => {
+  const routes = ["Amet", "Amet Road", "Kelwa", "Kunthwa"];
+
+  it("is false for anything that is not on the list", () => {
+    assert.equal(soleMatch(routes, "Ame"), false);
+    assert.equal(soleMatch(routes, "Delhi"), false);
+    assert.equal(soleMatch(routes, ""), false);
+  });
+
+  it("holds while a longer option is still reachable", () => {
+    assert.equal(soleMatch(routes, "Amet"), false);
+  });
+
+  it("commits once nothing on the list can extend it", () => {
+    assert.equal(soleMatch(routes, "Amet Road"), true);
+    assert.equal(soleMatch(routes, "Kelwa"), true);
+  });
+
+  it("does not treat a shared prefix between two OTHER options as ambiguity", () => {
+    // Kelwa and Kunthwa share "K" and neither extends the other.
+    assert.equal(soleMatch(routes, "Kunthwa"), true);
   });
 });

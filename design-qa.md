@@ -130,6 +130,105 @@ applying by hand. `--admin-nav-h` went 52px → 56px.
   a 360px screen where the teacher's name was truncating.
 - **The last emoji is gone.** `PhotoField`'s 🙂 is a Phosphor `UserCircle`.
 
+---
+
+# Taps, not pixels (2026-08-15)
+
+A pass over both surfaces judged by one question: does it remove taps, seconds
+or hesitation from the five minutes the README budgets? Nothing here changes the
+visual language — no new colour, font, shadow or shape.
+
+## The teacher's five minutes
+
+- **The phone box opens the dialpad, not the number row.** `inputMode="tel"`
+  rather than `"numeric"`: both suppress letters, but Android draws the first as
+  a 3×4 grid whose keys are roughly twice the area. A class of forty-six is 460
+  digit taps. Aadhaar is also `tel` in the registry and gets the same pad; marks
+  are `number` and keep the row.
+- **A numeric box ends itself when no further digit could be legal.**
+  `terminal()` in `autosave.ts`. The old rule could only ask "has a fixed-length
+  field reached its length", which is a phone number and nothing else — FA marks
+  have a maximum and no fixed length, so every one of them needed an explicit
+  Enter. Out of 25: after `3`, 30 > 25, finished; after `1`, 10 ≤ 25, wait.
+  Only marks 0, 1 and 2 still need the key.
+- **Choosing from a select carries the caret on**, for the reason the
+  fixed-length advance already did. Two guards, both load-bearing: a native
+  select only advances on a POINTER, because arrow-keying a closed `<select>`
+  fires `change` on every press and would throw a keyboard user off the field;
+  and the type-to-filter box only advances on a `soleMatch` — an exact option
+  that nothing on the list extends. The real route list contains both "Agariya"
+  and "Agariya Kotari", so this is not hypothetical.
+- **"Carry on from there" carries her there.** The restored banner was a
+  sentence that did nothing; it is now a button that jumps to `activeStudentId`.
+  A button and never an automatic scroll — `focus.ts` already rules that a
+  screen scrolling itself while she reads is the screen taking over.
+- **The phone box can be emptied in one tap.** The 48px slot held a decorative
+  `DeviceMobile` glyph; it now holds a clear button whenever the box has a value
+  and the glyph only while it is empty. Replacing a wrong number was ten
+  backspaces, against a budget of "forty taps and three corrections". Not
+  offered on Aadhaar: twelve digits nobody re-types on a whim.
+
+## One keystroke stops re-rendering the whole class
+
+`StudentRow` is memoised. Everything else in this bullet exists to make that
+work, and undoing any of it silently switches it back off:
+
+- the six per-row callbacks come from a `useMemo` map keyed on the roster, not
+  from inline arrows rebuilt every render;
+- `summarise()` runs only when the review screen is actually open;
+- the carry-down map is built only over fields that can carry down, and rounds
+  with none share one frozen empty object — which is every phone, Aadhaar and
+  marks round;
+- `required` falls back to a module-level constant, not a fresh `[]`.
+
+Verified in the browser rather than assumed: after typing into one row, an
+untouched row's `memoizedProps` is the *same object reference*, so React bails
+out of it entirely. **The state stays in `RequestForm`** — one object to persist,
+one place to replay from — and the handlers keep reading `rowsRef.current`,
+which is what lets their dependency list be the roster instead of the answers.
+
+Deliberately NOT virtualised: `RequestForm` records that rendering the whole
+list was the fix for a real bug, `focus.ts` walks `[data-teacher-input]` across
+rows, and the review screen scrolls to `getElementById`. Memoisation gets most
+of the win and breaks none of it.
+
+## The console
+
+- **The review queue keeps its promise past the first approve.** "Everything
+  actionable is ticked by default" was a `useState` initialiser, which runs
+  once; `submit` cleared the selection and refreshed, and nothing re-ticked. So
+  from the first approve onwards the office either ticked thirty boxes by hand
+  or approved a subset believing it was the lot. It now re-derives when the
+  server sends a new list, through the same filter the screen is showing — the
+  invariant `narrow()` protects (never tick a row that is not on screen) holds
+  across a refresh exactly as it does across a filter change.
+- **The status board can be sent.** Build plan §10 calls it the enforcement
+  mechanism and asks for the headline in the staff group; it existed only as
+  pixels. `buildRoundStatusMessage` puts it in WhatsApp with an empty phone, so
+  wa.me opens the contact picker with the body attached. It names GROUPS, not
+  teachers — the build plan's own framing, and everyone in a staff group knows
+  whose class is whose. A deliberate tap, never a cron.
+- **Focus is no longer carried by a 1px border colour.** `btn()` and `chip()`
+  had no focus treatment at all and `field()` only swapped a border colour,
+  which is colour as sole carrier — the one thing this file forbids everywhere
+  else.
+
+  **`outline-solid`, and that is not cosmetic.** Tailwind v4 compiles a width
+  utility to `outline-style: var(--tw-outline-style)`, and `outline-none` —
+  which `field()` sets to kill the browser ring — compiles to
+  `--tw-outline-style: none`. A plain `outline-2` therefore resolves through a
+  variable the input has already set to `none`, and the ring is invisible on
+  exactly the controls that most need one. This was caught in the browser, not
+  in review.
+
+## Verification
+
+`npm run typecheck`, `npm run lint`, `npm test` (504), `npm run build`,
+`npm run smoke` (26/26) and `npm run smoke:ui` (46/46) all pass. Every token was
+re-confirmed present in the browser's computed `:root`, and each new
+`focus-visible` utility confirmed present in the generated stylesheet — Tailwind
+v4 pruning has silently dropped values in this repo before.
+
 ## Teacher surface
 
 Unchanged in shape, per the mock. Measurements only: answer buttons 48 → 52px,

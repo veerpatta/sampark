@@ -452,6 +452,68 @@ export function teacherPageUrl(origin: string, token: string): string {
   return `${origin}/t/${token}`;
 }
 
+export type RoundStatusInput = {
+  /** Groups whose frozen roster is fully answered for. */
+  submitted: number;
+  /** Every open group in the round. */
+  total: number;
+  /**
+   * The groups still outstanding, in the order the board shows them, each with
+   * how far along it is.
+   */
+  outstanding: { label: string; answered: number; rosterSize: number }[];
+};
+
+/**
+ * The status board, as something that can be posted in the staff group.
+ *
+ * Section 10 of the build plan is blunt about why this exists: "The status
+ * board is the enforcement mechanism. Share '8 of 11 classes submitted' in the
+ * staff group. Nobody wants to be in the 3." The board has rendered that
+ * sentence since it was written — as text, on a screen, which the office then
+ * screenshotted or retyped.
+ *
+ * IT NAMES GROUPS, NOT TEACHERS, and that is the build plan's own framing
+ * ("8 of 11 classes"). Everyone in a staff group knows whose class is whose, so
+ * nothing is lost as a nudge; what is avoided is a list of colleagues' names
+ * posted under a heading about who has not done their work. The per-teacher
+ * chase already exists one tap away, addressed to her alone.
+ *
+ * Progress rides on each line for the reason it does in the reminder: a class
+ * at 20 of 24 is nearly done, and listing it flatly beside one at 0 of 41 tells
+ * the room something untrue about both.
+ *
+ * There is no sign-off asking anyone to reply, because this is an announcement
+ * to a room rather than a message to a person.
+ */
+export function buildRoundStatusMessage(input: RoundStatusInput): string {
+  const { submitted, total, outstanding } = input;
+
+  const lines = [
+    `${submitted} of ${total} ${total === 1 ? "group has" : "groups have"} submitted.`,
+    `${total} में से ${submitted} पूरी हो चुकी हैं।`,
+  ];
+
+  if (outstanding.length === 0) {
+    lines.push(``, `Everything is in. Thank you.`, `सब आ गया है। धन्यवाद।`);
+    return lines.join("\n");
+  }
+
+  lines.push(``, `Still pending:`, `अभी बाकी:`, ``);
+  for (const group of outstanding) {
+    lines.push(
+      `• ${group.label} — ${
+        group.rosterSize === 0 || group.answered === 0
+          ? `not started · अभी शुरू नहीं`
+          : `${group.answered} of ${group.rosterSize} · ${group.rosterSize} में से ${group.answered}`
+      }`,
+    );
+  }
+
+  lines.push(``, SIGN_OFF);
+  return lines.join("\n");
+}
+
 /** A click-to-chat link that opens WhatsApp with the message pre-filled. */
 export function buildWhatsAppLink(phone: string, message: string): string {
   const digits = phone.replace(/\D/g, "");

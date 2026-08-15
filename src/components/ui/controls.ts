@@ -50,6 +50,30 @@ const SHAPE: Record<Shape, string> = {
     "min-h-[52px] rounded-[var(--radius-commit)] px-5 text-[15px] font-semibold",
 };
 
+/**
+ * The keyboard's half of the press feedback.
+ *
+ * `active:scale` below is the only acknowledgement a TAP gets, and it is the
+ * only one these controls had. A pointer gets `hover`; a keyboard got a 1px
+ * border colour change on `field()` and nothing at all on `btn()` or `chip()` —
+ * which is colour as the sole carrier of state, the one thing this design
+ * language forbids everywhere else.
+ *
+ * `focus-visible` and not `focus`, so a thumb on the teacher surface does not
+ * leave a ring sitting behind it on a control she has already finished with.
+ *
+ * `outline-solid` RATHER THAN `outline`, AND THAT IS NOT A STYLE CHOICE.
+ * Tailwind v4 compiles a width utility to `outline-style: var(--tw-outline-style)`,
+ * and `outline-none` — which `field()` below sets, to kill the browser's own
+ * ring — compiles to `--tw-outline-style: none`. So a plain `outline-2` on an
+ * input resolves its style through a variable that input has already set to
+ * `none`, and the ring is invisible on precisely the controls that most need
+ * one. `outline-solid` sets the variable back, and wins on specificity because
+ * it carries the `:focus-visible` pseudo-class and `.outline-none` does not.
+ */
+const FOCUS =
+  "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand-600)]";
+
 const TONE: Record<Tone, string> = {
   primary: "border border-transparent bg-[var(--color-brand-600)] text-white",
   go: "border border-transparent bg-[var(--color-success)] text-white",
@@ -77,6 +101,7 @@ export function btn(
     SHAPE[shape],
     TONE[tone],
     "transition-transform active:scale-[0.98]",
+    FOCUS,
     "disabled:pointer-events-none disabled:opacity-40",
     full ? "w-full" : "",
   ]
@@ -110,6 +135,7 @@ export function chip(
       ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
       : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)]",
     "transition-transform active:scale-[0.98]",
+    FOCUS,
   ].join(" ");
 }
 
@@ -127,6 +153,11 @@ export function field(options: { invalid?: boolean } = {}): string {
     options.invalid
       ? "border-[var(--color-danger)]"
       : "border-[var(--color-border)] focus:border-[var(--color-brand-600)]",
+    // The border change STAYS and the ring is added on top. On a box the border
+    // is a real signal — it is the edge of the thing you are typing in — but a
+    // 1px colour swap on its own is invisible on a cheap screen in daylight,
+    // and it is nothing at all to anyone who cannot separate the two colours.
+    FOCUS,
     "placeholder:text-[var(--color-ink-faint)]",
   ].join(" ");
 }

@@ -98,6 +98,71 @@ export function rowPartial(
   return judgeRow(fields, row, required) === "partial";
 }
 
+/**
+ * Is there nothing more that could legally be typed into this box?
+ *
+ * The question the caret advance actually needs, and until now it could only
+ * ask a narrower one: "has a fixed-length field reached its length". That
+ * covers a phone number and an Aadhaar number and nothing else — FA marks are
+ * `number` with `maxValue` and no `exactLen`, so on a marks round EVERY box
+ * needed an explicit Enter. Enter works, so it was one keypress per mark rather
+ * than a hunt; on a five-subject round for forty-six children it was still 230
+ * of them.
+ *
+ * Two ways a box can be finished:
+ *
+ *   - it reached its fixed length. Ten digits of ten.
+ *   - it is a bounded number and another digit could not produce a legal value.
+ *     Appending "0" is the SMALLEST thing the next keystroke could do, so if
+ *     even that exceeds the maximum, nothing else can help. Out of 25: after
+ *     "3", 30 > 25, finished. After "1", 10 ≤ 25, so she may be typing 18 and
+ *     must be left alone. After "18", 180 > 25, finished. Marks 0, 1 and 2 are
+ *     the only ones that still need an Enter, because 20-25 are live.
+ *
+ * A value that does not validate is never terminal. A mark of 26 is wrong, and
+ * moving her on from a box showing an error would hide the error.
+ *
+ * Pure, and here rather than in the component, for the reason at the top of
+ * this file. See tests/autosave.test.ts.
+ */
+export function terminal(field: TeacherField, value: string): boolean {
+  if (value === "") return false;
+
+  if (field.exactLen !== null && value.length >= field.exactLen) return true;
+
+  if (field.inputType === "number" && field.maxValue !== null) {
+    const max = Number(field.maxValue);
+    if (!Number.isFinite(max)) return false;
+    if (!validateField(field, value).ok) return false;
+    return Number(`${value}0`) > max;
+  }
+
+  return false;
+}
+
+/**
+ * Can this text still grow into a different option?
+ *
+ * For the type-to-filter box that stands in for a select above a dozen options
+ * — twenty-nine bus routes, where a full-screen native wheel per child is the
+ * thing being avoided. Moving her on the instant the text matches an option is
+ * usually right and occasionally awful: with "Amet" and "Amet Road" both on the
+ * list, she types A-m-e-t and the caret leaves for the next child while she is
+ * still four keystrokes from what she meant.
+ *
+ * So: an exact match, and nothing on the list extends it. That is the only
+ * state in which there is provably nothing left to type, and it needs no
+ * guessing about which browser reports a dropdown pick differently from a
+ * keystroke.
+ */
+export function soleMatch(options: string[], value: string): boolean {
+  if (value === "") return false;
+  if (!options.includes(value)) return false;
+  return !options.some(
+    (option) => option !== value && option.startsWith(value),
+  );
+}
+
 /** The holes still open. Drives the highlight and the "2 में से 1 भरा" line. */
 export function missingRequired(row: RowState, required: string[]): string[] {
   return required.filter((key) => !filled(row, key));

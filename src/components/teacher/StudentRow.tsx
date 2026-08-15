@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useRef, useState } from "react";
 import {
   CaretRight,
   CheckCircle,
   DeviceMobile,
+  XCircle,
 } from "@phosphor-icons/react";
 import { validateField } from "@/lib/fields";
 import { titleCaseName } from "@/lib/classes";
@@ -12,7 +13,13 @@ import { houseOf } from "@/lib/houses";
 import { normalisePhone, PHONE_LENGTH } from "@/lib/phone";
 import { HouseChip } from "@/components/HouseChip";
 import { tick } from "./haptics";
-import { judgeRow, missingRequired, rowTouched } from "./autosave";
+import {
+  judgeRow,
+  missingRequired,
+  rowTouched,
+  soleMatch,
+  terminal,
+} from "./autosave";
 import { COMPLETE, UPLOADABLE } from "./types";
 import { Bi } from "./Bi";
 import { TEACHER_INPUT, focusNext, keepInView, nextInput } from "./focus";
@@ -47,8 +54,26 @@ import type { RowState, TeacherField, TeacherRosterRow } from "./types";
  * bug that closed it: the card used to collapse into a read-only list a second
  * after the first box was filled, so the empty one was never seen again by her
  * or by anyone. The only thing that will fill that box is her, looking at it.
+ *
+ * MEMOISED, AND THE STATE STAYS IN RequestForm.
+ *
+ * A Class 8 link is forty-six of these; a subject link is eighty-four. All the
+ * answers live in one object one level up — deliberately, so there is one thing
+ * to persist to the phone and one place to replay from — which meant a single
+ * digit typed into any row re-rendered every row on the screen. Each of those
+ * re-ran rowTouched, missingRequired and judgeRow, and judgeRow calls
+ * validateField once per entered field; the open ones rebuilt a whole
+ * FieldInput, which validates again. On the cheap Android this is written for
+ * that is a visible lag on the tenth digit of the tenth child.
+ *
+ * The fix is NOT to move state down here. It is that every prop below is now
+ * stable unless it genuinely changed: `state` is a fresh object only for the
+ * row that was edited, the six callbacks come from a map keyed on the roster,
+ * and `suggestions` is a shared frozen object on the rounds that have none.
+ * Adding a prop that is rebuilt on every render — an inline arrow, an object
+ * literal, a `?? []` — silently switches all of this back off.
  */
-export function StudentRow({
+export const StudentRow = memo(function StudentRow({
   student,
   fields,
   state,
@@ -496,7 +521,7 @@ export function StudentRow({
       ) : null}
     </li>
   );
-}
+});
 
 /**
  * The child's name, badge and status — and, when there is one thing to do, the
@@ -646,7 +671,14 @@ function SuggestChip({
  * Three things matter here, all of them about not making her give up:
  *
  *   - The number pad is the only keyboard she should ever see for a phone
- *     number. inputMode="numeric" plus autoComplete="off".
+ *     number, and for a phone number it is the DIALPAD — inputMode="tel", not
+ *     "numeric". Both suppress the letters; "numeric" gives Android the
+ *     compressed number row along the top, "tel" gives the 3x4 grid, whose keys
+ *     are roughly twice the area. A class of forty-six is 460 digit taps, one
+ *     handed, and the cheapest thing that can be done about them is to make
+ *     each one a bigger target. Aadhaar is also inputType "tel" in the registry
+ *     and gets the same pad, which is right for twelve digits too; marks are
+ *     "number" and keep the number row. Plus autoComplete="off".
  *   - Non-digits are stripped as she types rather than rejected afterwards, and
  *     a leading +91 or 0 is dropped silently. Do not error on something you can
  *     simply fix.
@@ -668,15 +700,20 @@ function FieldInput({
   onChange: (value: string) => void;
   /** Last field in the row, so the keyboard offers Done rather than Next. */
   last: boolean;
-  /** A fixed-length field just reached its length by growing. */
-  /** A fixed-length field grew into a complete value. Carries the box it happened in. */
-  onFilled: (from: HTMLInputElement) => void;
+  /**
+   * This box is finished and she did not have to say so. Carries the control it
+   * happened in, which may be a <select> — choosing a house is as final as
+   * typing the tenth digit of a number.
+   */
+  onFilled: (from: HTMLInputElement | HTMLSelectElement) => void;
   /** What the row above answered for this field, when carrying down is safe. */
   suggestion: string | null;
   /** The row settled without this one, and the school holds nothing for it. */
   missing: boolean;
 }) {
   const [touched, setTouched] = useState(false);
+  /** Was the last interaction with the native select a tap, not an arrow key? */
+  const picked = useRef(false);
   const isNumeric = numeric(field);
   const check = validateField(field, value);
   const full = field.exactLen !== null && value.length >= field.exactLen;
@@ -763,7 +800,16 @@ function FieldInput({
           </span>
           <input
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => {
+              const next = event.target.value;
+              onChange(next);
+              // Only once nothing on the list can still extend what she has
+              // typed. See soleMatch: "Amet" must not carry her away while
+              // "Amet Road" is still reachable.
+              if (next.length > value.length && soleMatch(options, next)) {
+                onFilled(event.currentTarget);
+              }
+            }}
             onBlur={() => setTouched(true)}
             onFocus={(event) => keepInView(event.currentTarget)}
             onKeyDown={onEnterGoNext}
@@ -801,9 +847,36 @@ function FieldInput({
         </span>
         <select
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          /*
+           * A pick from a native select is a commitment — she chose it off a
+           * wheel, there is no half-typed state to wait out, and the reason the
+           * fixed-length advance exists ("stopping to find the next box is the
+           * work this screen exists to remove") is the same reason here.
+           *
+           * ONLY WHEN SHE POINTED AT IT. A closed <select> driven by the arrow
+           * keys fires `change` on EVERY arrow press, so advancing on any
+           * change would throw a keyboard user off the field on the first
+           * keystroke, three options before the one they wanted. Touch and
+           * mouse open a picker and fire once, on the choice — which is the
+           * case this is for. A keyboard still moves on with Enter or Tab.
+           */
+          onPointerDown={() => {
+            picked.current = true;
+          }}
+          onChange={(event) => {
+            const next = event.target.value;
+            onChange(next);
+            // Not on the empty placeholder: clearing a field is not answering it.
+            if (next !== "" && picked.current) {
+              picked.current = false;
+              onFilled(event.currentTarget);
+            }
+          }}
           onFocus={(event) => keepInView(event.currentTarget)}
-          onKeyDown={onEnterGoNext}
+          onKeyDown={(event) => {
+            picked.current = false;
+            onEnterGoNext(event);
+          }}
           {...{ [TEACHER_INPUT]: "" }}
           className={`mt-2 min-h-14 w-full rounded-[var(--radius-control)] border bg-white px-3 text-base outline-none transition-shadow focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] ${border}`}
         >
@@ -846,11 +919,11 @@ function FieldInput({
             // Move on only when the field GREW into a complete value. Doing it on
             // any change would yank the caret away the moment she backspaces to
             // correct the last digit, which is exactly when she needs to stay.
-            if (
-              field.exactLen !== null &&
-              next.length === field.exactLen &&
-              next.length > value.length
-            ) {
+            //
+            // "Complete" is terminal()'s call, not a length test — which is what
+            // brings the marks round in: a mark out of 25 has no fixed length,
+            // but the moment another digit could not be legal it is finished.
+            if (next.length > value.length && terminal(field, next)) {
               onFilled(event.currentTarget);
             }
           }}
@@ -859,7 +932,9 @@ function FieldInput({
           onKeyDown={onEnterGoNext}
           {...{ [TEACHER_INPUT]: "" }}
           type={field.inputType === "date" ? "date" : "text"}
-          inputMode={isNumeric ? "numeric" : "text"}
+          inputMode={
+            field.inputType === "tel" ? "tel" : isNumeric ? "numeric" : "text"
+          }
           enterKeyHint={last ? "done" : "next"}
           autoComplete="off"
           autoCorrect="off"
@@ -879,7 +954,45 @@ function FieldInput({
             isNumeric ? "font-mono" : ""
           } ${field.inputType === "tel" ? "pr-12" : ""}`}
         />
-        {field.inputType === "tel" ? (
+        {/*
+         * ONE SLOT, TWO JOBS, AND NEVER BOTH AT ONCE.
+         *
+         * Empty box: the phone glyph, which is a hint about what goes here and
+         * is worth its 48px only while the box is empty.
+         *
+         * Filled box: a way to empty it. She taps Change on a row whose number
+         * is wrong and the box arrives holding ten digits she does not want —
+         * so replacing it costs ten backspaces on a cheap phone, and the budget
+         * this whole product is built on is "forty taps and three corrections".
+         * Three corrections were costing thirty taps of deleting.
+         *
+         * Deliberately not offered on Aadhaar, which is also inputType "tel":
+         * twelve digits nobody re-types on a whim, and a destructive control
+         * beside it is a worse trade than the backspaces.
+         */}
+        {field.inputType === "tel" && field.exactLen === PHONE_LENGTH && value ? (
+          <button
+            type="button"
+            // Nothing here can be committed or uploaded, so the row's own blur
+            // commit must not fire on the way to this button — hence it lives
+            // inside the same <li>, which is what onBlur checks for.
+            onClick={(event) => {
+              tick();
+              onChange("");
+              // Straight back into the box. Clearing is something she does in
+              // order to type, so putting the keyboard away first would cost
+              // her the tap it just saved.
+              event.currentTarget
+                .closest("div")
+                ?.querySelector<HTMLInputElement>(`[${TEACHER_INPUT}]`)
+                ?.focus();
+            }}
+            aria-label={T.clearNumber.en}
+            className="absolute right-0 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center text-[var(--color-ink-muted)] transition-transform active:scale-[0.9]"
+          >
+            <XCircle aria-hidden size={24} weight="fill" />
+          </button>
+        ) : field.inputType === "tel" ? (
           <DeviceMobile
             aria-hidden
             size={24}

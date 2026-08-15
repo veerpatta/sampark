@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle, CloudCheck } from "@phosphor-icons/react";
+import { CaretRight, CheckCircle, CloudCheck } from "@phosphor-icons/react";
 import { StudentRow } from "./StudentRow";
 import { ProgressRail } from "./ProgressRail";
 import { ReviewSummary } from "./ReviewSummary";
@@ -22,7 +22,7 @@ import {
   shouldFlush,
   ROW_COMMIT_MS,
 } from "./autosave";
-import { suggestForRow } from "./suggest";
+import { canCarryDown, suggestForRow } from "./suggest";
 import { Bi } from "./Bi";
 import { watchKeyboard } from "./focus";
 import { PhotoProvider } from "./photo-context";
@@ -81,6 +81,21 @@ type Stage = "list" | "review";
 
 /** How long to stand down after a 429 before trying again. */
 const RATE_LIMIT_BACKOFF_MS = 15_000;
+
+/**
+ * The suggestions object for a round that has none — shared, frozen, and the
+ * same object every time.
+ *
+ * Most rounds carry no suggestions at all: canCarryDown refuses `tel` and
+ * refuses anything with a fixed length, which is every field on a phone round,
+ * an Aadhaar round and a marks round. Those rounds were still building one
+ * fresh object per child per render, full of nulls — and a fresh object is a
+ * changed prop, which is what stops a memoised row from staying put.
+ */
+const NO_SUGGESTIONS: Record<string, string | null> = Object.freeze({});
+
+/** The same reasoning, for a student with no holes to fill. */
+const NO_REQUIRED: string[] = [];
 
 export function RequestForm({
   token,
@@ -268,13 +283,34 @@ export function RequestForm({
     [blanks, known, rows],
   );
 
+  /**
+   * Fields a value can be carried down for at all.
+   *
+   * Asked once for the whole round rather than once per field per row per
+   * render. On the rounds where this is empty — which is most of them — the
+   * per-row work below disappears entirely.
+   */
+  const carryFields = useMemo(() => fields.filter(canCarryDown), [fields]);
+
   /** Known-group students she has not touched yet — what "सब सही हैं" covers. */
   const untouchedKnown = useMemo(
     () => known.filter((student) => rows[student.studentId]!.status === "todo"),
     [known, rows],
   );
 
-  function update(studentId: string, patch: Partial<RowState>) {
+  /*
+   * Stable across renders, and that is load-bearing now rather than tidy.
+   *
+   * Every dependency is a ref or a setState — the mirror below is exactly why
+   * this needs no `rows` in its closure — so an empty dependency list is
+   * honest. A fresh `update` on every keystroke would rebuild every row's
+   * handlers, which would change every row's props, which would defeat the
+   * memo on StudentRow entirely.
+   */
+  const update = useCallback(function update(
+    studentId: string,
+    patch: Partial<RowState>,
+  ) {
     // The mirror is written synchronously here rather than left to the next
     // render. Filling the last digit of a fixed-length field calls commitNow in
     // the SAME event as this update, and a commit that judged the state from
@@ -298,7 +334,7 @@ export function RequestForm({
     if (patch.status && patch.status !== "editing") {
       lastCommitAt.current = Date.now();
     }
-  }
+  }, []);
 
   /**
    * A row commits itself once she stops typing.
@@ -347,26 +383,32 @@ export function RequestForm({
   );
 
   /** Restart this row's timer. Typing in one row must not commit another. */
-  function scheduleCommit(studentId: string) {
-    const timers = commitTimers.current;
-    const existing = timers.get(studentId);
-    if (existing) clearTimeout(existing);
-    timers.set(
-      studentId,
-      setTimeout(() => {
-        timers.delete(studentId);
-        commit(studentId);
-      }, ROW_COMMIT_MS),
-    );
-  }
+  const scheduleCommit = useCallback(
+    (studentId: string) => {
+      const timers = commitTimers.current;
+      const existing = timers.get(studentId);
+      if (existing) clearTimeout(existing);
+      timers.set(
+        studentId,
+        setTimeout(() => {
+          timers.delete(studentId);
+          commit(studentId);
+        }, ROW_COMMIT_MS),
+      );
+    },
+    [commit],
+  );
 
   /** Leaving the row, or filling its last field, does not need the wait. */
-  function commitNow(studentId: string) {
-    const existing = commitTimers.current.get(studentId);
-    if (existing) clearTimeout(existing);
-    commitTimers.current.delete(studentId);
-    commit(studentId);
-  }
+  const commitNow = useCallback(
+    (studentId: string) => {
+      const existing = commitTimers.current.get(studentId);
+      if (existing) clearTimeout(existing);
+      commitTimers.current.delete(studentId);
+      commit(studentId);
+    },
+    [commit],
+  );
 
   useEffect(() => {
     const timers = commitTimers.current;
@@ -460,9 +502,64 @@ export function RequestForm({
   }
 
 
+  /**
+   * The receipt, built only when she is looking at it.
+   *
+   * `summarise` walks the whole roster building arrays, and this ran on every
+   * keystroke to produce a value read by exactly one branch — the review screen
+   * — which is not on screen while she is typing. Forty-six children of work,
+   * forty-six times a number, thrown away every time.
+   */
+  /**
+   * One set of callbacks per child, built once and kept.
+   *
+   * These used to be six arrow functions written inline in the row's JSX, so
+   * every child got six brand-new functions on every render — and a new
+   * function is a changed prop. Nothing could be memoised while that was true:
+   * one digit typed into row 8 re-rendered all forty-six rows, each of them
+   * re-running validateField over its own values.
+   *
+   * They read `rowsRef.current` rather than `rows`, which is what lets the
+   * dependency list be the roster instead of the answers. That is the same
+   * mirror discipline `update` relies on, and it is why this is safe: the ref
+   * is written synchronously in `update`, so a handler firing between two
+   * renders still sees the latest values.
+   */
+  const handlers = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        onConfirm: () => void;
+        onEdit: () => void;
+        onReopen: () => void;
+        onLeave: () => void;
+        onFilledLast: () => void;
+        onChange: (fieldKey: string, value: string) => void;
+      }
+    >();
+    for (const student of roster) {
+      const id = student.studentId;
+      map.set(id, {
+        onConfirm: () => update(id, { status: "confirmed" }),
+        onEdit: () => update(id, { status: "editing" }),
+        onReopen: () => update(id, { status: "todo" }),
+        onLeave: () => commitNow(id),
+        onFilledLast: () => commitNow(id),
+        onChange: (fieldKey, value) => {
+          update(id, {
+            status: "editing",
+            values: { ...rowsRef.current[id]!.values, [fieldKey]: value },
+          });
+          scheduleCommit(id);
+        },
+      });
+    }
+    return map;
+  }, [roster, update, commitNow, scheduleCommit]);
+
   const summary = useMemo(
-    () => summarise(roster, fields, rows),
-    [roster, fields, rows],
+    () => (stage === "review" ? summarise(roster, fields, rows) : null),
+    [stage, roster, fields, rows],
   );
 
   /**
@@ -750,35 +847,35 @@ export function RequestForm({
       // Within the group she is looking at, not across both: the blanks and the
       // known rows are two separate runs down the screen, and the row "above"
       // only means anything inside one of them.
-      suggestions={Object.fromEntries(
-        fields.map((field) => [
-          field.key,
-          suggestForRow(field, group, index, rows),
-        ]),
-      )}
+      //
+      // Built only over the fields that can actually carry a value down, and
+      // skipped outright when there are none — StudentRow reads a missing key
+      // as null, which is what suggestForRow returned for those fields anyway.
+      suggestions={
+        carryFields.length === 0
+          ? NO_SUGGESTIONS
+          : Object.fromEntries(
+              carryFields.map((field) => [
+                field.key,
+                suggestForRow(field, group, index, rows),
+              ]),
+            )
+      }
       blank={blankIds.has(student.studentId)}
-      required={requiredByStudent.get(student.studentId) ?? []}
+      // NO_REQUIRED rather than a fresh [] — every student is in the map, so
+      // the fallback never fires, but a literal here would be a new array on
+      // every render and a changed prop for a row nothing happened to.
+      required={requiredByStudent.get(student.studentId) ?? NO_REQUIRED}
       sent={sentIds.has(student.studentId)}
       position={(blankIds.has(student.studentId) ? 0 : blanks.length) + index + 1}
       active={activeStudentId === student.studentId}
-      onConfirm={() => update(student.studentId, { status: "confirmed" })}
-      onEdit={() => update(student.studentId, { status: "editing" })}
-      onReopen={() => update(student.studentId, { status: "todo" })}
-      onLeave={() => commitNow(student.studentId)}
-      onFilledLast={() => commitNow(student.studentId)}
-      onChange={(fieldKey, value) => {
-        update(student.studentId, {
-          status: "editing",
-          values: { ...rowsRef.current[student.studentId]!.values, [fieldKey]: value },
-        });
-        scheduleCommit(student.studentId);
-      }}
+      {...handlers.get(student.studentId)!}
         />
       </Fragment>
     );
   };
 
-  if (stage === "review") {
+  if (stage === "review" && summary) {
     return (
       <ReviewSummary
         summary={summary}
@@ -839,10 +936,45 @@ export function RequestForm({
         </div>
       </section>
 
+      {/*
+       * The banner takes her back to where she stopped.
+       *
+       * It used to say "carry on from there" and then leave her at the top of
+       * forty-six rows to find the place herself. `activeStudentId` is already
+       * exactly that place — the first row still editing or partial, else the
+       * first unfinished one — and the focusId effect below already knows how
+       * to centre a row. Both existed; neither was wired to this.
+       *
+       * A BUTTON SHE TAPS, NEVER AN AUTOMATIC JUMP. focus.ts states the rule:
+       * anything scrolling itself into view while she reads is the screen
+       * taking over. A page that threw her down the list on load would also
+       * fight keepInView's settle timer. One deliberate 48px tap, and nothing
+       * at all happens if she would rather scroll.
+       */}
       {restored ? (
-        <p className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-3 text-sm text-[var(--color-correct-fg)]">
-          <Bi t={T.restored} />
-        </p>
+        activeStudentId ? (
+          <button
+            type="button"
+            onClick={() => setFocusId(activeStudentId)}
+            className="mt-4 flex min-h-[var(--tap-min)] w-full items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-3 text-left text-sm text-[var(--color-correct-fg)] transition-transform active:scale-[0.99]"
+          >
+            <span className="min-w-0">
+              <Bi t={T.restored} />
+            </span>
+            {/* Bi's Hindi half is a block span, so it needs a plain wrapper —
+                as a direct flex item it would sit beside the English. */}
+            <span className="flex shrink-0 items-center gap-1 font-semibold">
+              <span>
+                <Bi t={T.continueHere} />
+              </span>
+              <CaretRight aria-hidden size={18} weight="bold" />
+            </span>
+          </button>
+        ) : (
+          <p className="mt-4 rounded-[var(--radius-card)] border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-3 text-sm text-[var(--color-correct-fg)]">
+            <Bi t={T.restored} />
+          </p>
+        )
       ) : null}
 
       {!online ? (

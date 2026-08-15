@@ -67,9 +67,62 @@ export function ReviewQueue({
   const live = visible.filter((item) => !item.superseded);
   const stale = visible.filter((item) => item.superseded);
 
-  const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(items.filter((item) => !item.superseded).map((item) => item.id)),
+  /**
+   * Everything actionable and currently on screen.
+   *
+   * The one definition of "what should be ticked", used by all three things
+   * that need to answer it: the first render, a filter change, and the arrival
+   * of fresh rows after an approve. It takes the filter as arguments rather
+   * than reading state so `narrow` can call it with the values it is about to
+   * set, which are not in state yet.
+   */
+  const actionable = (
+    a: string | null,
+    f: string | null,
+    c: string | null,
+  ): Set<string> =>
+    new Set(
+      items
+        .filter(
+          (item) =>
+            !item.superseded &&
+            !decided.includes(item.id) &&
+            (a === null || item.audienceLabel === a) &&
+            (f === null || item.fieldKey === f) &&
+            (c === null || item.action === c),
+        )
+        .map((item) => item.id),
+    );
+
+  const [selected, setSelected] = useState<Set<string>>(() =>
+    actionable(null, null, null),
   );
+
+  /**
+   * RE-TICK WHEN THE SERVER SENDS A NEW LIST.
+   *
+   * `selected` was seeded by a useState initialiser, which runs once. `submit`
+   * clears it and calls router.refresh(), and nothing put it back — so from the
+   * first approve onwards every remaining row sat unticked, and the promise at
+   * the top of this file ("everything actionable is ticked by default") held
+   * only until the office used the screen. They then either re-ticked thirty
+   * boxes by hand or approved a subset believing it was the lot.
+   *
+   * Adjusting state during render against the previous props, rather than in an
+   * effect: React re-runs this component before touching the DOM, so the list
+   * never paints in the wrong state. `items` is a fresh array from the server
+   * component on every refresh and keeps its identity between them, which is
+   * exactly the signal wanted.
+   *
+   * It re-derives through the SAME filter the screen is currently showing, so
+   * the invariant above — never tick a row that is not on screen — survives a
+   * refresh just as it survives a filter change.
+   */
+  const [seen, setSeen] = useState(items);
+  if (items !== seen) {
+    setSeen(items);
+    setSelected(actionable(audience, field, action));
+  }
 
   /** Re-tick whatever the new filter reveals, and untick everything it hides. */
   function narrow(next: {
@@ -84,20 +137,7 @@ export function ReviewQueue({
     setField(f);
     setAction(c);
 
-    setSelected(
-      new Set(
-        items
-          .filter(
-            (item) =>
-              !item.superseded &&
-              !decided.includes(item.id) &&
-              (a === null || item.audienceLabel === a) &&
-              (f === null || item.fieldKey === f) &&
-              (c === null || item.action === c),
-          )
-          .map((item) => item.id),
-      ),
-    );
+    setSelected(actionable(a, f, c));
   }
   const [showStale, setShowStale] = useState(false);
   const [note, setNote] = useState("");

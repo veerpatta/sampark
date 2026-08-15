@@ -92,6 +92,16 @@ export const T = {
     "Your earlier work was saved on this phone — carry on from there.",
     "आपका पहले का काम फ़ोन में सुरक्षित था — वहीं से आगे बढ़ें।",
   ),
+  /**
+   * The half of `restored` that makes it true.
+   *
+   * "Carry on from there" was a sentence that did nothing: she was put back at
+   * the top of forty-six rows and had to find her own place. This is the
+   * control that takes her to it.
+   */
+  continueHere: p("Take me there", "वहाँ ले चलें"),
+  /** On the button that empties a phone box, for screen readers. */
+  clearNumber: p("Clear the number", "नंबर मिटाएँ"),
   offlineWorking: p(
     "No internet. Keep working — everything is saved on the phone and will be sent the moment you reconnect.",
     "इंटरनेट नहीं है। काम करती रहें — सब फ़ोन में सुरक्षित है और जुड़ते ही अपने आप भेज दिया जाएगा।",
