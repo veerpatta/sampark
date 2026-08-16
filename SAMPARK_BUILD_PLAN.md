@@ -433,13 +433,18 @@ DATABASE_URL=                # Neon pooled connection string (app_rw role)
 DATABASE_URL_UNPOOLED=       # direct connection, for migrations only
 AUTH_SECRET=                 # openssl rand -base64 32
 AUTH_URL=https://data.veerpatta.in
-APP_TIMEZONE=Asia/Kolkata
 ACADEMIC_YEAR=2026-27
 UPSTASH_REDIS_REST_URL=      # optional, rate limiting
 UPSTASH_REDIS_REST_TOKEN=
 ```
 
 Never prefix any of these with `NEXT_PUBLIC_`.
+
+This list originally carried `APP_TIMEZONE=Asia/Kolkata`. It was never read, and
+it is gone: the school's zone is a constant in `src/lib/today.ts` because a
+client component cannot read a server-only variable, so making it configurable
+would risk the two halves of the app disagreeing about what day it is — see the
+note in that file.
 
 ---
 

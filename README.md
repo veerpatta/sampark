@@ -288,7 +288,6 @@ Vercel environment variables (Production / Preview / Development):
 | `DATABASE_URL_UNPOOLED` | ✅ | — | ✅ |
 | `AUTH_SECRET` | ✅ | ✅ | local only |
 | `AUTH_URL` | ✅ | — | local only |
-| `APP_TIMEZONE` | ✅ | ✅ | ✅ |
 | `ACADEMIC_YEAR` | ✅ | ✅ | ✅ |
 
 `DATABASE_URL_UNPOOLED` is deliberately absent from Preview. It is the direct
@@ -298,6 +297,15 @@ credential with DDL rights.
 
 `AUTH_URL` is unset for Preview because preview hostnames change per deployment;
 Auth.js infers the host there.
+
+**There is no `APP_TIMEZONE`, and adding one back would be a regression.** It was
+listed here and in `.env.example` for a long time and read by nothing. The
+school's zone is a constant in `src/lib/today.ts` because three of its callers
+are client components: a client cannot read a server-only variable, so the
+failure mode is not a missing-config error but a silent fall back to a different
+zone on one side of the network — which is precisely the bug that file exists to
+fix. **It may still be set in the Vercel project; it can be deleted there.** A
+second school in a second zone belongs on the school record, not the environment.
 
 ---
 
