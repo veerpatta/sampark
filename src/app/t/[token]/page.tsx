@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 // Same reasoning as components/admin/SettingsList.tsx.
 import { CheckCircle } from "@phosphor-icons/react/dist/ssr";
 import { resolveTeacherToken, type TeacherPageItem } from "@/lib/auth/token";
+import { isAnsweredFully } from "@/lib/answered";
 import { clientIp, limitByIp, limitByTeacherToken } from "@/lib/ratelimit";
 import { describeAudienceLine } from "@/lib/whatsapp";
 import { Bi } from "@/components/teacher/Bi";
@@ -112,8 +113,14 @@ export default async function TeacherHomePage({
  * the target — a 48px row beats six underlined words under a thumb.
  */
 function RequestCard({ item }: { item: TeacherPageItem }) {
-  const left = item.rosterSize - item.answered;
-  const done = left === 0 && item.rosterSize > 0;
+  // The office's own predicate, imported rather than restated. This used to be
+  // written out here over an `answered` that counted differently, so the two
+  // screens could call the same list finished and unfinished at once.
+  const done = isAnsweredFully({
+    rosterSize: item.rosterSize,
+    studentsAnswered: item.answered,
+  });
+  const left = Math.max(0, item.rosterSize - item.answered);
   const overdue = isOverdue(item.dueDate);
 
   return (

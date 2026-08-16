@@ -9,6 +9,7 @@ import {
   teacherPageUrl,
 } from "@/lib/whatsapp";
 import type { QueueGroup } from "@/lib/send-queue";
+import { ProgressBar } from "@/components/admin/ProgressBar";
 
 import { useToast } from "@/components/ui/Toast";
 import { resume, setGroupSent } from "./actions";
@@ -141,14 +142,16 @@ export function SendQueue({
         <h2 className="text-title font-semibold">
           {done} of {rows.length} {rows.length === 1 ? "message" : "messages"} sent
         </h2>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-sunken)]">
-          <div
-            className="h-full rounded-full bg-[var(--color-success)] transition-[width] duration-300"
-            style={{
-              width: `${rows.length === 0 ? 0 : (done / rows.length) * 100}%`,
-            }}
-          />
-        </div>
+        {/* Fixed green, unlike the status board's tone-driven bar. This counts
+            messages that have actually gone, and there is no state it could
+            disagree with — a sent message is not "in progress". */}
+        <ProgressBar
+          value={done}
+          max={rows.length}
+          tone="bg-[var(--color-success)]"
+          label="Messages sent in this round"
+          className="mt-2 h-1.5"
+        />
         {/* Both numbers, so the count above reconciles with the board's,
             which counts links. A teacher with three subjects is one message. */}
         <p className="mt-1 font-mono text-meta text-[var(--color-ink-muted)]">

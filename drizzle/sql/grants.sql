@@ -57,27 +57,31 @@ REVOKE DELETE ON submissions FROM app_rw;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_rw;
 
 -- --------------------------------------------------------------------- views
--- Section 4.3. The request status board reads this instead of assembling four
--- correlated counts in application code.
-CREATE OR REPLACE VIEW request_progress AS
-SELECT r.id,
-       r.title,
-       -- class_label is NULL for a link scoped to a house or a bus route, whose
-       -- roster spans classes. Fall back to the audience label so this view
-       -- always names the group the link was actually for.
-       coalesce(r.class_label, r.audience_label) AS class_label,
-       t.name AS teacher,
-       r.due_date,
-       r.status,
-       (SELECT count(*) FROM request_students rs
-         WHERE rs.request_id = r.id)                        AS roster_size,
-       (SELECT count(DISTINCT s.student_id) FROM submissions s
-         WHERE s.request_id = r.id)                         AS students_answered,
-       (SELECT count(*) FROM submissions s
-         WHERE s.request_id = r.id
-           AND s.review_status = 'pending'
-           AND s.action = 'changed')                        AS changes_pending
-FROM requests r
-JOIN teachers t ON t.id = r.teacher_id;
-
-GRANT SELECT ON request_progress TO app_rw;
+--
+-- request_progress IS GONE, AND PLAN SECTION 4.3 IS NOT BEING FOLLOWED.
+--
+-- The plan proposed a view the status board would read instead of assembling
+-- correlated counts in application code. It was created, granted, and never
+-- read by one line of the app — and in the time it sat there unread it drifted
+-- into disagreeing with the board on both of the numbers it existed to supply:
+--
+--   students_answered  counted count(DISTINCT student_id), i.e. "has any
+--                      submission". The board counts students answered for on
+--                      EVERY field the request asked about, because a card with
+--                      one of two boxes filled is not a child who is done. See
+--                      src/lib/answered.ts.
+--   changes_pending    restricted to action = 'changed'. The board counts every
+--                      pending row, so a not_present awaiting review shows on
+--                      one and not the other.
+--
+-- A view nothing reads cannot be caught by a test or a screen, so it drifts
+-- silently and is then trusted by whoever finds it first. Three small aggregates
+-- in Drizzle are already what listRequests does, and they are the definition
+-- everything else agrees with. Dropped rather than corrected: the argument for
+-- deleting it is exactly that nothing reads it, and correcting it would leave
+-- that true.
+--
+-- DROP rather than silence, because grants.sql is re-run on every branch and an
+-- abandoned view would otherwise outlive this note on databases that already
+-- have it.
+DROP VIEW IF EXISTS request_progress;

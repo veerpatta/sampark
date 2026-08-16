@@ -1,8 +1,17 @@
 import Link from "next/link";
-import { listRequestBoard, type BoardEntry } from "@/lib/requests";
+import {
+  listRequestBoard,
+  listRequests,
+  type BoardEntry,
+} from "@/lib/requests";
+import { isAnsweredFully } from "@/lib/answered";
+import { groupProgressByTeacher } from "@/lib/progress";
+import { marksFieldKeys } from "@/lib/marks";
+import { requestOrigin } from "@/lib/request-origin";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { PageHeader } from "@/components/admin/PageHeader";
-import { btn } from "@/components/ui/controls";
+import { TeacherProgressList } from "@/components/admin/TeacherProgressList";
+import { btn, card, chip } from "@/components/ui/controls";
 import { RequestBulkBar } from "./RequestBulkBar";
 
 export const metadata = { title: "Requests — Sampark" };
@@ -28,14 +37,30 @@ export const dynamic = "force-dynamic";
 export default async function RequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archived?: string }>;
+  searchParams: Promise<{ archived?: string; view?: string }>;
 }) {
+  const params = await searchParams;
   // Archived rows are reachable but never the default. An archive nobody can
   // open is a delete with extra steps, and the whole reason answered requests
   // are archived rather than deleted is that their contents still matter.
-  const showArchived = (await searchParams).archived === "1";
-  const entries = await listRequestBoard({ includeArchived: showArchived });
+  const showArchived = params.archived === "1";
+  /*
+   * BY TEACHER IS THE DEFAULT, and anything unrecognised falls back to it.
+   *
+   * The office's question after a round is "how far has each teacher got",
+   * and for as long as this board was one row per link there was nowhere to
+   * ask it — a teacher holding three links was three rows that each knew only
+   * about themselves. The round view is still here and still owns closing,
+   * archiving and bulk work; it is simply no longer what opens.
+   */
+  const view = params.view === "rounds" ? "rounds" : "teachers";
   const today = new Date().toISOString().slice(0, 10);
+
+  if (view === "teachers") {
+    return <ByTeacher today={today} />;
+  }
+
+  const entries = await listRequestBoard({ includeArchived: showArchived });
 
   const links = entries.reduce(
     (total, entry) => total + (entry.kind === "batch" ? entry.groups : 1),
@@ -48,8 +73,7 @@ export default async function RequestsPage({
   const answered = (entry: BoardEntry) => entry.studentsAnswered;
   const roster = (entry: BoardEntry) => entry.rosterSize;
   const pending = (entry: BoardEntry) => entry.changesPending;
-  const complete = (entry: BoardEntry) =>
-    roster(entry) > 0 && answered(entry) >= roster(entry);
+  const complete = (entry: BoardEntry) => isAnsweredFully(entry);
 
   const columns: Column<BoardEntry>[] = [
     {
@@ -177,13 +201,19 @@ export default async function RequestsPage({
         }${showArchived ? ", archived included" : ""}`}
         actions={
           <Link
-            href={showArchived ? "/requests" : "/requests?archived=1"}
+            // Carries the view, or the toggle would bounce you back to the
+            // teacher board every time you asked to see archived rows.
+            href={
+              showArchived ? "/requests?view=rounds" : "/requests?view=rounds&archived=1"
+            }
             className={`${btn()} text-[var(--color-ink-muted)]`}
           >
             {showArchived ? "Hide archived" : "Show archived"}
           </Link>
         }
       />
+
+      <ViewToggle current="rounds" />
 
       {/* The two ways to start something, side by side and full width on a
           phone. They were in the header with "Show archived", which put three
@@ -290,6 +320,117 @@ export default async function RequestsPage({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * How far each teacher has got — what this tab opens on.
+ *
+ * ONE ROW PER PERSON, TWO COUNTS. Marks and student details are different work,
+ * chased differently and finished at different times, so they stay two figures
+ * rather than being averaged into one that describes neither. A teacher holding
+ * no marks rounds simply has no marks count.
+ *
+ * The list itself is TeacherProgressList, shared with the dashboard, because
+ * "who is behind" answered two ways in two places is a disagreement waiting to
+ * be found by whoever has both tabs open.
+ */
+async function ByTeacher({ today }: { today: string }) {
+  const [requests, origin, marksKeys] = await Promise.all([
+    listRequests(),
+    requestOrigin(),
+    marksFieldKeys(),
+  ]);
+
+  const open = requests.filter((request) => request.status === "open");
+  const teachers = groupProgressByTeacher(
+    open,
+    new Set(marksKeys.keys()),
+    today,
+  );
+
+  const outstanding = teachers.reduce(
+    (total, teacher) => total + teacher.outstanding,
+    0,
+  );
+  const behind = teachers.filter((teacher) => teacher.overdue).length;
+
+  return (
+    <div className="space-y-5 md:space-y-8">
+      <PageHeader
+        title="Requests"
+        subtitle={
+          teachers.length === 0
+            ? "Nothing is open."
+            : `${teachers.length} teacher${teachers.length === 1 ? "" : "s"} · ${outstanding} child${
+                outstanding === 1 ? "" : "ren"
+              } still to answer for${behind > 0 ? ` · ${behind} past due` : ""}`
+        }
+      />
+
+      <div className="flex gap-2">
+        <Link href="/requests/new" className={`${btn({ tone: "primary" })} flex-1`}>
+          New request
+        </Link>
+        <Link
+          href="/requests/bulk"
+          className={`${btn()} flex-1 border-[var(--color-brand-600)] text-[var(--color-brand-700)]`}
+        >
+          Send to many
+        </Link>
+      </div>
+
+      <ViewToggle current="teachers" />
+
+      <section className={`${card()} p-4 md:p-6`}>
+        <TeacherProgressList
+          teachers={teachers}
+          origin={origin}
+          empty="Nothing is open. Create a request and it will show up here as answers arrive."
+        />
+      </section>
+
+      {teachers.length > 0 ? (
+        <p className="text-xs text-[var(--color-ink-muted)]">
+          A teacher counts as done for a list when every child on its frozen
+          roster has been answered for on every field it asked about — however
+          she answered. A card left with one box empty is not counted.
+          &ldquo;Not sent&rdquo; means the office never handed that link over,
+          which is not the same as her not having started.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Two views of the same work.
+ *
+ * Links styled as chips rather than a select or a FilterBar: FilterBar is a GET
+ * form for narrowing a list, and these two are mutually exclusive destinations —
+ * that is navigation. It is also how /marks picks a period, and for the same
+ * reason given there: "a select on a phone is a modal wheel for what is one
+ * tap". Works with JavaScript off either way.
+ */
+function ViewToggle({ current }: { current: "teachers" | "rounds" }) {
+  const views = [
+    { key: "teachers" as const, href: "/requests", label: "By teacher" },
+    { key: "rounds" as const, href: "/requests?view=rounds", label: "By round" },
+  ];
+
+  return (
+    <nav aria-label="View" className="flex flex-wrap gap-2">
+      {views.map((view) => (
+        <Link
+          key={view.key}
+          href={view.href}
+          aria-current={view.key === current ? "page" : undefined}
+          className={chip({ on: view.key === current, pill: true })}
+        >
+          {view.label}
+        </Link>
+      ))}
+    </nav>
   );
 }
 

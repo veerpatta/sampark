@@ -229,6 +229,85 @@ re-confirmed present in the browser's computed `:root`, and each new
 `focus-visible` utility confirmed present in the generated stylesheet — Tailwind
 v4 pruning has silently dropped values in this repo before.
 
+---
+
+# The board answers "how far has she got" (2026-08-16)
+
+`/requests` was one row per link and said whether it was sent and whether it was
+closed. The office's question after a round is who is behind, and a teacher
+holding three links was three rows that each knew only about themselves. It now
+**opens on a per-teacher board**; `?view=rounds` keeps the old table, which
+still owns closing, archiving and bulk work.
+
+## Decisions worth not reversing
+
+- **Marks and details are two counts, never one.** They are different work,
+  chased differently and finished at different times; an average describes
+  neither. A teacher holding no marks rounds gets no marks count rather than a
+  `0/0`.
+- **A link carrying both kinds is `mixed`, and is counted once.** Coverage is
+  computed per student across a request's whole field set, so such a link has a
+  single number covering both halves. Counting it into both buckets would double
+  the denominator; picking one would hide the other. It gets its own word.
+- **"Not sent" is its own state, ahead of "not started".** Both read `0 of 24`.
+  Only one of them is the teacher's doing, and saying "not started" about a link
+  the office never handed over is an accusation the data does not support.
+- **Overdue is computed over UNFINISHED forms only.** A link she finished last
+  week is not something anyone is late on, and letting it set the flag sorted
+  her to the top of a chase list she had no business being on.
+- **One Remind per person, never per link** — `lib/reminders.ts` is a whole file
+  written to remove the per-row button, and this screen shows *more* rows per
+  teacher than the one that had it.
+- **The list is one shared component.** `TeacherProgressList` renders on both
+  the dashboard and `/requests`. Two renderings of "who is behind" drift, and
+  the drift is invisible until somebody has both tabs open.
+- **`StatusBoard` is no longer a client component.** It never needed to be:
+  nothing in it holds state, and both its buttons are real links.
+
+## Four numbers that were wrong
+
+- **The teacher's page and the office disagreed about the same request.**
+  `auth/token.ts` counted `distinct student_id` — any submission at all — while
+  the board counted students answered for on *every* field. Her page said
+  `46 / 46 · पूरा हो गया` in green while `/requests` said 40 of 46 and somebody
+  was chasing her for six she believed she had sent. Both now read from
+  `lib/answered.ts`, verified on the fixture: `{0/24, 4/21, 2/21}` on both.
+- **The marks board grew a phantom row on every subject round.** `askedFor`
+  keyed its lines on `requests.audience_label`, which for a subject round is
+  "Economics — Prakash Bunkar", while the arriving marks key on the child's real
+  class — so the two keys never met. A subject teacher who had entered nothing
+  produced *only* the phantom: "not started", no denominator, no way to see she
+  owed eighty-six children. It now emits one line per class the frozen roster
+  covers, from `classesByRequest`.
+  **The denominator was NOT changed** — `marks.ts` documents on purpose that it
+  is the live class roll, because a child admitted after the link went out is
+  missing a mark just the same. The bug was the key.
+- **Five copies of "is this finished".** Now `isAnsweredFully`, in
+  `lib/answered.ts` — which is its own file because `lib/requests.ts` already
+  imports `generateToken` from `auth/token.ts`, so the rule could not live there
+  without a cycle.
+- **`request_progress` is dropped.** Dead since it was written, and wrong on
+  both numbers it existed to supply. The note in `grants.sql` records why plan
+  §4.3 is not being followed.
+
+## Known and deliberately not fixed
+
+- **Two teachers splitting one class for one subject** each get the whole class
+  as a denominator. Only the frozen roster could fix it, and that costs the
+  documented "admitted later still counts as missing" property.
+- **`today` is UTC on the boards and `Asia/Kolkata` for the teacher.** For 5½
+  hours each night "past due" and her grace window disagree by a day.
+  Pre-existing; `TeacherProgressList` takes `today` as a prop so it is one call
+  site when someone picks it up.
+
+## Verification
+
+`npm test` (522), typecheck, lint, build, `npm run smoke` (26/26) and
+`npm run smoke:ui` (47/47) pass — the round-is-one-row guard now names
+`?view=rounds` explicitly, and a new step asserts the by-teacher default,
+because otherwise that guard would have gone green against a screen with no rows
+on it at all. `npm run db:grants` re-run; no views remain.
+
 ## Teacher surface
 
 Unchanged in shape, per the mock. Measurements only: answer buttons 48 → 52px,

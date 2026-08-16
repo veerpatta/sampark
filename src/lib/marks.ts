@@ -1,6 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import { compareClassLabels, compareStudentNames } from "./classes";
+import { classesByRequest } from "./requests";
 import { FA_MARKS_KIND } from "./subjects";
 
 /**
@@ -188,6 +189,9 @@ export type SummaryRow = {
 
 /** What was ASKED of one teacher: one request, one subject, one group. */
 export type AskedFor = {
+  /** Carried so a board line can link back to the link that asked for it. */
+  requestId: string;
+  teacherId: string;
   teacher: string;
   subject: string;
   classLabel: string;
@@ -285,11 +289,37 @@ export function summariseMarks(
  * carry several subjects. Archived requests are excluded — the office has
  * stopped watching those, and a board is a list of what is still live.
  */
+/**
+ * Every field key that IS a mark, read off the registry.
+ *
+ * Read from `record_kind` and never from SUBJECTS, so a seventeenth subject
+ * added as a field_defs row is a mark with no deploy — rule 11. Extracted from
+ * askedFor because lib/progress.ts needs the same set to tell a marks link from
+ * a details link, and two readers of "what counts as a mark" is exactly how the
+ * definition of "answered" ended up wrong in three places.
+ */
+export async function marksFieldKeys(): Promise<Map<string, string>> {
+  const fields = await db
+    .select({
+      key: schema.fieldDefs.key,
+      labelEn: schema.fieldDefs.labelEn,
+      recordKind: schema.fieldDefs.recordKind,
+    })
+    .from(schema.fieldDefs);
+
+  return new Map(
+    fields
+      .filter((field) => field.recordKind === FA_MARKS_KIND)
+      .map((field) => [field.key, field.labelEn]),
+  );
+}
+
 export async function askedFor(period: string): Promise<AskedFor[]> {
   const rows = await db
     .select({
+      requestId: schema.requests.id,
+      teacherId: schema.teachers.id,
       teacher: schema.teachers.name,
-      classLabel: schema.requests.audienceLabel,
       fieldKeys: schema.requests.fieldKeys,
     })
     .from(schema.requests)
@@ -300,30 +330,46 @@ export async function askedFor(period: string): Promise<AskedFor[]> {
 
   if (rows.length === 0) return [];
 
-  // Labels come from the registry, not from SUBJECTS, so a seventeenth subject
-  // added as a field_defs row names itself here with no deploy (rule 11).
-  const fields = await db
-    .select({
-      key: schema.fieldDefs.key,
-      labelEn: schema.fieldDefs.labelEn,
-      recordKind: schema.fieldDefs.recordKind,
-    })
-    .from(schema.fieldDefs);
-  const marksFields = new Map(
-    fields
-      .filter((field) => field.recordKind === FA_MARKS_KIND)
-      .map((field) => [field.key, field.labelEn]),
-  );
+  const [marksFields, classesById] = await Promise.all([
+    marksFieldKeys(),
+    /*
+     * THE CLASSES THE FROZEN ROSTER ACTUALLY COVERS, not the audience label.
+     *
+     * This used to take `requests.audience_label` as the class. For a class
+     * round that string IS the class and everything lined up. For a SUBJECT
+     * round it is "Economics — Prakash Bunkar" (see lib/fanout.ts), and one
+     * subject link legitimately spans four classes because the fan-out merges
+     * them per teacher — so there was no single class label to take.
+     *
+     * The damage was not a wrong denominator, it was a PHANTOM ROW.
+     * summariseMarks seeds a line per ask keyed on this label, then folds the
+     * arriving marks on keyed by the child's real class. Those two keys never
+     * met, so a subject round rendered an extra "Economics — Prakash Bunkar"
+     * line at 0 / 0 beside the real per-class lines — and a subject teacher who
+     * had entered NOTHING produced only the phantom, so the board said "not
+     * started" with no denominator and could not say she owed eighty-four
+     * children. It also inflated the "N subjects" and "not started" counts in
+     * the heading.
+     *
+     * classesByRequest reads the frozen roster and is already used by the
+     * request detail page and getBatch for exactly this reason.
+     */
+    classesByRequest(rows.map((row) => row.requestId)),
+  ]);
 
   return rows.flatMap((row) =>
     row.fieldKeys
       .filter((fieldKey) => marksFields.has(fieldKey))
-      .map((fieldKey) => ({
-        teacher: row.teacher,
-        subject: marksFields.get(fieldKey)!,
-        classLabel: row.classLabel,
-        fieldKey,
-      })),
+      .flatMap((fieldKey) =>
+        (classesById.get(row.requestId) ?? []).map((classLabel) => ({
+          requestId: row.requestId,
+          teacherId: row.teacherId,
+          teacher: row.teacher,
+          subject: marksFields.get(fieldKey)!,
+          classLabel,
+          fieldKey,
+        })),
+      ),
   );
 }
 

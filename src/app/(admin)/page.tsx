@@ -2,6 +2,8 @@ import Link from "next/link";
 import { asc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { listRequests } from "@/lib/requests";
+import { groupProgressByTeacher } from "@/lib/progress";
+import { marksFieldKeys } from "@/lib/marks";
 import { requestOrigin } from "@/lib/request-origin";
 import { countByClass } from "@/lib/students";
 import { CLASS_LABELS } from "@/lib/classes";
@@ -24,7 +26,7 @@ export default async function DashboardPage() {
 
   const origin = await requestOrigin();
 
-  const [requests, [students], counts, teachers] = await Promise.all([
+  const [requests, [students], counts, teachers, marksKeys] = await Promise.all([
     listRequests(),
     db
       .select({
@@ -38,7 +40,17 @@ export default async function DashboardPage() {
       .from(schema.teachers)
       .where(eq(schema.teachers.active, true))
       .orderBy(asc(schema.teachers.name)),
+    marksFieldKeys(),
   ]);
+
+  // Grouped here rather than inside the card, because it is the one thing on
+  // that card that needs a query — the registry read that says which fields are
+  // marks. See lib/progress.ts.
+  const progress = groupProgressByTeacher(
+    requests.filter((request) => request.status === "open"),
+    new Set(marksKeys.keys()),
+    today,
+  );
 
   const open = requests.filter((request) => request.status === "open");
   const overdue = open.filter((request) => request.dueDate < today);
@@ -69,7 +81,7 @@ export default async function DashboardPage() {
         templates={TEMPLATES}
       />
 
-      <StatusBoard requests={requests} origin={origin} />
+      <StatusBoard requests={requests} teachers={progress} origin={origin} />
 
       {/* Two across on a phone, not one. Four counts stacked vertically is a
           screenful of scrolling for four numbers, and the pairs read against

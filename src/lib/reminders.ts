@@ -1,3 +1,4 @@
+import { groupProgressByTeacher, type TeacherProgress } from "./progress";
 import type { RequestBoardRow } from "./requests";
 
 /**
@@ -69,58 +70,60 @@ export function groupRemindersByTeacher(
   rows: RequestBoardRow[],
   today: string,
 ): TeacherReminder[] {
-  const groups = new Map<string, TeacherReminder>();
-
-  for (const row of rows) {
-    if (row.status !== "open") continue;
-    // Finished work is not something to nudge about.
-    if (row.rosterSize > 0 && row.studentsAnswered >= row.rosterSize) continue;
-
-    const key = `${row.teacherId}|${row.teacherPhone}`;
-    const entry = groups.get(key) ?? {
-      key,
-      teacherId: row.teacherId,
-      teacherName: row.teacher,
-      phone: row.teacherPhone,
-      overridden: Boolean(row.contactPhone),
-      linkToken: row.teacherLinkToken,
-      forms: [],
-      overdue: false,
-      outstanding: 0,
-    };
-
-    entry.forms.push({
-      requestId: row.id,
-      title: row.title,
-      audienceKind: row.audienceKind,
-      audienceLabel: row.audienceLabel,
-      fieldKeys: row.fieldKeys,
-      dueDate: row.dueDate,
-      token: row.token,
-      answered: row.studentsAnswered,
-      rosterSize: row.rosterSize,
-      overdue: row.dueDate < today,
-    });
-    groups.set(key, entry);
-  }
-
-  return [...groups.values()]
-    .map((entry) => ({
-      ...entry,
-      // Oldest deadline first: within one message, the thing she is latest on
-      // should be the thing she reads first.
-      forms: entry.forms.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
-      overdue: entry.forms.some((form) => form.overdue),
-      outstanding: entry.forms.reduce(
-        (sum, form) => sum + Math.max(0, form.rosterSize - form.answered),
-        0,
-      ),
-    }))
-    .sort((a, b) => {
-      // Overdue teachers first — they are who someone has to chase today.
-      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
-      // Then whoever is holding up the most children.
-      if (a.outstanding !== b.outstanding) return b.outstanding - a.outstanding;
-      return a.teacherName.localeCompare(b.teacherName);
-    });
+  return groupProgressByTeacher(rows, NO_MARKS_KEYS, today)
+    .map(toReminder)
+    .filter((entry): entry is TeacherReminder => entry !== null);
 }
+
+/**
+ * A reminder is a progress entry with the finished work taken out.
+ *
+ * The grouping rule — keyed by id and phone, sorted overdue-then-outstanding —
+ * now lives in ONE place instead of two near-identical loops that had to be
+ * kept in step by hand. What stays here is the one thing a reminder needs and a
+ * progress board does not: buildRoundReminderMessage says "3 lists are still
+ * pending", so it must be handed only the lists that are.
+ *
+ * Returns null for a teacher with nothing outstanding, which is how she leaves
+ * the chase list entirely rather than appearing in it with an empty message.
+ */
+export function toReminder(entry: TeacherProgress): TeacherReminder | null {
+  const forms = entry.forms.filter((form) => !form.done);
+  if (forms.length === 0) return null;
+
+  return {
+    key: entry.key,
+    teacherId: entry.teacherId,
+    teacherName: entry.teacherName,
+    phone: entry.phone,
+    overridden: entry.overridden,
+    linkToken: entry.linkToken,
+    forms: forms.map((form) => ({
+      requestId: form.requestId,
+      title: form.title,
+      audienceKind: form.audienceKind,
+      audienceLabel: form.audienceLabel,
+      fieldKeys: form.fieldKeys,
+      dueDate: form.dueDate,
+      token: form.token,
+      answered: form.answered,
+      rosterSize: form.rosterSize,
+      overdue: form.overdue,
+    })),
+    overdue: forms.some((form) => form.overdue),
+    outstanding: forms.reduce(
+      (sum, form) => sum + Math.max(0, form.rosterSize - form.answered),
+      0,
+    ),
+  };
+}
+
+/**
+ * A reminder does not care which kind of work it is.
+ *
+ * classifyForm needs the registry's marks keys, and reading the registry to
+ * build a nudge that never mentions the distinction would put a database call
+ * behind a pure function. Everything lands in `details`, which this file never
+ * looks at.
+ */
+const NO_MARKS_KEYS: ReadonlySet<string> = new Set();

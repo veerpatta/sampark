@@ -422,8 +422,12 @@ async function main() {
      * THE REGRESSION GUARD FOR THIS WHOLE FEATURE. The round's two links must
      * not appear as their own rows — that is what the board did before, and it
      * is the thing that is easy to reintroduce by touching the projection.
+     *
+     * ?view=rounds explicitly, because /requests now opens on the by-teacher
+     * board. Without this the assertion would pass or fail on a screen that has
+     * no rows at all, which is the worst kind of green.
      */
-    const html = await (await signedIn("/requests")).text();
+    const html = await (await signedIn("/requests?view=rounds")).text();
     const text = visibleText(html);
 
     assert.ok(text.includes("Smoke round"), "the round is not on the board");
@@ -440,6 +444,32 @@ async function main() {
       );
     }
     return "one row, two groups";
+  });
+
+  await step("the board OPENS on how far each teacher has got", async () => {
+    /*
+     * The default view, and the reason the guard above had to name its own.
+     * The office's question after a round is "who is behind", and until this
+     * existed the board could only answer "which links exist".
+     */
+    const html = await (await signedIn("/requests")).text();
+    const text = visibleText(html);
+
+    assert.ok(
+      text.includes("still to answer for"),
+      "the by-teacher board is not what /requests opens on",
+    );
+    assert.ok(
+      html.includes('href="/requests?view=rounds"'),
+      "there is no way through to the round board",
+    );
+    // Marks and student data are counted separately, never averaged into one
+    // figure that describes neither.
+    assert.ok(
+      text.includes("marks") || text.includes("details"),
+      "the two kinds of work are not split",
+    );
+    return "teachers, with marks and details apart";
   });
 
   await step("the round page opens, and lists both groups", async () => {

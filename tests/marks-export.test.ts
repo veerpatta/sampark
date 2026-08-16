@@ -4,6 +4,7 @@ import {
   groupMarks,
   summariseMarks,
   UNATTRIBUTED,
+  type AskedFor,
   type MarkRow,
 } from "../src/lib/marks";
 
@@ -34,6 +35,25 @@ function mark(over: Partial<MarkRow> = {}): MarkRow {
     teacherId: "T1",
     teacherName: "Sunita",
     requestId: "R1",
+    ...over,
+  };
+}
+
+/**
+ * One line of "what was asked of whom".
+ *
+ * A helper rather than a literal because AskedFor now also carries the request
+ * and teacher ids — the board's lines can link back to the link that asked for
+ * them — and three inline literals is three places to edit next time it grows.
+ */
+function ask(over: Partial<AskedFor> = {}): AskedFor {
+  return {
+    requestId: "R1",
+    teacherId: "T1",
+    teacher: "Sunita",
+    subject: "Maths",
+    classLabel: "8",
+    fieldKey: "fa_maths",
     ...over,
   };
 }
@@ -150,8 +170,8 @@ describe("summariseMarks — who has NOT sent theirs", () => {
       [mark({ teacherName: "Sunita", classLabel: "8" })],
       rosters,
       [
-        { teacher: "Sunita", subject: "Maths", classLabel: "8", fieldKey: "fa_maths" },
-        { teacher: "Hemlata", subject: "Science", classLabel: "9", fieldKey: "fa_science" },
+        ask({ teacher: "Sunita", subject: "Maths", classLabel: "8", fieldKey: "fa_maths" }),
+        ask({ teacher: "Hemlata", subject: "Science", classLabel: "9", fieldKey: "fa_science" }),
       ],
     );
 
@@ -163,11 +183,58 @@ describe("summariseMarks — who has NOT sent theirs", () => {
     assert.equal(hemlata.lastEntered, null);
   });
 
+  /*
+   * THE PHANTOM ROW, which is what a subject round used to produce.
+   *
+   * askedFor keyed its lines on requests.audience_label. For a class round that
+   * string IS the class and everything lined up. For a SUBJECT round it is
+   * "Economics — Prakash Bunkar", while the arriving marks key on the child's
+   * real class — so the two keys never met. The board grew an extra line at
+   * 0 / 0 labelled with the subject, and a subject teacher who had entered
+   * NOTHING produced only that line: "not started", no denominator, no way to
+   * see she owed eighty-six children across two classes.
+   *
+   * askedFor now emits one line per class the FROZEN ROSTER actually covers,
+   * which is also the only thing that can describe a subject link spanning
+   * several classes. These two tests are that fix, expressed as summariseMarks
+   * sees it.
+   */
+  test("a subject link spanning two classes is two real lines, not a phantom", () => {
+    const summary = summariseMarks([], rosters, [
+      ask({ teacher: "Prakash", subject: "Economics", classLabel: "8", fieldKey: "fa_economics" }),
+      ask({ teacher: "Prakash", subject: "Economics", classLabel: "9", fieldKey: "fa_economics" }),
+    ]);
+
+    assert.equal(summary.length, 2);
+    assert.deepEqual(
+      summary.map((row) => [row.classLabel, row.onRoster, row.missing]),
+      [
+        ["8", 46, 46],
+        ["9", 40, 40],
+      ],
+      "she owes 86 children and the board has to be able to say so",
+    );
+  });
+
+  test("a subject line reaches complete once its class is in", () => {
+    // Unreachable before: onRoster fell to 0 for the phantom, and the board's
+    // `complete` filter is `missing === 0 && onRoster > 0`.
+    const summary = summariseMarks(
+      [mark({ teacherName: "Prakash", classLabel: "9", fieldKey: "fa_economics", fieldLabel: "Economics" })],
+      new Map([["9", 1]]),
+      [ask({ teacher: "Prakash", subject: "Economics", classLabel: "9", fieldKey: "fa_economics" })],
+    );
+
+    assert.equal(summary.length, 1);
+    assert.equal(summary[0]!.onRoster, 1);
+    assert.equal(summary[0]!.missing, 0);
+  });
+
   test("does not double-count a teacher who was asked AND has entered", () => {
     const summary = summariseMarks(
       [mark({ teacherName: "Sunita", classLabel: "8" })],
       rosters,
-      [{ teacher: "Sunita", subject: "Maths", classLabel: "8", fieldKey: "fa_maths" }],
+      [ask({ teacher: "Sunita", subject: "Maths", classLabel: "8", fieldKey: "fa_maths" })],
     );
 
     assert.equal(summary.length, 1, "the asked line and the entered line did not merge");

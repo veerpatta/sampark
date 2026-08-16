@@ -18,6 +18,7 @@ import { FilterBar, type ChipGroup } from "@/components/admin/FilterBar";
 import { StudentPhoto } from "@/components/admin/StudentPhoto";
 import { Avatar } from "@/components/admin/Avatar";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { ProgressBar } from "@/components/admin/ProgressBar";
 import { btn, eyebrow, field } from "@/components/ui/controls";
 import { HouseChip } from "@/components/HouseChip";
 
@@ -409,18 +410,22 @@ function CompletenessBar({
   const { filled, total, percent } = completeness(student);
   return (
     <span className="flex items-center gap-2" title={`${filled} of ${total} fields`}>
-      <span className="h-1.5 w-11 overflow-hidden rounded-full bg-[var(--color-surface-sunken)]">
-        <span
-          className={`block h-full rounded-full ${
-            percent >= 80
-              ? "bg-[var(--color-success)]"
-              : percent >= 50
-                ? "bg-[var(--color-warning)]"
-                : "bg-[var(--color-danger)]"
-          }`}
-          style={{ width: `${percent}%` }}
-        />
-      </span>
+      {/* Threshold-coloured, unlike the status board's, which takes its row's
+          tone. Here the colour IS the fact — how complete this record is — and
+          there is no separate state for it to contradict. */}
+      <ProgressBar
+        value={filled}
+        max={total}
+        label={`${student.name}: record completeness`}
+        tone={
+          percent >= 80
+            ? "bg-[var(--color-success)]"
+            : percent >= 50
+              ? "bg-[var(--color-warning)]"
+              : "bg-[var(--color-danger)]"
+        }
+        className="h-1.5 w-11"
+      />
       <span className="font-mono text-xs text-[var(--color-ink-muted)]">
         {filled}/{total}
       </span>

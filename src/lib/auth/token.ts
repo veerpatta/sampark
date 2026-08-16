@@ -1,6 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "../db";
+// Sits below this file on purpose — lib/requests.ts imports generateToken from
+// here, so the shared "answered" rule cannot live there. See lib/answered.ts.
+import { coveredStudentsQuery } from "../answered";
 import { compareClassLabels, compareStudentNames } from "../classes";
 import type { RosterSnapshot } from "../snapshots";
 import type { FieldDef } from "../../../drizzle/schema";
@@ -388,18 +391,28 @@ export async function resolveTeacherToken(
       .from(schema.requestStudents)
       .where(inArray(schema.requestStudents.requestId, ids))
       .groupBy(schema.requestStudents.requestId),
-    db
-      .select({
-        requestId: schema.submissions.requestId,
-        n: sql<number>`count(distinct ${schema.submissions.studentId})::int`,
-      })
-      .from(schema.submissions)
-      .where(inArray(schema.submissions.requestId, ids))
-      .groupBy(schema.submissions.requestId),
+    /*
+     * THE SAME RULE THE OFFICE USES, and it did not used to be.
+     *
+     * This was `count(distinct student_id)` — "has any submission at all" — so
+     * a teacher who had filled one of two boxes for every child was told her
+     * list was finished. Her page said "46 / 46 · पूरा हो गया" in green while
+     * /requests said 40 of 46 and somebody was chasing her for six she believed
+     * she had already sent. It over-counted on a second axis too: a submission
+     * for a field key the request no longer asks about counted here and does
+     * not count there.
+     *
+     * Two screens disagreeing about one number is worse than either number
+     * being wrong, because there is no way for her to tell which to believe.
+     */
+    coveredStudentsQuery(ids),
   ]);
 
   const sizeBy = new Map(sizes.map((row) => [row.requestId, row.n]));
-  const answeredBy = new Map(answered.map((row) => [row.requestId, row.n]));
+  const answeredBy = new Map<string, number>();
+  for (const row of answered) {
+    answeredBy.set(row.requestId, (answeredBy.get(row.requestId) ?? 0) + 1);
+  }
 
   return {
     teacherName: teacher.name,

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "./db";
+import { coveredStudentsQuery, isAnsweredFully } from "./answered";
 import { generateToken } from "./auth/token";
 import {
   compareClassLabels,
@@ -485,57 +486,20 @@ export type RequestBoardRow = {
   sentAt: Date | null;
 };
 
-/**
- * Students who have answered for every field their request asked about.
- *
- * "ANSWERED" USED TO MEAN "HAS ANY SUBMISSION", AND THAT WAS THE BUG. A card
- * with one of two boxes filled writes a submission for the one box, so the
- * child counted as fully answered and a class still missing six phone numbers
- * rendered a green "46 of 46". Coverage of the whole field set is the only
- * definition that survives a partly-filled card.
- *
- * Two details that are load-bearing:
- *
- *   - not_present writes one row per field (lib/submissions.ts), so a child the
- *     teacher says is not in her class still covers everything and still
- *     counts. That is right: she answered.
- *   - the `= any(field_keys)` restriction stops a submission for a key the
- *     request no longer asks about from counting toward coverage. Nothing
- *     writes one today; a request whose field set was ever edited could.
- *
- * field_keys is text[], and array_length returns NULL rather than 0 for an
- * empty array — hence the coalesce, without which a fieldless request would
- * compare against NULL and count nobody.
+/*
+ * The definition of "answered" moved to lib/answered.ts, and these two
+ * re-exports are why nothing else had to change: it had to sit BELOW
+ * lib/auth/token.ts, which needs the same rule and which this file already
+ * imports generateToken from. Keeping it here would have made that a cycle.
  */
-function coveredStudentsQuery(requestIds: string[]) {
-  return db
-    .select({
-      requestId: schema.submissions.requestId,
-      studentId: schema.submissions.studentId,
-    })
-    .from(schema.submissions)
-    .innerJoin(
-      schema.requests,
-      eq(schema.requests.id, schema.submissions.requestId),
-    )
-    .where(
-      and(
-        inArray(schema.submissions.requestId, requestIds),
-        sql`${schema.submissions.fieldKey} = any(${schema.requests.fieldKeys})`,
-      ),
-    )
-    .groupBy(
-      schema.submissions.requestId,
-      schema.submissions.studentId,
-      schema.requests.fieldKeys,
-    )
-    .having(
-      sql`count(distinct ${schema.submissions.fieldKey}) >= coalesce(array_length(${schema.requests.fieldKeys}, 1), 0)`,
-    );
-}
-
+export { coveredStudentsQuery, isAnsweredFully } from "./answered";
 /**
- * The status board. Reads the request_progress view from plan section 4.3.
+ * The status board.
+ *
+ * It assembles its own counts rather than reading the `request_progress` view
+ * plan section 4.3 proposed — see the note left in drizzle/sql/grants.sql where
+ * that view used to be. Three small aggregates beat one clever join here, and
+ * the view had drifted to a different answer than this function gives.
  *
  * Archived requests are absent unless asked for. Hiding them HERE rather than in
  * each reader is the same reasoning as coveredStudentsQuery: the dashboard, the
@@ -749,9 +713,7 @@ export function groupBoardRows(
       .slice()
       .sort((a, b) => compareClassLabels(a.audienceLabel, b.audienceLabel));
 
-    const answered = children.filter(
-      (child) => child.rosterSize > 0 && child.studentsAnswered >= child.rosterSize,
-    );
+    const answered = children.filter(isAnsweredFully);
     const closed = children.filter((child) => child.status === "closed");
 
     entries.push({
