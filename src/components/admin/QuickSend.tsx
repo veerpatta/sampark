@@ -9,6 +9,7 @@ import {
 } from "@/lib/whatsapp";
 import { chooseTeacherForClass, type TeacherLike } from "@/lib/teachers";
 import { hasPhone } from "@/lib/phone";
+import { isoDayFrom } from "@/lib/today";
 import { useToast } from "@/components/ui/Toast";
 import { openWhatsApp } from "@/components/ui/share";
 import { btn, card, chip, eyebrow } from "@/components/ui/controls";
@@ -227,9 +228,13 @@ export function QuickSend({
   );
 }
 
-/** The same five days the full builder defaults to. */
+/**
+ * The same five days the full builder defaults to.
+ *
+ * In the school's zone, not the browser's converted to UTC. `toISOString` on a
+ * phone in India after half past midnight names YESTERDAY, so a due date set at
+ * 1am was quietly a day short of the five days it says.
+ */
 function plusFiveDays(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 5);
-  return date.toISOString().slice(0, 10);
+  return isoDayFrom(new Date(), 5);
 }

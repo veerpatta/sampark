@@ -9,6 +9,7 @@ import { ThumbBar } from "@/components/admin/ThumbBar";
 import { Card } from "@/components/admin/Card";
 import { btn } from "@/components/ui/controls";
 import { SUBJECTS } from "@/lib/subjects";
+import { isoDayFrom } from "@/lib/today";
 import { preview, send, type BulkRequest } from "./actions";
 
 type Option = { label: string; students: number };
@@ -679,8 +680,7 @@ function ModeCard({
 }
 
 
+/** Five days out, in the school's zone. See lib/today.ts. */
 function plusFiveDays(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 5);
-  return date.toISOString().slice(0, 10);
+  return isoDayFrom(new Date(), 5);
 }

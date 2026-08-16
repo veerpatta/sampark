@@ -295,10 +295,38 @@ still owns closing, archiving and bulk work.
 - **Two teachers splitting one class for one subject** each get the whole class
   as a denominator. Only the frozen roster could fix it, and that costs the
   documented "admitted later still counts as missing" property.
-- **`today` is UTC on the boards and `Asia/Kolkata` for the teacher.** For 5½
-  hours each night "past due" and her grace window disagree by a day.
-  Pre-existing; `TeacherProgressList` takes `today` as a prop so it is one call
-  site when someone picks it up.
+
+## The day is the school's, not the server's (2026-08-16)
+
+Every board computed today as `new Date().toISOString().slice(0, 10)` — the UTC
+calendar date — while the teacher's page and the token resolver used
+`Asia/Kolkata`. IST is UTC+5:30, so from 18:30 UTC to midnight the two disagreed
+by a day: the console called a request overdue that her page still showed as due
+today, and the resolver's grace floor was a day out of step with the "past due"
+the office was reading. Nobody is at a desk at 2am, but boards are rendered by
+whoever opens them and the hand-sent reminders go out first thing in the morning.
+
+`due_date` is a DATE column — a calendar day with no zone — so the only correct
+thing to compare it against is a calendar day in the zone the school is in.
+`lib/today.ts` is now that one answer, used by both boards, the teacher's page
+and the resolver.
+
+- **It also fixes the due-date defaults.** Three copies of "five days out" used
+  the same UTC rule, so a round created after midnight IST was quietly a day
+  short of the five days it advertised.
+- **And the export filename stamps**, which named a file downloaded at 1am with
+  yesterday's date. The office files these by class and date.
+- **The zone is hardcoded and does NOT read `APP_TIMEZONE`.** That variable is
+  in `.env.example`, the README table and the build plan, and is read by
+  nothing — it always has been. Wiring it in here would be worse than leaving
+  it: three of the callers are client components, a client cannot read a
+  server-only env var, and the failure is not an error but a silent fall back to
+  a different zone on one side of the network. A constant is the same on both
+  sides. A second school in a second zone belongs on the school record.
+
+`tests/today.test.ts` asserts the window by passing the instant rather than
+waiting for 18:30 UTC, including the one that pins the old and new rules
+disagreeing.
 
 ## Verification
 

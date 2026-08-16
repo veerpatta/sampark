@@ -11,6 +11,7 @@ import {
   type SummaryRow,
 } from "@/lib/marks";
 import { countByClass } from "@/lib/students";
+import { todayISO } from "@/lib/today";
 
 /**
  * Every mark entered for one period, in one file, split by whoever entered it.
@@ -127,7 +128,8 @@ export async function GET(request: Request) {
   );
 
   // A period reads '2026-27/FA1' and that slash must never reach a filename.
-  const stamp = new Date().toISOString().slice(0, 10);
+  // The school's date, not the server's. See lib/today.ts.
+  const stamp = todayISO();
   const name = `sampark-marks-${period}-by-${by}-${stamp}`
     .replace(/[^a-zA-Z0-9-]+/g, "-")
     .replace(/-+/g, "-")

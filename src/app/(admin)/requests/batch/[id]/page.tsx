@@ -6,6 +6,7 @@ import { getBatch } from "@/lib/batches";
 import { listRequests } from "@/lib/requests";
 import { groupRemindersByTeacher } from "@/lib/reminders";
 import { groupLinksByRecipient } from "@/lib/send-queue";
+import { todayISO } from "@/lib/today";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { RequestBulkBar } from "../../RequestBulkBar";
 import { btn } from "@/components/ui/controls";
@@ -43,7 +44,7 @@ export default async function BatchPage({
    */
   const outstanding = groupRemindersByTeacher(
     await listRequests({ batchId: batch.id }),
-    new Date().toISOString().slice(0, 10),
+    todayISO(),
   );
 
   // Grouped HERE, on the server. groupLinksByRecipient is db-free so it could

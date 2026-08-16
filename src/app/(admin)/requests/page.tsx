@@ -8,6 +8,7 @@ import { isAnsweredFully } from "@/lib/answered";
 import { groupProgressByTeacher } from "@/lib/progress";
 import { marksFieldKeys } from "@/lib/marks";
 import { requestOrigin } from "@/lib/request-origin";
+import { todayISO } from "@/lib/today";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { TeacherProgressList } from "@/components/admin/TeacherProgressList";
@@ -54,7 +55,8 @@ export default async function RequestsPage({
    * archiving and bulk work; it is simply no longer what opens.
    */
   const view = params.view === "rounds" ? "rounds" : "teachers";
-  const today = new Date().toISOString().slice(0, 10);
+  // The school's calendar date, not the server's. See lib/today.ts.
+  const today = todayISO();
 
   if (view === "teachers") {
     return <ByTeacher today={today} />;

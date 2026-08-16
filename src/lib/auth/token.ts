@@ -5,6 +5,7 @@ import { db, schema } from "../db";
 // here, so the shared "answered" rule cannot live there. See lib/answered.ts.
 import { coveredStudentsQuery } from "../answered";
 import { compareClassLabels, compareStudentNames } from "../classes";
+import { isoDayFrom } from "../today";
 import type { RosterSnapshot } from "../snapshots";
 import type { FieldDef } from "../../../drizzle/schema";
 
@@ -295,13 +296,14 @@ export type ResolvedTeacherPage = {
   items: TeacherPageItem[];
 };
 
-/** The IST calendar date `days` before `now`, as YYYY-MM-DD. */
-function isoDaysBefore(now: Date, days: number): string {
-  const shifted = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(
-    shifted,
-  );
-}
+/**
+ * The school's calendar date `days` before `now`, as YYYY-MM-DD.
+ *
+ * The zone lives in lib/today.ts now. This file had the only correct answer in
+ * the app for a while and the boards had a different one; one implementation is
+ * how they stop being able to disagree.
+ */
+const isoDaysBefore = (now: Date, days: number) => isoDayFrom(now, -days);
 
 /**
  * Resolve a durable teacher token to whatever is currently open for her.

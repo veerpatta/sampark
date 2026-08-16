@@ -5,6 +5,7 @@ import { listRequests } from "@/lib/requests";
 import { groupProgressByTeacher } from "@/lib/progress";
 import { marksFieldKeys } from "@/lib/marks";
 import { requestOrigin } from "@/lib/request-origin";
+import { todayISO } from "@/lib/today";
 import { countByClass } from "@/lib/students";
 import { CLASS_LABELS } from "@/lib/classes";
 import { TEMPLATES } from "@/lib/templates";
@@ -22,7 +23,8 @@ export const dynamic = "force-dynamic";
  * rather than work.
  */
 export default async function DashboardPage() {
-  const today = new Date().toISOString().slice(0, 10);
+  // The school's calendar date, not the server's. See lib/today.ts.
+  const today = todayISO();
 
   const origin = await requestOrigin();
 

@@ -4,6 +4,7 @@ import { listStudents } from "@/lib/students";
 import { parseFilters } from "@/lib/student-filters";
 import { compareClassLabels } from "@/lib/classes";
 import { fetchPhotos } from "@/lib/photo-store";
+import { todayISO } from "@/lib/today";
 import type { Student } from "../../../../../drizzle/schema";
 
 /**
@@ -121,7 +122,9 @@ export async function GET(request: Request) {
   const photos = withPhotos ? await fetchPhotos(students) : new Map();
 
   const file = await buildWorkbook(sheets, columnsFor(photos));
-  const stamp = new Date().toISOString().slice(0, 10);
+  // The school's date, not the server's. The office files these by class and
+  // date, and one downloaded after midnight IST used to be stamped yesterday.
+  const stamp = todayISO();
   // Named after the single class when that is all the filter is, because the
   // office files these by class. Any richer filter gets the general name rather
   // than a filename trying to describe six dimensions.

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Template } from "@/lib/templates";
 import { hasPhone, isCompletePhone, normalisePhone, samePhone } from "@/lib/phone";
 import { chooseTeacherForClass, partitionByClass } from "@/lib/teachers";
+import { isoDayFrom } from "@/lib/today";
 import { AddQuestion } from "@/components/admin/AddQuestion";
 import { Card } from "@/components/admin/Card";
 // `field` is the loop variable over this screen's field options, hence the alias.
@@ -457,11 +458,9 @@ export function RequestBuilder({
   );
 }
 
-/** Five days out, per the rollout notes. */
+/** Five days out, per the rollout notes — in the school's zone. See lib/today.ts. */
 function defaultDueDate(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 5);
-  return date.toISOString().slice(0, 10);
+  return isoDayFrom(new Date(), 5);
 }
 
 function Empty({ children }: { children: React.ReactNode }) {

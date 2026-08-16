@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { CheckCircle } from "@phosphor-icons/react/dist/ssr";
 import { resolveTeacherToken, type TeacherPageItem } from "@/lib/auth/token";
 import { isAnsweredFully } from "@/lib/answered";
+import { todayISO } from "@/lib/today";
 import { clientIp, limitByIp, limitByTeacherToken } from "@/lib/ratelimit";
 import { describeAudienceLine } from "@/lib/whatsapp";
 import { Bi } from "@/components/teacher/Bi";
@@ -224,8 +225,7 @@ const formatDue = (date: string) => DUE_FMT.format(new Date(`${date}T12:00:00+05
  * answer and should be told so rather than shown a red flag.
  */
 function isOverdue(dueDate: string): boolean {
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-  }).format(new Date());
-  return dueDate < today;
+  // Was the only screen in the app computing this in the school's own zone
+  // rather than the server's; now it and the office boards ask one function.
+  return dueDate < todayISO();
 }
