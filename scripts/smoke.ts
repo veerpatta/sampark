@@ -45,6 +45,23 @@ const JPEG = Buffer.from(
   "base64",
 );
 
+/**
+ * A second JPEG, byte-different from the first, for the thumbnail slot.
+ *
+ * The same picture with a comment segment spliced in after the SOI marker, so
+ * it is still a valid JPEG that still passes the byte sniff — it just is not
+ * the same bytes. Uploading the identical fixture as both variants would make
+ * "did the export take the full image or the thumbnail?" unanswerable, which is
+ * exactly the question that now needs asking.
+ */
+const THUMB_JPEG = Buffer.concat([
+  JPEG.subarray(0, 2), // SOI
+  // COM marker, then a 2-byte length that counts itself: 2 + 8 payload = 10.
+  Buffer.from([0xff, 0xfe, 0x00, 0x0a]),
+  Buffer.from("zzthumb!", "latin1"),
+  JPEG.subarray(2),
+]);
+
 /** A PNG header. Enough to prove the sniffer looks at bytes, not at file.type. */
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 
@@ -120,7 +137,7 @@ async function main() {
   await step("a JPEG for a child on the roster is stored", async () => {
     const response = await fetch(`${BASE}/api/r/${token}/photo`, {
       method: "POST",
-      body: photoBody(first, JPEG, JPEG),
+      body: photoBody(first, JPEG, THUMB_JPEG),
     });
     assert.equal(response.status, 201, `expected 201, got ${response.status}`);
     const body = (await response.json()) as { pathname?: string };
@@ -381,7 +398,7 @@ async function main() {
 
   await step("the photograph reaches the Excel export as a picture", async () => {
     // End to end through the real store: the blob the teacher uploaded, read
-    // back as a thumbnail, drawn into a workbook, and read out of the file
+    // back at FULL resolution, drawn into a workbook, and read out of the file
     // again. tests/excel.test.ts covers the drawing with a fixture; this is the
     // half that needs a live blob to mean anything.
     const [student] = await db
@@ -399,7 +416,7 @@ async function main() {
         { header: "Student ID", width: 14, value: (row) => row.id },
         {
           header: "Photo",
-          width: 11,
+          width: 15,
           value: (row) => (row.photoPath ? "" : "no photo"),
           image: (row) => photos.get(row.id) ?? null,
         },
@@ -415,7 +432,18 @@ async function main() {
     );
     const images = read.getWorksheet("Smoke")!.getImages();
     assert.equal(images.length, 1, "no picture landed in the workbook");
-    return `${(photos.get(first)!.length / 1024).toFixed(1)} kB thumbnail embedded`;
+
+    // THE FULL IMAGE, NOT THE THUMBNAIL, byte for byte. The export used to
+    // take the 96px variant and the printed list came out soft; the two blobs
+    // are deliberately different bytes here so this can tell them apart.
+    const embedded = photos.get(first)!;
+    assert.ok(
+      embedded.equals(JPEG),
+      embedded.equals(THUMB_JPEG)
+        ? "the export embedded the THUMBNAIL — photo-store is reading the wrong variant"
+        : `the export embedded ${embedded.length} bytes matching neither variant`,
+    );
+    return `${embedded.length} B full image embedded, not the ${THUMB_JPEG.length} B thumbnail`;
   });
 
   console.log("\nThe office board");

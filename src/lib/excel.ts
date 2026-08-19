@@ -312,8 +312,20 @@ export type ExportColumn<T> = {
   image?: (row: T) => Buffer | null;
 };
 
-/** How big a picture is drawn, in pixels, and the row height that fits it. */
-const IMAGE_PX = 64;
+/**
+ * How big a picture is drawn, in pixels, and the row height that fits it.
+ *
+ * 96px is about an inch on paper. At 64 it was two thirds of that, which is
+ * small for the job this file exists to do — a teacher or a clerk recognising a
+ * child from a printed class list, sometimes across a room. It costs rows:
+ * taller rows mean fewer children to a printed page. That trade was made
+ * deliberately, in favour of the face being legible at all.
+ *
+ * It is also why photo-store.ts now reads the full 800px image rather than the
+ * 96px thumbnail. A source drawn 1:1 on screen is still three times short of
+ * what 300dpi wants on paper; the two changes only work together.
+ */
+const IMAGE_PX = 96;
 /** Excel measures row height in points: 1pt = 1/72in, a screen px = 1/96in. */
 const IMAGE_ROW_POINTS = (IMAGE_PX + 8) * 0.75;
 

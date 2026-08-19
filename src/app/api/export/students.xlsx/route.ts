@@ -57,8 +57,11 @@ const columnsFor = (photos: Map<string, Buffer>): ExportColumn<Student>[] => [
    * reads as a work list rather than as a row of holes.
    */
   {
+    // Wide enough to hold the picture. Excel measures a column in characters of
+    // the default font, roughly 7px each, so a 96px face needs about 14 — and a
+    // narrower column would crop it against the next one rather than shrink it.
     header: "Photo",
-    width: 11,
+    width: 15,
     value: (s) => (s.photoPath ? "" : "no photo"),
     image: (s) => photos.get(s.id) ?? null,
   },

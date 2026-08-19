@@ -13,13 +13,25 @@ import type { Student } from "../../drizzle/schema";
  */
 
 /**
- * Fetch every photograph the workbook needs, as thumbnails.
+ * Fetch every photograph the workbook needs, at full stored resolution.
  *
- * THUMBNAILS, NOT THE FULL IMAGES, and that is what makes this possible at all.
- * A full photo is 30-120 kB, so five hundred of them is a 15-60 MB workbook
- * nobody can email; the 96px variant is one or two kB and the same five hundred
- * come to about a megabyte. At the size a printed list shows a face, they are
- * indistinguishable.
+ * THE FULL IMAGE, NOT THE THUMBNAIL, AND THAT IS A REVERSAL. This used to take
+ * the 96px variant on the argument that "at the size a printed list shows a
+ * face, they are indistinguishable". They are not. The workbook draws a face at
+ * 96px on screen, which is about an inch on paper, and an inch at 300dpi wants
+ * roughly 300px of source — so a 96px thumbnail was being stretched over three
+ * times its resolution and the printed list came out visibly soft. That is the
+ * one thing the office wants this file for.
+ *
+ * The size argument was also weaker than it looked. Measured over the real
+ * store: a thumbnail averages 2.5 kB and a full photo 52 kB, so ONE CLASS at
+ * full resolution is about 2.3 MB — an ordinary attachment — and it is only the
+ * whole-school export, which nobody prints, that reaches 25 MB.
+ *
+ * 800px is the ceiling and no change here can raise it: downscale.ts resizes on
+ * the teacher's phone and the 3-8 MB original is never uploaded, deliberately,
+ * because sending one over 2G is a minute per child. At the size the sheet
+ * draws it that is still an eightfold oversample.
  *
  * Concurrent, because five hundred sequential round trips to the blob store is
  * a minute of wall clock. Capped, because each one is a billable simple
@@ -52,14 +64,16 @@ export async function fetchPhotos(students: Student[]): Promise<Map<string, Buff
 }
 
 /**
- * The thumbnail, falling back to the full image.
+ * The full image, falling back to the thumbnail.
  *
- * Photos taken before the thumbnail existed have none, and the upload route
- * treats the thumbnail as best-effort so a bad connection can drop it. Falling
- * back keeps those children in the workbook rather than silently blank.
+ * THE ORDER IS THE WHOLE CHANGE — it used to be the other way round. The
+ * fallback is kept, and is not decoration: a blob that will not read leaves the
+ * child blank on a list somebody is about to print, and a soft face is a great
+ * deal better than no face. It should almost never fire, because every photo
+ * has a full image by construction and only the thumbnail is best-effort.
  */
 async function readPhoto(pathname: string): Promise<Buffer | null> {
-  for (const candidate of [thumbPathname(pathname), pathname]) {
+  for (const candidate of [pathname, thumbPathname(pathname)]) {
     const blob = await get(candidate, { access: "private" }).catch(() => null);
     if (blob?.statusCode === 200) {
       return Buffer.from(await new Response(blob.stream).arrayBuffer());

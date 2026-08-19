@@ -113,7 +113,7 @@ describe("buildWorkbook — photographs in cells", () => {
     { header: "Student ID", width: 14, value: (r: Row) => r.id },
     {
       header: "Photo",
-      width: 11,
+      width: 15,
       value: (r: Row) => (r.photo ? "" : "no photo"),
       image: (r: Row) => r.photo,
     },
@@ -155,6 +155,30 @@ describe("buildWorkbook — photographs in cells", () => {
     // Row 1 is the header, so the data starts at 2.
     assert.ok((sheet.getRow(2).height ?? 0) > 20, "the photo row was left too short to see it");
     assert.equal(sheet.getRow(3).height, undefined, "a class with no photos should read as a normal table");
+  });
+
+  test("draws the face big enough to print", async () => {
+    const sheet = await build([{ id: "S1", photo: JPEG }]);
+    const [image] = sheet.getImages();
+
+    // ExcelJS types getImages().range as tl/br only, but an image added by
+    // ImagePosition — which is how buildWorkbook adds one, so it gets a fixed
+    // pixel size rather than being stretched to a cell — round-trips with the
+    // `ext` it was given. The cast is over its own exported ImagePosition, not
+    // an invented shape.
+    const ext = (image!.range as Partial<ExcelJS.ImagePosition>).ext;
+
+    /*
+     * 96px, which is about an inch on paper.
+     *
+     * It was 64, and the whole point of this file is a printed class list
+     * somebody reads faces off. Pinned here because the number is invisible
+     * until it is on paper: nothing on screen and no other test fails if it
+     * quietly drifts back down, and by the time the office notices they have
+     * printed it.
+     */
+    assert.equal(ext?.width, 96);
+    assert.equal(ext?.height, 96);
   });
 
   test("says so in words when there is no photograph", async () => {
