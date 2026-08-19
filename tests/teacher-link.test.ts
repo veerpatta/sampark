@@ -1,15 +1,18 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
-import { cleanup, createFanOutScenario } from "./fixtures";
+import { cleanup, createFanOutScenario, createScenario } from "./fixtures";
 import { db, schema } from "../src/lib/db";
 import { createBatch, getBatch, markGroupSent } from "../src/lib/batches";
+import { recordSubmissions } from "../src/lib/submissions";
+import { photoPathname } from "../src/lib/photos";
 import {
   GRACE_DAYS,
   generateToken,
   isListableOnTeacherPage,
   resolveTeacherToken,
   resolveToken,
+  type ResolvedRequest,
 } from "../src/lib/auth/token";
 
 /**
@@ -259,5 +262,122 @@ describe("marking a grouped send", () => {
 
   test("does nothing, and does not throw, on an empty list", async () => {
     await markGroupSent([], "nobody", true);
+  });
+});
+
+/* ========================================================================== */
+
+/**
+ * WHAT SHE HAS ALREADY SENT, READ BACK.
+ *
+ * The teacher's page used to be built from the frozen snapshot alone — what we
+ * held BEFORE she touched anything — so a round she was half way through opened
+ * as though she had never started it. On a photo round that is the whole bug:
+ * twelve children she had already photographed came back with the camera open,
+ * beside the thirty-four she had not, and no way to tell which was which. The
+ * photographs were in the submissions table the entire time.
+ *
+ * The snapshot itself must not move. These tests hold both halves: `values` is
+ * still exactly what was frozen, and `answered` is the new one.
+ */
+describe("reopening a half-finished round", () => {
+  const rowFor = (resolved: ResolvedRequest, id: string) =>
+    resolved.roster.find((row) => row.studentId === id)!;
+
+  test("a photograph she has sent comes back on the roster", async () => {
+    const scenario = await createScenario({ fieldKeys: ["photo"] });
+    const [first, second] = scenario.studentIds;
+    const pathname = photoPathname(first!);
+
+    await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: first!, values: { photo: pathname } }],
+      null,
+      "zztest-photo-readback",
+    );
+
+    const reopened = await resolveToken(scenario.token);
+    assert.ok(reopened);
+
+    const done = rowFor(reopened, first!);
+    assert.equal(done.answered.photo, pathname);
+    assert.equal(done.notPresent, false);
+    // THE SNAPSHOT IS UNTOUCHED. It is what the server diffs her next answer
+    // against, and a read-back that wrote into it would quietly change what
+    // "old value" means in the review queue.
+    assert.equal(done.values.photo ?? null, null);
+
+    const untouched = rowFor(reopened, second!);
+    assert.deepEqual(untouched.answered, {});
+  });
+
+  test("a correction supersedes the photograph before it", async () => {
+    const scenario = await createScenario({ fieldKeys: ["photo"] });
+    const [student] = scenario.studentIds;
+    const firstTry = photoPathname(student!);
+    const retake = photoPathname(student!);
+    assert.notEqual(firstTry, retake);
+
+    await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: student!, values: { photo: firstTry } }],
+      null,
+      "zztest-photo-first",
+    );
+    await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: student!, values: { photo: retake } }],
+      null,
+      "zztest-photo-retake",
+    );
+
+    const reopened = await resolveToken(scenario.token);
+    assert.equal(rowFor(reopened!, student!).answered.photo, retake);
+  });
+
+  test("a rejected answer is not shown back as done", async () => {
+    const scenario = await createScenario({ fieldKeys: ["photo"] });
+    const [student] = scenario.studentIds;
+    const pathname = photoPathname(student!);
+
+    await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: student!, values: { photo: pathname } }],
+      null,
+      "zztest-photo-rejected",
+    );
+    await db
+      .update(schema.submissions)
+      .set({ reviewStatus: "rejected" })
+      .where(eq(schema.submissions.requestId, scenario.requestId));
+
+    const reopened = await resolveToken(scenario.token);
+    // The office turned it down. Handing it back as done would tell her the
+    // child is finished when the round still needs that face.
+    assert.deepEqual(rowFor(reopened!, student!).answered, {});
+  });
+
+  test("not in her class survives a reload", async () => {
+    const scenario = await createScenario({ fieldKeys: ["phone"] });
+    const [student] = scenario.studentIds;
+
+    await recordSubmissions(
+      scenario.resolved,
+      [{ studentId: student!, notPresent: true }],
+      null,
+      "zztest-absent-readback",
+    );
+
+    const reopened = await resolveToken(scenario.token);
+    assert.equal(rowFor(reopened!, student!).notPresent, true);
+  });
+
+  test("a fresh request has nothing to read back", async () => {
+    const scenario = await createScenario({ fieldKeys: ["phone"] });
+    const reopened = await resolveToken(scenario.token);
+    for (const row of reopened!.roster) {
+      assert.deepEqual(row.answered, {});
+      assert.equal(row.notPresent, false);
+    }
   });
 });

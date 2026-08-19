@@ -2,8 +2,9 @@
 
 import { ArrowRight } from "@phosphor-icons/react";
 import { Bi } from "./Bi";
+import { PhotoThumb } from "./PhotoThumb";
 import { T, type Phrase } from "./strings";
-import type { Summary } from "./summary";
+import type { ChangedValue, Summary } from "./summary";
 
 /**
  * "This is what you have sent."
@@ -24,6 +25,7 @@ import type { Summary } from "./summary";
  * help no one.
  */
 export function ReviewSummary({
+  token,
   summary,
   total,
   pending,
@@ -35,6 +37,8 @@ export function ReviewSummary({
   onBack,
   onSend,
 }: {
+  /** For reading a photograph back through /api/r/<token>/photo. */
+  token: string;
   summary: Summary;
   total: number;
   /** Answered but not yet acknowledged by the server. */
@@ -87,12 +91,10 @@ export function ReviewSummary({
                   <span className="mt-0.5 block text-sm text-[var(--color-ink-muted)]">
                     <Bi t={{ en: entry.labelEn, hi: entry.labelHi }} />
                   </span>
-                  <span className="mt-1 flex flex-wrap items-baseline gap-2 font-mono text-sm">
-                    <span className="line-through opacity-60">
-                      {entry.from ?? T.wasEmpty.en}
-                    </span>
+                  <span className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+                    <Was token={token} entry={entry} />
                     <ArrowRight aria-hidden size={16} />
-                    <span className="font-semibold">{entry.to}</span>
+                    <Now token={token} entry={entry} />
                   </span>
                   <span className="mt-1 block text-xs text-[var(--color-brand-600)] underline">
                     <Bi t={T.tapToFix} />
@@ -234,4 +236,51 @@ export function ReviewSummary({
       </div>
     </section>
   );
+}
+
+/**
+ * The two halves of a change, each rendered as the thing it is.
+ *
+ * A photograph on this screen used to be a monospace blob pathname — which made
+ * the receipt useless for exactly the round it matters most on, because "check
+ * what you sent" cannot be done against a filename. Same branch as StudentRow's
+ * Value, on inputType rather than on the key, so a second photo field is a row
+ * in field_defs and not a deploy.
+ */
+function Was({ token, entry }: { token: string; entry: ChangedValue }) {
+  if (entry.from === null || entry.from === "") {
+    return (
+      <span className="font-mono line-through opacity-60">{T.wasEmpty.en}</span>
+    );
+  }
+
+  if (entry.inputType === "photo") {
+    return (
+      <span className="opacity-50">
+        <PhotoThumb
+          token={token}
+          pathname={entry.from}
+          name={`${entry.name} — before`}
+          className="h-16 w-16"
+        />
+      </span>
+    );
+  }
+
+  return <span className="font-mono line-through opacity-60">{entry.from}</span>;
+}
+
+function Now({ token, entry }: { token: string; entry: ChangedValue }) {
+  if (entry.inputType === "photo") {
+    return (
+      <PhotoThumb
+        token={token}
+        pathname={entry.to}
+        name={entry.name}
+        className="h-16 w-16"
+      />
+    );
+  }
+
+  return <span className="font-mono font-semibold">{entry.to}</span>;
 }

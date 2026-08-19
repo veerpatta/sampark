@@ -45,6 +45,8 @@ function student(
     fatherName: null,
     siblingPhone: null,
     values,
+    answered: {},
+    notPresent: false,
   };
 }
 

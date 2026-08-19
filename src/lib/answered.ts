@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 
 /**
@@ -83,4 +83,100 @@ export function isAnsweredFully(counts: {
   studentsAnswered: number;
 }): boolean {
   return counts.rosterSize > 0 && counts.studentsAnswered >= counts.rosterSize;
+}
+
+/* ========================================================================== */
+/*                          WHAT SHE HAS ALREADY SENT                         */
+/* ========================================================================== */
+
+/** Everything one request already holds for one student. */
+export type SubmittedAnswer = {
+  studentId: string;
+  /** Keyed by field key, exactly as a row's `values` are. */
+  values: Record<string, string | null>;
+  /** She said this child is not in her class. */
+  notPresent: boolean;
+};
+
+/**
+ * What this request has already received, per student.
+ *
+ * THIS IS THE HALF THE TEACHER'S PAGE NEVER HAD. resolveToken builds her roster
+ * out of the frozen snapshot, which is by definition what we held BEFORE she
+ * touched anything — so a teacher who photographed twelve children, closed the
+ * tab and opened the link again was shown twelve empty cards with the camera
+ * open. Her work was never lost; the page simply never asked for it. The only
+ * memory of it was a localStorage draft, which the Finish button clears, which
+ * does not exist in the browser she opens the link in the second time, and
+ * which private mode never had.
+ *
+ * SCOPED TO ONE REQUEST, WHICH IS WHAT MAKES IT SAFE. Every row it can return
+ * was written through this same token. Handing it back to the holder of that
+ * token discloses nothing they did not themselves send, so this needs no
+ * authorization beyond the one resolveToken has already done.
+ *
+ * REJECTED IS EXCLUDED. The office turned that answer down, and showing it back
+ * as done would tell her a job is finished when it is not — the same lie the
+ * partial/complete split exists to refuse.
+ *
+ * LAST WRITE WINS, folded in TypeScript rather than in a `distinct on`. A round
+ * is forty-six children over one to four fields; the row count does not justify
+ * the SQL, and "a correction supersedes what went before" is the rule the whole
+ * surface already runs on — see the note on PendingBatch in teacher/draft.ts.
+ */
+export async function answersForRequest(
+  requestId: string,
+  fieldKeys: string[],
+): Promise<Map<string, SubmittedAnswer>> {
+  const answers = new Map<string, SubmittedAnswer>();
+  if (fieldKeys.length === 0) return answers;
+
+  const rows = await db
+    .select({
+      studentId: schema.submissions.studentId,
+      fieldKey: schema.submissions.fieldKey,
+      action: schema.submissions.action,
+      oldValue: schema.submissions.oldValue,
+      newValue: schema.submissions.newValue,
+    })
+    .from(schema.submissions)
+    .where(
+      and(
+        eq(schema.submissions.requestId, requestId),
+        inArray(schema.submissions.fieldKey, fieldKeys),
+        // A field the request no longer asks about is filtered above; a
+        // rejected one is filtered here. Everything else — pending, auto,
+        // approved, applied — is work of hers that reached the school.
+        sql`${schema.submissions.reviewStatus} <> 'rejected'`,
+      ),
+    )
+    .orderBy(asc(schema.submissions.submittedAt));
+
+  for (const row of rows) {
+    let answer = answers.get(row.studentId);
+    if (!answer) {
+      answer = { studentId: row.studentId, values: {}, notPresent: false };
+      answers.set(row.studentId, answer);
+    }
+
+    if (row.action === "not_present" || row.action === "absent") {
+      answer.notPresent = true;
+      continue;
+    }
+
+    /*
+     * A LATER ANSWER UN-SAYS AN EARLIER "not in my class".
+     *
+     * She can tap it by accident — that is why the button was removed — and
+     * then correct the row. Leaving the flag set would collapse her correction
+     * back into an empty card on the next reload, which is this whole bug
+     * happening again by a different route.
+     */
+    answer.notPresent = false;
+    // `confirmed` carries the old value and no new one: she told us what we
+    // held was right, so what we hold is her answer.
+    answer.values[row.fieldKey] = row.newValue ?? row.oldValue;
+  }
+
+  return answers;
 }

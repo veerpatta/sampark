@@ -3,7 +3,7 @@ import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "../db";
 // Sits below this file on purpose — lib/requests.ts imports generateToken from
 // here, so the shared "answered" rule cannot live there. See lib/answered.ts.
-import { coveredStudentsQuery } from "../answered";
+import { answersForRequest, coveredStudentsQuery } from "../answered";
 import { compareClassLabels, compareStudentNames } from "../classes";
 import { isoDayFrom } from "../today";
 import type { RosterSnapshot } from "../snapshots";
@@ -103,6 +103,18 @@ export type ResolvedRosterRow = {
    * everything else on this row.
    */
   siblingPhone: { name: string; phone: string } | null;
+  /**
+   * WHAT THIS REQUEST HAS ALREADY RECEIVED FOR THIS CHILD. Never the snapshot.
+   *
+   * `values` above is what we held when the link was sent, and it is frozen for
+   * a reason — it is what the server diffs her answers against. This is the
+   * other half, and until now the page had no way to see it: her own answers,
+   * read back off the submissions table, so reopening the link shows her where
+   * she actually stopped rather than an untouched list. See answersForRequest.
+   */
+  answered: Record<string, string | null>;
+  /** She has already said this child is not in her class. */
+  notPresent: boolean;
 };
 
 export type ResolvedRequest = {
@@ -169,7 +181,7 @@ export async function resolveToken(
   );
   if (!access.ok) return null;
 
-  const [fields, roster] = await Promise.all([
+  const [fields, roster, answered] = await Promise.all([
     db
       .select()
       .from(schema.fieldDefs)
@@ -179,6 +191,9 @@ export async function resolveToken(
       .select()
       .from(schema.requestStudents)
       .where(eq(schema.requestStudents.requestId, row.request.id)),
+    // Alongside the roster, not after it. This is one more small read on a page
+    // that is already doing two, and it is what makes the link resumable.
+    answersForRequest(row.request.id, row.request.fieldKeys),
   ]);
 
   // Keep the field order the request asked for, not the registry's, so the
@@ -216,6 +231,7 @@ export async function resolveToken(
         // Every field is optional and defaulted: snapshots frozen before a
         // field was added to the shape are still on record and must still open.
         const snapshot = entry.snapshot as Partial<RosterSnapshot>;
+        const sent = answered.get(entry.studentId);
         return {
           studentId: entry.studentId,
           srNo: snapshot.srNo ?? null,
@@ -226,6 +242,8 @@ export async function resolveToken(
           fatherName: snapshot.fatherName ?? null,
           values: snapshot.values ?? {},
           siblingPhone: snapshot.siblingPhone ?? null,
+          answered: sent?.values ?? {},
+          notPresent: sent?.notPresent ?? false,
         };
       })
       .sort(

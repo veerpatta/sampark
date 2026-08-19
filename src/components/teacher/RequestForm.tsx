@@ -30,7 +30,9 @@ import { T, type Phrase } from "./strings";
 import {
   COMPLETE,
   UPLOADABLE,
+  knownValues,
   requiredKeys,
+  seedRow,
   type RowState,
   type RowStatus,
   type TeacherField,
@@ -79,6 +81,39 @@ import {
 
 type Stage = "list" | "review";
 
+/**
+ * Would taking this draft row lose something the school already has?
+ *
+ * The one rule that keeps two memories from fighting. The seed comes from the
+ * submissions table — it is what the school has actually received and it cannot
+ * be wrong about that. The draft is what is on this phone, which is newer for
+ * anything that never got sent and older for everything that did.
+ *
+ * Two ways a draft undoes the seed, and both used to be silent:
+ *
+ *   - it drops a value. A draft saved before the photo upload landed holds the
+ *     row with no photograph in it; taking it would blank a face the school has.
+ *   - it reopens a finished row it knows nothing about. A row seeded from a
+ *     completed answer, against a draft that has it as untouched, is a draft
+ *     written before that answer existed.
+ *
+ * Anything else is her live work and wins, which is the point of the draft.
+ */
+function undoesSeed(seed: RowState | undefined, draft: RowState): boolean {
+  if (!seed || seed.status === "todo") return false;
+
+  const draftTouched =
+    draft.status !== "todo" ||
+    Object.values(draft.values).some((value) => value !== "");
+  if (!draftTouched) return true;
+
+  return Object.entries(seed.values).some(([key, value]) => {
+    if (value === "") return false;
+    const held = draft.values[key];
+    return held === undefined || held === "";
+  });
+}
+
 /** How long to stand down after a 429 before trying again. */
 const RATE_LIMIT_BACKOFF_MS = 15_000;
 
@@ -116,12 +151,21 @@ export function RequestForm({
    * should be re-deriving what counts as a hole: the blanks/known split, the
    * commit gate, and the row's own "what is still missing" line.
    */
+  /*
+   * OVER THE MERGED VALUES, not the frozen snapshot alone.
+   *
+   * A child she photographed an hour ago has no photograph in the snapshot —
+   * the snapshot is what we held before she started — so asking the snapshot
+   * put that child back in the blanks group with the camera open on every
+   * reload, beside the children she genuinely still owes. knownValues is the
+   * one place the two are merged.
+   */
   const requiredByStudent = useMemo(
     () =>
       new Map(
         roster.map((student) => [
           student.studentId,
-          requiredKeys(student, fields),
+          requiredKeys({ values: knownValues(student) }, fields),
         ]),
       ),
     [roster, fields],
@@ -142,15 +186,30 @@ export function RequestForm({
     };
   }, [roster, requiredByStudent]);
 
-  const [rows, setRows] = useState<Record<string, RowState>>(() =>
-    Object.fromEntries(
-      roster.map((student) => [
-        student.studentId,
-        { status: "todo", values: {} } as RowState,
-      ]),
-    ),
+  /**
+   * Where the list starts: what the school already has from her.
+   *
+   * Not `todo` everywhere any more. seedRow reads her own answers off the
+   * roster — the server puts them there now — so a round she is half way
+   * through opens half done, on any phone, with or without a draft. The two
+   * are computed together because they have to agree: a row seeded as answered
+   * that was not also seeded as sent would be uploaded again on the next flush.
+   */
+  const seeded = useMemo(() => {
+    const rows: Record<string, RowState> = {};
+    const sent: string[] = [];
+    for (const student of roster) {
+      const seed = seedRow(student, fields);
+      rows[student.studentId] = seed.row;
+      if (seed.sent) sent.push(student.studentId);
+    }
+    return { rows, sent };
+  }, [roster, fields]);
+
+  const [rows, setRows] = useState<Record<string, RowState>>(seeded.rows);
+  const [sentIds, setSentIds] = useState<Set<string>>(
+    () => new Set(seeded.sent),
   );
-  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Phrase | null>(null);
   const [online, setOnline] = useState(true);
@@ -186,6 +245,19 @@ export function RequestForm({
   sentRef.current = sentIds;
 
   /* ------------------------------------------------ restore what she had */
+  //
+  // The draft goes ON TOP of the seed, and only ever adds.
+  //
+  // It is still the more recent of the two for work that never reached the
+  // school — that is the whole reason it exists — but it is now the SECOND
+  // memory rather than the only one, and the two can disagree. A draft written
+  // before a flush landed holds a row as `editing` that the server has since
+  // acknowledged; letting it win would reopen a finished card and, worse, drop
+  // that student out of sentIds so the next flush wrote her answer again.
+  //
+  // So: a draft row is taken unless it would undo the seed. `sent` is the union
+  // for the same reason — the server's acknowledgement is a fact, and a draft
+  // that predates it does not get to un-know it.
   useEffect(() => {
     const draft = loadDraft(token);
     if (draft) {
@@ -193,17 +265,24 @@ export function RequestForm({
       // re-sent a corrected request under the same token.
       const known = new Set(roster.map((student) => student.studentId));
       const kept = Object.fromEntries(
-        Object.entries(draft.rows).filter(([id]) => known.has(id)),
+        Object.entries(draft.rows).filter(
+          ([id, row]) => known.has(id) && !undoesSeed(seeded.rows[id], row),
+        ),
       );
       if (Object.keys(kept).length > 0) {
         setRows((current) => ({ ...current, ...kept }));
         setRestored(true);
       }
-      setSentIds(new Set(draft.sent.filter((id) => known.has(id))));
+      setSentIds(
+        new Set([
+          ...seeded.sent,
+          ...draft.sent.filter((id) => known.has(id)),
+        ]),
+      );
       pending.current = draft.pending;
     }
     setOnline(navigator.onLine);
-  }, [token, roster]);
+  }, [token, roster, seeded]);
 
   /*
    * Keep the box she is typing into above the keyboard.
@@ -840,6 +919,7 @@ export function RequestForm({
           </li>
         ) : null}
         <StudentRow
+          token={token}
           student={student}
           showClass={spansClasses}
       fields={fields}
@@ -878,6 +958,7 @@ export function RequestForm({
   if (stage === "review" && summary) {
     return (
       <ReviewSummary
+        token={token}
         summary={summary}
         total={roster.length}
         pending={unsent.length}

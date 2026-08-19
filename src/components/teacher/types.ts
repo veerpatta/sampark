@@ -40,7 +40,33 @@ export type TeacherRosterRow = {
    * worked out and frozen.
    */
   siblingPhone: { name: string; phone: string } | null;
+  /**
+   * What the school ALREADY HAS from her for this child, on this request.
+   *
+   * `values` above is the frozen snapshot — what we held when the link was
+   * sent. This is what she has since sent back, read off the submissions table
+   * by answersForRequest. The two are deliberately separate: the snapshot is
+   * what the server diffs against and must never move, and this is what lets a
+   * reopened link show her where she stopped.
+   */
+  answered: Record<string, string | null>;
+  /** She has already said this child is not in her class. */
+  notPresent: boolean;
 };
+
+/**
+ * Everything known about this child, frozen and answered together.
+ *
+ * The one merge, in one place. A photograph she took an hour ago is as good an
+ * answer as one the office had on file in January, and every question the
+ * screen asks — is this row blank, is it finished, what is still missing —
+ * has to treat them the same or the row comes back empty on the next reload.
+ */
+export function knownValues(
+  student: Pick<TeacherRosterRow, "values" | "answered">,
+): Record<string, string | null> {
+  return { ...student.values, ...student.answered };
+}
 
 /**
  * Which of these fields this student must actually answer.
@@ -142,3 +168,59 @@ export type RowState = {
   /** Only the fields she actually changed. An absent key means unchanged. */
   values: Record<string, string>;
 };
+
+/**
+ * Where a row should START, given what the school already has from her.
+ *
+ * THE FIX FOR REOPENING A HALF-DONE ROUND. Every row used to arrive `todo` with
+ * empty values, because the page only ever saw the frozen snapshot — so a
+ * teacher who had photographed twelve of forty-six children came back to
+ * forty-six empty cards and no way to tell which twelve were done. Her work was
+ * in the submissions table the whole time; nothing asked for it.
+ *
+ * `sent` is the other half and is not cosmetic: it seeds sentIds, which is what
+ * stops pickBatch from uploading these rows a second time under a fresh
+ * idempotency key and writing a duplicate submission on every reload.
+ *
+ * Pure and here rather than in the component, for the reason autosave.ts gives.
+ * It does NOT re-validate: every value it can see was validated by the server
+ * on the way in, and a rule that could reject one here would silently drop work
+ * the school has already accepted.
+ */
+export function seedRow(
+  student: TeacherRosterRow,
+  fields: TeacherField[],
+): { row: RowState; sent: boolean } {
+  if (student.notPresent) {
+    return { row: { status: "absent", values: {} }, sent: true };
+  }
+
+  // Only the fields this request actually asks about, and only the ones that
+  // carry a value. A `confirmed` answer to a field we hold nothing for writes
+  // no submission at all (see recordSubmissions), so an empty string here would
+  // be inventing an answer she never gave.
+  const values: Record<string, string> = {};
+  for (const field of fields) {
+    const value = student.answered[field.key];
+    if (value !== undefined && value !== null && value !== "") {
+      values[field.key] = value;
+    }
+  }
+
+  if (Object.keys(values).length === 0) {
+    return { row: { status: "todo", values: {} }, sent: false };
+  }
+
+  // Against the MERGED values, so a hole the office had already filled before
+  // the link went out does not read as one she still owes.
+  const required = requiredKeys({ values: knownValues(student) }, fields);
+  const done = required.every((key) => {
+    const value = values[key];
+    return value !== undefined && value !== "";
+  });
+
+  return {
+    row: { status: done ? "edited" : "partial", values },
+    sent: true,
+  };
+}

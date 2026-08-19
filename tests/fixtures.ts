@@ -201,7 +201,13 @@ export async function createScenario(options?: {
       // hands to recordSubmissions is exactly what the teacher would have seen.
       roster: students.map((student) => {
         const snapshot = snapshots.get(student.id)!;
-        return { studentId: student.id, ...snapshot };
+        // No answers yet: a scenario is a request as it was just sent.
+        return {
+          studentId: student.id,
+          ...snapshot,
+          answered: {},
+          notPresent: false,
+        };
       }),
     },
   };

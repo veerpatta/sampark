@@ -160,6 +160,53 @@ export function PhotoProvider({
     [token, setStatus, drain],
   );
 
+  /**
+   * Show again what is still on the phone.
+   *
+   * A preview is an object URL in component state, so a reload throws it away —
+   * and the photograph behind it is still sitting in IndexedDB waiting for
+   * signal. A teacher working in a dead spot took twelve photographs, reloaded,
+   * and saw twelve empty placeholders: nothing was lost, but she had no way to
+   * know that, and the only rational thing to do looking at that screen is take
+   * them all again.
+   *
+   * Runs once per token, before the drain that will clear the queue. Each one
+   * that uploads is replaced by the stored image via the row's `value`, so
+   * these URLs are transitional — the unmount cleanup revokes whatever is left.
+   */
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    let cancelled = false;
+
+    void (async () => {
+      const queue = await pendingPhotos(token);
+      if (cancelled || queue.length === 0) return;
+      setPreviews((current) => {
+        const next = { ...current };
+        for (const photo of queue) {
+          // Never over a live preview: she may have retaken one in the moment
+          // between mount and this resolving, and hers is the newer picture.
+          if (next[photo.studentId]) continue;
+          next[photo.studentId] = URL.createObjectURL(photo.blob);
+        }
+        return next;
+      });
+      setStatuses((current) => {
+        const next = { ...current };
+        for (const photo of queue) {
+          next[photo.studentId] ??= { state: "queued" };
+        }
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   // On mount and whenever signal returns. Capture kicks it directly, and a
   // successful upload continues through the loop it is already inside — so
   // there is no polling timer, and deliberately no dependency on `statuses`,

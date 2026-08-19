@@ -52,6 +52,8 @@ const student = (
   fatherName: null,
   siblingPhone: null,
   values,
+  answered: {},
+  notPresent: false,
 });
 
 const answered = (values: Record<string, string>): RowState => ({

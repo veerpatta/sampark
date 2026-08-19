@@ -30,6 +30,14 @@ export type ChangedValue = {
   fieldKey: string;
   labelEn: string;
   labelHi: string;
+  /**
+   * Carried so the receipt can render a photograph as a photograph.
+   *
+   * Without it the review screen printed a blob pathname in a monospace span —
+   * the same way the collapsed row did — so the one screen whose whole job is
+   * "check what you sent" was the one screen a photo could not be checked on.
+   */
+  inputType: string;
   /** What the school held. Null when it held nothing. */
   from: string | null;
   to: string;
@@ -137,6 +145,7 @@ export function summarise(
         fieldKey: field.key,
         labelEn: field.labelEn,
         labelHi: field.labelHi,
+        inputType: field.inputType,
         from: student.values[field.key] ?? null,
         to: row.values[field.key]!,
       }));

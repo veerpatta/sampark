@@ -24,6 +24,7 @@ import { COMPLETE, UPLOADABLE } from "./types";
 import { Bi } from "./Bi";
 import { TEACHER_INPUT, focusNext, keepInView, nextInput } from "./focus";
 import { PhotoField } from "./PhotoField";
+import { PhotoThumb } from "./PhotoThumb";
 import { T } from "./strings";
 
 import type { RowState, TeacherField, TeacherRosterRow } from "./types";
@@ -74,6 +75,7 @@ import type { RowState, TeacherField, TeacherRosterRow } from "./types";
  * literal, a `?? []` — silently switches all of this back off.
  */
 export const StudentRow = memo(function StudentRow({
+  token,
   student,
   fields,
   state,
@@ -91,6 +93,8 @@ export const StudentRow = memo(function StudentRow({
   onReopen,
   suggestions,
 }: {
+  /** For reading a photograph back. A plain string, so the memo is unaffected. */
+  token: string;
   student: TeacherRosterRow;
   fields: TeacherField[];
   state: RowState;
@@ -300,9 +304,12 @@ export const StudentRow = memo(function StudentRow({
                 <Bi t={label(field)} />
               </dt>
               <dd className="text-right text-base font-medium">
-                <span className={numeric(field) ? "font-mono" : ""}>
-                  {student.values[field.key]}
-                </span>
+                <Value
+                  token={token}
+                  field={field}
+                  value={student.values[field.key]}
+                  name={student.name}
+                />
               </dd>
             </div>
           ))}
@@ -324,22 +331,34 @@ export const StudentRow = memo(function StudentRow({
                 <dt className="text-sm text-[var(--color-ink-muted)]">
                   <Bi t={label(field)} />
                 </dt>
-                <dd className="text-right text-base font-medium">
+                <dd className="flex items-center justify-end gap-2 text-right text-base font-medium">
                   {changed ? (
                     <>
                       {stored ? (
-                        <span className="mr-2 text-sm line-through opacity-50">
-                          {stored}
+                        <span className="opacity-50">
+                          <Value
+                            token={token}
+                            field={field}
+                            value={stored}
+                            name={student.name}
+                            struck
+                          />
                         </span>
                       ) : null}
-                      <span className={numeric(field) ? "font-mono" : ""}>
-                        {entered}
-                      </span>
+                      <Value
+                        token={token}
+                        field={field}
+                        value={entered}
+                        name={student.name}
+                      />
                     </>
                   ) : (
-                    <span className={numeric(field) ? "font-mono" : ""}>
-                      {stored ?? T.nothingOnRecord.en}
-                    </span>
+                    <Value
+                      token={token}
+                      field={field}
+                      value={stored ?? null}
+                      name={student.name}
+                    />
                   )}
                 </dd>
               </div>
@@ -522,6 +541,54 @@ export const StudentRow = memo(function StudentRow({
     </li>
   );
 });
+
+/**
+ * One field's value, as the thing it actually is.
+ *
+ * A photograph is a photograph. Every other field is a string, and always was.
+ *
+ * THIS IS WHERE THE PHOTO USED TO DISAPPEAR. Both read-only summaries printed
+ * `values[key]` straight out, so the moment a photo row committed and collapsed
+ * — which is one second after the upload lands — her child's face was replaced
+ * by `students/S1001/20260819-3f9c….jpg`. Scrolling a list of forty-six for the
+ * twelve she had done meant reading pathnames. The office side never had this
+ * problem: /review has always rendered a photo submission through PhotoDiff.
+ *
+ * The branch is on inputType, never on the key being 'photo' — a second photo
+ * field added as a row in field_defs works with no deploy. Rule 11.
+ */
+function Value({
+  token,
+  field,
+  value,
+  name,
+  struck,
+}: {
+  token: string;
+  field: TeacherField;
+  value: string | null | undefined;
+  name: string;
+  /** The superseded half of a change. Only ever applies to text. */
+  struck?: boolean;
+}) {
+  if (value === null || value === undefined || value === "") {
+    return <span>{T.nothingOnRecord.en}</span>;
+  }
+
+  if (field.inputType === "photo") {
+    return <PhotoThumb token={token} pathname={value} name={name} />;
+  }
+
+  return (
+    <span
+      className={`${numeric(field) ? "font-mono" : ""} ${
+        struck ? "text-sm line-through" : ""
+      }`}
+    >
+      {value}
+    </span>
+  );
+}
 
 /**
  * The child's name, badge and status — and, when there is one thing to do, the
