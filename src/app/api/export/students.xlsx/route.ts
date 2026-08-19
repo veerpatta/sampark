@@ -1,9 +1,10 @@
 import { requireUser, UnauthorizedError } from "@/lib/auth/session";
-import { buildWorkbook, type ExportColumn } from "@/lib/excel";
+import { buildWorkbook } from "@/lib/excel";
 import { listStudents } from "@/lib/students";
 import { parseFilters } from "@/lib/student-filters";
 import { compareClassLabels } from "@/lib/classes";
 import { fetchPhotos } from "@/lib/photo-store";
+import { studentExportColumns } from "@/lib/student-export";
 import { todayISO } from "@/lib/today";
 import type { Student } from "../../../../../drizzle/schema";
 
@@ -17,55 +18,6 @@ import type { Student } from "../../../../../drizzle/schema";
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/**
- * The workbook's columns, given the photographs already fetched.
- *
- * A function rather than a constant because the Photo column has to close over
- * the images. Everything else is unchanged and still in the order the importer
- * reads, so export -> fix in Excel -> re-import still round-trips.
- */
-const columnsFor = (photos: Map<string, Buffer>): ExportColumn<Student>[] => [
-  { header: "Student ID", width: 14, value: (s) => s.id },
-  { header: "SR No", width: 12, value: (s) => s.srNo },
-  { header: "Admission No", width: 14, value: (s) => s.admissionNo },
-  { header: "Class", width: 10, value: (s) => s.classLabel },
-  { header: "Section", width: 9, value: (s) => s.section },
-  { header: "Roll No", width: 9, value: (s) => s.rollNo },
-  { header: "Name", width: 26, value: (s) => s.name },
-  { header: "Father's Name", width: 24, value: (s) => s.fatherName },
-  { header: "Mother's Name", width: 24, value: (s) => s.motherName },
-  { header: "Mobile No", width: 14, value: (s) => s.phone },
-  { header: "Alternate Mobile", width: 16, value: (s) => s.altPhone },
-  { header: "Date of Birth", width: 13, value: (s) => s.dob },
-  { header: "Gender", width: 9, value: (s) => s.gender },
-  { header: "Category", width: 10, value: (s) => s.category },
-  { header: "Aadhaar", width: 16, value: (s) => s.aadhaar },
-  { header: "Jan Aadhaar", width: 16, value: (s) => s.janAadhaar },
-  { header: "Village", width: 18, value: (s) => s.village },
-  { header: "Address", width: 30, value: (s) => s.address },
-  { header: "Bus Route", width: 14, value: (s) => s.busRoute },
-  { header: "Status", width: 10, value: (s) => s.status },
-  /*
-   * THE PICTURE ITSELF, not a pathname and not "yes".
-   *
-   * A blob pathname in a spreadsheet is a dead string — unreadable to a person
-   * and meaningless to PSP — and "yes" answers the wrong question. What the
-   * office wants this file for is a printed class list with faces on it.
-   *
-   * `value` still fills the cell when there is no photograph, so the column
-   * reads as a work list rather than as a row of holes.
-   */
-  {
-    // Wide enough to hold the picture. Excel measures a column in characters of
-    // the default font, roughly 7px each, so a 96px face needs about 14 — and a
-    // narrower column would crop it against the next one rather than shrink it.
-    header: "Photo",
-    width: 15,
-    value: (s) => (s.photoPath ? "" : "no photo"),
-    image: (s) => photos.get(s.id) ?? null,
-  },
-];
 
 export async function GET(request: Request) {
   try {
@@ -124,7 +76,7 @@ export async function GET(request: Request) {
   const withPhotos = url.searchParams.get("photos") !== "0";
   const photos = withPhotos ? await fetchPhotos(students) : new Map();
 
-  const file = await buildWorkbook(sheets, columnsFor(photos));
+  const file = await buildWorkbook(sheets, studentExportColumns(photos));
   // The school's date, not the server's. The office files these by class and
   // date, and one downloaded after midnight IST used to be stamped yesterday.
   const stamp = todayISO();

@@ -6,6 +6,7 @@ import {
   normaliseClassLabel,
   unknownClassLabelMessage,
 } from "./classes";
+import { HOUSES, normaliseHouse } from "./houses";
 import {
   cellToString,
   excelSerialToDate,
@@ -249,6 +250,62 @@ export const IMPORT_COLUMNS: ColumnSpec[] = [
     label: "Bus route",
     aliases: ["bus route", "route", "transport route", "bus_route"],
     normalise: text,
+  },
+  {
+    /*
+     * MISSING FROM THIS LIST UNTIL NOW, AND THREE SURFACES WENT WITHOUT IT.
+     *
+     * `house` was added to the schema after this registry was written, and
+     * nothing here is derived from the schema — so the column existed, teachers
+     * filled it, the board drew a chip from it, and it was invisible in all
+     * three places that read this list: the .xlsx export, the "What we hold"
+     * card on a student's page, and the import mapper. The office could collect
+     * a house and never get it back out. tests/student-export.test.ts now
+     * fails if any students column is left out of the workbook again.
+     */
+    column: "house",
+    label: "House",
+    aliases: ["house", "house name", "sadan", "sadan name"],
+    // The four, or nothing. A fifth house is a typo, not a new house — the same
+    // rule normaliseHouse enforces for the election file, and the reason this
+    // is a warning rather than a silent write.
+    normalise: (raw) => {
+      const house = normaliseHouse(raw);
+      if (!house) {
+        return {
+          value: null,
+          warning: `House "${raw}" is not one of ${HOUSES.map((h) => h.name).join("/")} — left unchanged`,
+        };
+      }
+      return { value: house };
+    },
+  },
+  {
+    /*
+     * The masked digits PSP publishes, kept apart from `aadhaar` on purpose —
+     * see the column's own note in the schema. It is the only Aadhaar
+     * information the school holds for most children, so an export that drops
+     * it drops the thing the office actually reconciles against.
+     */
+    column: "aadhaarLast4",
+    label: "Aadhaar last 4",
+    aliases: [
+      "aadhaar last 4",
+      "aadhar last 4",
+      "aadhaar last4",
+      "last 4 digits",
+      "aadhaar last four",
+    ],
+    normalise: (raw) => {
+      const digits = collapse(raw).replace(/\D/g, "");
+      if (digits.length !== 4) {
+        return {
+          value: null,
+          warning: `Aadhaar last 4 "${raw}" is not four digits — left unchanged`,
+        };
+      }
+      return { value: digits };
+    },
   },
   {
     column: "status",

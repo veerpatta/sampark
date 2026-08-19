@@ -146,10 +146,7 @@ export default async function StudentDetailPage({
         <Card title="What we hold">
           <dl className="space-y-2 text-sm">
             {IMPORT_COLUMNS.map((spec) => {
-              const value = readStudentColumn(
-                student as Student,
-                dbNameFor(spec.column),
-              );
+              const value = holdValue(student as Student, spec.column);
               return (
                 <div key={spec.column} className="grid grid-cols-[8rem_1fr] gap-3">
                   <dt className="text-[var(--color-ink-muted)]">{spec.label}</dt>
@@ -272,6 +269,22 @@ export default async function StudentDetailPage({
  */
 function dbNameFor(property: string): string {
   return property.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+
+/**
+ * One row of "What we hold".
+ *
+ * `id` GOES ROUND readStudentColumn, and it has to. That helper refuses the
+ * columns in student-columns.ts's PROTECTED set — id, created_at, updated_at,
+ * source — because a field_def must never be able to point at them and rewrite
+ * a child's primary key. That is a rule about WRITING. Reading it back for a
+ * card is a different question, and running the two through one helper meant
+ * every student's page read "Student ID: missing", in the warning colour, next
+ * to a header displaying that exact id.
+ */
+function holdValue(student: Student, column: string): string | null {
+  if (column === "id") return student.id;
+  return readStudentColumn(student, dbNameFor(column));
 }
 
 function formatWhen(value: Date): string {
