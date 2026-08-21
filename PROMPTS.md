@@ -1,5 +1,14 @@
 # Claude Code kickoff prompt
 
+> **This is a historical log, not a current briefing.** It was written on
+> 2026-08-05, when Phase 0 was the whole of the repo and the database was empty.
+> Everything it calls upcoming has shipped. It is kept, with `PROMPTS-2` through
+> `-6`, because the six form a chain that corrects itself — 3 reverses part of 2,
+> 4 corrects 3, 5 reconciles 3 against 4 — and that chain only reads if each one
+> stays as it was written.
+>
+> **For where the project actually stands, read the README's Build status.**
+
 Paste the block below into Claude Code from the repo root. It orients the agent
 on the plan, the current state of the repo, and the mistakes that are expensive
 in this particular codebase.

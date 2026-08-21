@@ -130,6 +130,22 @@ applying by hand. `--admin-nav-h` went 52px → 56px.
   a 360px screen where the teacher's name was truncating.
 - **The last emoji is gone.** `PhotoField`'s 🙂 is a Phosphor `UserCircle`.
 
+## Teacher surface
+
+Unchanged in shape, per the mock. Measurements only: answer buttons 48 → 52px,
+"Confirm all" and the review send button to 56px at the card radius, the four
+raw shadows onto tokens. Nothing in `RequestForm`'s state, autosave, upload or
+review logic was touched, `Bi.tsx`'s two-line English-over-Hindi structure
+stands, and every decision recorded above in this file still holds — no per-row
+card chrome, suggestion after the fields.
+
+## Verification
+
+`npm run typecheck`, `npm run lint` and `npm test` (404 tests) all pass, and
+`npm run build` compiles every route. Every new token was confirmed present in
+the browser's computed `:root` — Tailwind v4 prunes theme variables it cannot
+see used, which silently dropped the house colours once before.
+
 ---
 
 # Taps, not pixels (2026-08-15)
@@ -336,18 +352,138 @@ disagreeing.
 because otherwise that guard would have gone green against a screen with no rows
 on it at all. `npm run db:grants` re-run; no views remain.
 
-## Teacher surface
+---
 
-Unchanged in shape, per the mock. Measurements only: answer buttons 48 → 52px,
-"Confirm all" and the review send button to 56px at the card radius, the four
-raw shadows onto tokens. Nothing in `RequestForm`'s state, autosave, upload or
-review logic was touched, `Bi.tsx`'s two-line English-over-Hindi structure
-stands, and every decision recorded above in this file still holds — no per-row
-card chrome, suggestion after the fields.
+# Show her the photographs she has already taken (2026-08-19)
+
+A teacher who photographed half a class, closed the tab and came back — new
+phone, private window, or just far enough later that the draft had gone — was
+shown every card empty with the camera open. So she photographed them again.
+
+The draft was only ever on the device. The answers were on the server the whole
+time; nothing asked for them. `answersForRequest` in `lib/answered.ts` now reads
+them back, and `resolveToken` fetches them in the same `Promise.all` as the
+fields and the roster, so the round costs no extra trip.
+
+This was never only about photographs. A typed phone number vanished on reopen
+in exactly the same way; it was just cheaper to retype than to re-photograph, so
+nobody reported it.
+
+## Decisions worth not reversing
+
+- **The frozen snapshot does not move.** `values` stays what the office held when
+  the round was sent, because that is what the server diffs a correction against.
+  What she has answered arrives beside it, as `answered`, and `knownValues` is
+  the single place the two are merged. Folding her answers into the snapshot
+  would make every corrected value look like it had always been there, and
+  quietly empty the review queue.
+- **The draft applies ON TOP of the seed, and can only add.** `undoesSeed` in
+  `RequestForm` rejects a draft entry that would blank a value or reopen a
+  finished row. A draft is older than the server's copy by definition — it is
+  what the device held before the flush — so letting it win means a stale phone
+  overwriting the answer it itself sent.
+- **The seed also marks rows as sent.** `seedRow` returns `{row, sent}` and
+  `sent` seeds `sentIds`. Without it the next flush re-uploads work that is
+  already stored, under a fresh idempotency key, so the dedupe cannot catch it.
+- **`PhotoThumb` branches on `field.inputType`, never on the key `photo`.** A
+  second photo field is then a `field_defs` row — which is what principle 8 of
+  the build plan promises — and not a deploy.
+- **It renders a plain `img`, deliberately.** `next/image` would route a child's
+  photograph through the CDN optimiser: outside the access check, into a cache
+  with its own URL. The whole point of the private store is that no such URL
+  exists. Reads go through `/api/r/<token>/photo`, which proves the teacher's own
+  frozen roster rather than an office session.
+- **Offline photos are rebuilt from IndexedDB, not from the DOM.** A one-shot
+  effect in `photo-context.tsx` reads `pendingPhotos(token)` back into object-URL
+  previews on load, and never overwrites a live preview.
 
 ## Verification
 
-`npm run typecheck`, `npm run lint` and `npm test` (404 tests) all pass, and
-`npm run build` compiles every route. Every new token was confirmed present in
-the browser's computed `:root` — Tailwind v4 prunes theme variables it cannot
-see used, which silently dropped the house colours once before.
+`tests/reopen.test.ts` covers `seedRow` and `knownValues` — a photographed child
+returns done *and* sent, one-of-two is partial, not-in-class survives a reload, a
+field the request no longer asks about does not seed, and a hole the office has
+since filled is not owed. `tests/teacher-link.test.ts` gained
+`describe("reopening a half-finished round")`, including the case that matters
+most: a rejected answer must not come back looking done.
+
+---
+
+# Print a face somebody can recognise (2026-08-20)
+
+The students workbook embedded the 96px thumbnail and drew it at 64px. On paper
+that is about two-thirds of an inch, and an inch at 300dpi wants roughly 300px of
+source — so the thumbnail was being stretched past three times its resolution and
+the printed list came out visibly soft. A recognisable face is the one thing the
+office wants that file for.
+
+It now embeds the full stored image and draws it at 96px. `readPhoto`'s candidate
+order is reversed: the full pathname first, the thumbnail only as a fallback for
+a blob that will not read.
+
+## Decisions worth not reversing
+
+- **The size argument that justified the thumbnail was weaker than it looked.**
+  Measured over the real store: a thumbnail averages 2.5 kB and a full photo
+  52 kB. One class at full resolution is about 2.4 MB — an ordinary email
+  attachment. Only the whole-school export reaches 25 MB, and nobody prints that.
+  `?photos=0` still skips them entirely.
+- **800px stays the ceiling, and nothing here can raise it.** `downscale.ts`
+  resizes on the teacher's phone and the 3–8 MB original is never uploaded,
+  deliberately: sending one over 2G is a minute per child. At the size the sheet
+  draws it, 800px is still an eightfold oversample.
+- **The Photo column widened 11 to 15.** A column narrower than the image crops
+  it rather than shrinking it, which is a worse failure than a small picture
+  because it looks intentional.
+
+## Verification
+
+`tests/excel.test.ts` asserts the drawn extent is 96×96, rather than trusting the
+row height to imply it. `scripts/smoke.ts` uploads a byte-different but valid
+JPEG into the thumbnail slot, so the export step can assert byte-identity with
+the *full* image — and name which variant leaked if this ever regresses.
+
+---
+
+# Put the house in the file (2026-08-20)
+
+79 of 83 children have a house, and the workbook had no House column. Nor a
+masked-Aadhaar column. Both had been in the schema for weeks.
+
+`IMPORT_COLUMNS` was a hand-written list read by three surfaces — the workbook,
+the "What we hold" card, and the import mapper — and adding a column to the
+database simply never reached it. Nothing failed; the file was quietly missing a
+field, which is the kind of bug that survives because every individual screen
+looks right.
+
+## Decisions worth not reversing
+
+- **The column list is derived from the live schema, not written down.**
+  `student-export.ts` reads `getTableColumns(students)`, so the list cannot lag
+  the table it describes.
+- **`DELIBERATELY_ABSENT` is the escape hatch, and it carries a reason.** Its one
+  entry is `photoPath`, absent because it is drawn into the Photo column as the
+  picture itself. "Excluded" and "forgotten" have to be distinguishable.
+- **The guard is a test, not a convention.** `tests/student-export.test.ts` walks
+  the live schema and fails until a new column is either exported or excused. A
+  rule nobody has to remember beats a rule everybody is told about. The same file
+  pins the export → fix in Excel → re-import round trip through
+  `suggestColumnMap`, for the same reason.
+- **Provenance columns are pinned to the far right.** Source, Added On and Last
+  Updated are new, and the office reads these files by column position, so
+  appending keeps every existing position where it was. Their dates go through
+  `isoDay`, so a file downloaded at 1am is stamped with the school's day.
+- **A fifth house is a warning, not a write.** `normaliseHouse` refuses to invent
+  a house on import, and `aadhaarLast4` must be exactly four digits or it is
+  skipped. A typo in a spreadsheet should not become master data.
+
+## Verification
+
+`npm test` — **552 tests across 41 files**, all passing — plus typecheck, lint
+and a full build. The new suite also asserts that no blob pathname leaks into a
+cell, that the Photo column still draws an image rather than text, and that no
+column's `value` throws on a child with nothing filled in.
+
+Separately: `/students/[id]` had been printing "Student ID: missing" in the
+warning colour, directly beneath a header showing that exact id. `holdValue`
+routed `id` through a helper that refuses the `PROTECTED` set — a rule about what
+may be *written*, applied to a question about what is *held*.

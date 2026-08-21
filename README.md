@@ -24,8 +24,10 @@ agent, start from **[PROMPTS.md](./PROMPTS.md)**.
   onboarding.
 - **Scoped links.** A request link opens exactly one group and exactly the fields
   requested.
-- **Nothing overwrites master silently.** Every submission is a *proposed*
-  change in a review queue.
+- **Nothing overwrites master silently.** A correction to master data — anything
+  with a `target_column` — is a *proposed* change in a review queue, never a
+  write. Marks and one-off questions are not master data and land directly; see
+  [Two destinations](#two-destinations-and-only-one-of-them-is-reviewed).
 - **Student ID is the key.** Never match by name.
 - **Validate at entry.** A 9-digit phone number must be impossible to submit.
 
@@ -40,15 +42,21 @@ agent, start from **[PROMPTS.md](./PROMPTS.md)**.
 | DB access | `@neondatabase/serverless` + Drizzle ORM |
 | Styling | Tailwind CSS v4 + token layer (`src/styles/tokens.css`) |
 | Admin auth | Auth.js v5, Credentials provider |
-| Teacher auth | Token in URL + optional 4-digit PIN |
+| Teacher auth | Token in URL. No PIN — see [The PIN was removed](#the-pin-was-removed) |
+| Validation | Zod |
+| Icons | Phosphor |
 | Excel / CSV | ExcelJS / PapaParse |
 | Student photos | Vercel Blob, private store, read through a session-checked proxy |
 | Hosting | Vercel |
 
 **The browser never connects to the database.** Neon has no anonymous API
-surface and no RLS we can lean on, so every read and write goes through a
-Next.js server route and authorization lives in exactly one place:
-`src/lib/auth/token.ts`.
+surface and no RLS we can lean on, so every read and write goes through the
+server. **Teacher** authorization lives in exactly one place —
+`src/lib/auth/token.ts` — which is the rule that matters, because that surface has
+no login to fall back on. Admin authorization is `src/lib/auth/session.ts`
+(`requireUser`, `canApproveIntoMaster`, `canManageSettings`), with
+`src/app/api/r/[token]/guard.ts` sharing the token checks across the two teacher
+routes.
 
 ---
 
@@ -68,11 +76,20 @@ Open <http://localhost:3000>.
 npm run db:generate     # generate a migration from drizzle/schema.ts
 npm run db:migrate      # apply it (uses DATABASE_URL_UNPOOLED, owner role)
 npm run db:grants       # create app_rw and apply drizzle/sql/grants.sql
-npm run db:seed         # field registry (idempotent)
+npm run db:seed         # field registry, precedence sources, teachers (idempotent)
 npm run db:create-user  # create or reset an admin console account
 npm run db:studio       # browse the data
+npm run subjects:import # who teaches what, from the timetable
 npm run icons           # regenerate the PWA icons from public/icon.svg
 ```
+
+There is also `npm run db:push`. **Prefer `db:generate` + `db:migrate`.** `push`
+diffs the schema straight onto the database with no migration file, so the branch
+it is run against stops being reproducible from the repo — and the grants below
+are keyed to migrations having run.
+
+`npm run lint`, `npm run typecheck` and `npm run build` are the three that gate a
+deploy; run them before pushing.
 
 #### More than one Neon branch
 
@@ -133,9 +150,11 @@ because `submissions` and `change_log` are append-only for the app role — that
 credential requirement is the guard rail, not an obstacle to route around. Every
 deleted row is dumped to `private/archive/` first.
 
-Teachers and admin users are **never** seeded from a file. The repo is public and
-both carry personal data, so teachers are entered at `/settings/teachers` and
-accounts are created interactively with `npm run db:create-user`.
+Teachers and admin users carry personal data and the repo is public, so
+**`drizzle/seed/teachers.ts` ships empty and must stay that way.** Teachers are
+entered at `/settings/teachers` and accounts are created interactively with
+`npm run db:create-user`. The seed file exists only so a throwaway branch can be
+populated locally without one.
 
 ### The test school
 
@@ -143,10 +162,15 @@ accounts are created interactively with `npm run db:create-user`.
 npm run db:seed:test
 ```
 
-A small fake school for driving the console: four teachers, 79 invented
-children across classes 7–10, subject assignments, an owner account, and three
-live rounds — one marks round part-entered, one nobody has touched, and one
-phone round waiting in `/review`. It is idempotent, so re-running refreshes it.
+A small fake school for driving the console: four teachers, 78 invented children
+across classes 7–10 in uneven sizes, subject assignments, an owner account, and
+four live rounds — one marks round part-entered, one nobody has touched, one
+phone round waiting in `/review`, and one send-to-many. It is idempotent, so
+re-running refreshes it.
+
+**Two of the four teachers are called Sunita Sharma**, deliberately. The marks
+export keys on `teachers.id`, and a fixture school where every name is unique
+cannot tell you whether it still does.
 
 Nothing in it is real, and it **refuses to run** against a database holding any
 student or teacher that is not one of its own fixtures. There is deliberately no
@@ -165,9 +189,27 @@ npm test
 ```
 
 Node's built-in test runner (`node --test`) via `tsx`, so there is no test
-framework dependency to keep current. Coverage is deliberately narrow and aimed
-at the two places the build plan calls out as expensive to get wrong: the token
-resolver and the import matching rules.
+framework dependency to keep current. **552 tests across 41 files.**
+
+It started narrow, at the two places the build plan calls expensive to get wrong
+— the token resolver and the import matching rules — and grew to cover the shaping
+functions generally, because that is where the bugs that matter live: a teacher's
+marks landing on the wrong sheet, a subject column in the wrong place, a round
+that says 46/46 on her phone and 40 of 46 on the board. Modules are written so
+those functions are pure and can be tested without a database.
+
+Two are worth knowing about by name:
+
+- **`student-export.test.ts` is a drift guard, not a test of today's columns.** It
+  walks the live Drizzle schema, so a new `students` column fails the suite until
+  it is either given a workbook column or added to `DELIBERATELY_ABSENT` with a
+  reason. It also re-checks the export → fix in Excel → re-import round trip.
+- **`today.test.ts`** passes the instant in rather than waiting for 18:30 UTC,
+  including the case that pins the old UTC rule and the new IST one disagreeing.
+
+It needs `DATABASE_URL_UNPOOLED`: `tests/fixtures.ts` talks to a real database.
+What it has no access to is a server and a blob store, which is what the smoke
+tests below are for.
 
 ### The smoke test
 
@@ -176,8 +218,8 @@ npm run dev      # in another terminal
 npm run smoke
 ```
 
-`npm test` runs with no server and no blob store, so the route handlers are the
-one layer it cannot reach — and that is where the rate limiter, the frozen-roster
+`npm test` has a database but no server and no blob store, so the route handlers
+are the one layer it cannot reach — and that is where the rate limiter, the frozen-roster
 check and the JPEG sniff actually live. `npm run smoke` drives a whole photo
 round over HTTP exactly as a teacher's phone does: it creates a request, uploads
 a real JPEG, refuses a PNG wearing a JPEG content-type, refuses a child off the
@@ -228,45 +270,84 @@ The round it creates is torn down at the end; the fixture school stays.
 
 ## Layout
 
+Not every file — the ones you need to find, and the ones whose names do not give
+them away.
+
 ```
 drizzle/
-  schema.ts             all nine tables, transcribed from plan section 4
+  schema.ts             the fifteen tables
   migrations/           generated by drizzle-kit
   sql/grants.sql        append-only enforcement (plan 4.2); drops the dead
                         request_progress view — see the note in the file
-  seed/                 field registry — and test-school.ts, which is all invented
+  seed/                 field registry, precedence sources, teachers (ships
+                        empty) — and test-school.ts, which is all invented
 scripts/
   db-grants.ts          creates app_rw, applies grants.sql
   migrate-branch.ts     migrations for a non-default Neon branch
   seed-branch.ts        field registry for a non-default Neon branch
   import-fees-bundle.ts master refresh from a fee-app context bundle
+  import-psp.ts         PSP identity import — the fields PSP owns
+  import-houses.ts      house allocation
+  import-timetable-subjects.ts  who teaches what, from the timetable
+  fix-teacher-classes.ts        one-off class-label repair
   create-user.ts        interactive admin account creation
+  seed-test-school.ts   the invented school — see above
   smoke.ts              a whole photo round over HTTP — see above
+  smoke-ui.ts           fourteen signed-in screens + a marks round
+  test-session.ts       mints a session cookie, so no password has to exist
   make-icons.ts         PWA icons, rasterised from icon.svg
   backup.ps1            verified weekly pg_dump
-tests/                  node:test, run with `npm test`
+tests/                  node:test, run with `npm test` — see above
 src/
   app/
     (admin)/            admin console — the layout is the auth gate
-    r/[token]/          the teacher surface — no shell, no navigation
+                        page · requests/{new,bulk,batch/[id],[id]} · review
+                        students/{[id],import} · marks
+                        settings/{fields,teachers,subjects,users,audit}
+    r/[token]/          the teacher form — no shell, no navigation
+    t/[token]/          the durable teacher link — see below
     login/
-    api/
-  components/
+    api/                requests · r/[token] (+ /photo) · photos
+                        students/import · export/{students,marks}.xlsx
+                        export/{request,batch}/[id] · auth
+  components/           admin/ · teacher/ · ui/
   lib/
     db.ts               the single database entry point
-    auth/token.ts       THE one place teacher authorization lives
+    auth/token.ts       THE one place TEACHER authorization lives
     auth/session.ts     Auth.js wiring + roles: owner | admin | office
     fields.ts           field registry validators (shared client + server)
+    field-keys.ts       key shapes: fa_* marks, q_* one-off questions
     students.ts         master-record reads
     students-import.ts  match / diff / preview / apply
+    import-plan.ts      what an import may touch, given precedence
+    precedence.ts       who wins when the third file disagrees
     student-columns.ts  field_defs.target_column -> Drizzle property name
-    submissions.ts      action derivation + THE review transaction
+    student-export.ts   the workbook's columns, derived from the live schema
+    student-filters.ts  the query string IS the filter state; export honours it
+    completeness.ts     twelve tracked fields -> a per-child score
+    submissions.ts      action derivation, THE review transaction, and the
+                        two destinations — read its header first
     requests.ts         request creation and the frozen roster snapshot
-    classes.ts          class-label normalising and ordering
+    request-origin.ts   absolute origin, so a link in WhatsApp is not relative
+    answered.ts         THE one definition of "answered"
+    progress.ts         per-teacher rollup for the board
+    marks.ts            the marks board and its workbook
+    batches.ts          send-to-many: one round, one row, one file
+    fanout.ts           class/house/route -> groups, with an unassigned bucket
+    send-queue.ts       one message per teacher, in order
+    reminders.ts        one nudge per person, never one per link
+    today.ts            THE school's calendar day (Asia/Kolkata), not the UTC one
+    classes.ts          the nineteen labels: normalising, validating, ordering
+    houses.ts routes.ts the four houses, the twenty-nine bus routes
+    subjects.ts         the sixteen subjects the fa_* fields are generated from
+    photos.ts           client-safe: key shapes and validation
+    photo-store.ts      SERVER ONLY: reads blobs in bulk for the workbook
     templates.ts        saved field sets for the request builder
-    excel.ts            CSV + XLSX reading; export lands in Phase 4
-    ratelimit.ts        30/min per token, 100/hr per IP
-    whatsapp.ts         Hindi message templates
+    excel.ts            CSV + XLSX read and write
+    ratelimit.ts        four buckets, counted in Postgres — 30/min and 100/hr,
+                        and 60/min + 500/hr for photos, which is why a class of
+                        forty-six does not starve her own answer flushes
+    whatsapp.ts         bilingual templates, English line over Hindi line
   styles/tokens.css
 ```
 
@@ -289,6 +370,16 @@ Vercel environment variables (Production / Preview / Development):
 | `AUTH_SECRET` | ✅ | ✅ | local only |
 | `AUTH_URL` | ✅ | — | local only |
 | `ACADEMIC_YEAR` | ✅ | ✅ | ✅ |
+| `BLOB_READ_WRITE_TOKEN` | ✅ | ✅ | ✅ |
+
+`BLOB_READ_WRITE_TOKEN` is read by the `@vercel/blob` SDK rather than by our code,
+so it does not appear in a `process.env` grep — but **without it a photo round
+cannot run at all**, and nothing else in the app needs it.
+
+Three more are local or script-only and belong in `.env.local`, never in Vercel:
+`APP_RW_PASSWORD` (created and appended by `npm run db:grants`),
+`TEST_LOGIN_PASSWORD` (the fixture school's owner account) and `SMOKE_BASE_URL`
+(points the smoke tests somewhere other than localhost).
 
 `DATABASE_URL_UNPOOLED` is deliberately absent from Preview. It is the direct
 owner-role connection used only by `drizzle-kit` for migrations, and migrations
@@ -299,7 +390,7 @@ credential with DDL rights.
 Auth.js infers the host there.
 
 **There is no `APP_TIMEZONE`, and adding one back would be a regression.** It was
-listed here and in `.env.example` for a long time and read by nothing. The
+listed in both for a long time and read by nothing. The
 school's zone is a constant in `src/lib/today.ts` because three of its callers
 are client components: a client cannot read a server-only variable, so the
 failure mode is not a missing-config error but a silent fall back to a different
@@ -322,11 +413,48 @@ second school in a second zone belongs on the school record, not the environment
 | 5 | Offline drafts, submit queue, PWA | **done** |
 | 6 | Rate limiting, close/reopen, registry editor, audit | **done** |
 
-Phase 4 is blocked on one file: the FA marks export has to reproduce
-`FA_Marks_Pattern.xlsx` exactly, and that cannot be written from a description —
-a near-miss means someone redoes it by hand in Excel, which is the entire
-problem it exists to remove. The students export and the reminder builder are
-done.
+**One file is blocking Phase 4, and it is not the marks export.** `/marks` and
+`/api/export/marks.xlsx` shipped — the office's own per-teacher workbook for a
+period, in this repo's ordinary shape. What is still blocked is LEAD's
+`FA_Marks_Pattern.xlsx`, which has to be reproduced exactly and cannot be written
+from a description: a near-miss means someone redoes it by hand in Excel, which is
+the entire problem it exists to remove. It unblocks the day someone sends the file.
+See the TODO at the foot of `src/lib/excel.ts`.
+
+The phases were the v1 plan and the work has outgrown them. Also shipped, and
+belonging to no phase:
+
+| Scope | Status |
+|---|---|
+| Send-to-many: `/requests/bulk`, `/requests/batch/[id]`, batch export | **done** |
+| Houses and bus routes as request audiences | **done** |
+| Subjects, `teacher_subjects`, timetable import | **done** |
+| The durable teacher link `/t/[token]` | **done** |
+| Marks written at submit, `/marks` board, marks workbook | **done** |
+| Per-teacher progress board | **done** |
+| Source precedence (`sources`, `field_sources`, `value_sources`) | **done** |
+| Autosave, offline photo queue, resumable teacher link | **done** |
+| Student completeness scoring and filtering | **done** |
+
+### Two destinations, and only one of them is reviewed
+
+A field **with** a `target_column` is master data. It goes through `/review`
+exactly as it always has, and "nothing overwrites master silently" is untouched.
+
+A field **without** one — a subject mark, a one-off question — is written straight
+to `student_records` at submit time and never appears in the queue. That is not a
+hole in the rule, because every reason the rule exists is a property of master data
+and not of that table: nothing else writes `student_records`, so there is no import
+to lose a precedence argument to; there is no prior value to destroy, because a
+mark is collected rather than confirmed; and the row is keyed by
+`(student, field, period)`, so a correction overwrites the one value it is about.
+
+What it buys is the point. A marks round is forty-six children times four subjects.
+Asking the office to approve a hundred and eighty rows it has no way to check is
+asking it to click Approve without reading — and a review nobody can actually
+perform is worse than no review, because the record then claims someone checked.
+
+The reasoning lives at the head of `src/lib/submissions.ts`.
 
 ### The PIN was removed
 
@@ -354,9 +482,9 @@ It is the one place a token reaches more than one group, so:
   environment variable: env changes need a redeploy, and a kill switch whose
   latency is a build is not one. Afterwards, sends fall back to the grouped
   queue — one message per teacher — which is why that path is never removed.
-- **`NEVER_ON_TEACHER_PAGE`** in `lib/auth/token.ts` keeps Aadhaar, Jan Aadhaar
-  and date-of-birth rounds off every durable page. Nothing to remember and
-  nothing to tick.
+- **`NEVER_ON_TEACHER_PAGE`** in `lib/auth/token.ts` keeps Aadhaar, Jan Aadhaar,
+  date-of-birth **and photo** rounds off every durable page. Nothing to remember
+  and nothing to tick.
 - **The service worker deliberately does not cache `/t/`.** A cached copy would
   survive revocation and keep handing out working request links from disk.
 
@@ -380,24 +508,47 @@ Each phase must work end to end before the next one starts.
 
 Tracked in section 13 of the build plan.
 
-**Settled:** the class label convention is `12 Sci` — class number, then a short
-stream suffix where one is needed (`6`, `10 A`, `12 Sci`). Every path that
-accepts a label normalises through `src/lib/classes.ts`, because request
-creation filters the roster on `students.class_label` and a label differing by
-one space produces an empty roster with no error.
+**Settled, by the data rather than by us:** the class labels are the nineteen the
+VPPS Fee Management App uses, character for character —
+
+```
+Nursery · JKG · SKG · Class 1 … Class 10
+11 Arts · 11 Commerce · 11 Science · 12 Arts · 12 Commerce · 12 Science
+```
+
+The fee app is the source of truth for class allocation and corrected data goes
+back to it, so the two systems join on the label. There is no `12 Sci` and no
+`10 A`; inventing a shorter spelling breaks the join.
+
+Every path that accepts a label normalises through `src/lib/classes.ts` and then
+validates against that list, because request creation filters the roster on
+`students.class_label` — **a label differing by one space produces an empty roster
+with no error.** The order of the array is also the sort order: nineteen known
+labels sorted by a fixed index is honest, where a parser inferring order from the
+text sent both `Class 6` and `Nursery` to the end.
 
 **Still open, and what each one blocks:**
 
-1. Final field list for `field_defs` — the seeded fourteen are the plan's
-   starting set; the bus-route option list is still empty
-2. A real PSP export to pin the import column mapping against. The auto-mapper
-   guesses from common header spellings and every column is confirmed by hand
-   before anything is written, so this is not a blocker — but a real file would
-   turn guesses into knowledge
-3. Max marks per FA subject — 25 is assumed and unconfirmed against LEAD
-4. Whether `office` can approve into master. Currently `office` can create
-   requests but cannot import or approve; loosening it is a one-line change in
-   `src/lib/auth/session.ts`
+1. **Max marks per FA subject.** 25 is assumed, unconfirmed against LEAD, and now
+   baked into all sixteen generated `fa_*` fields. Wrong here means every mark
+   validates against the wrong ceiling — see the warning at the head of
+   `drizzle/seed/field_defs.ts`
+2. **Whether `office` can approve into master.** Currently `office` can create
+   requests but cannot import or approve. Loosening it is **two** sites, not one:
+   `canApproveIntoMaster` in `src/lib/auth/session.ts`, and the direct call in
+   `src/app/api/students/import/route.ts`. Note separately that
+   `canManageSettings` is owner-only, so `admin` cannot reach the field registry
+   or the user list either
+3. **LEAD's `FA_Marks_Pattern.xlsx`.** The one thing blocking Phase 4; see the
+   build status above
+4. **The public subdomain.** The plan proposed `data.veerpatta.in`; nothing is
+   configured yet, and `AUTH_URL` has to match whatever is chosen
+
+**Since closed:** the field list (13 hand-written + 16 generated subject fields)
+and the bus-route options (29 routes in `src/lib/routes.ts`, wired in at
+`drizzle/seed/field_defs.ts`) are both settled. The real PSP export arrived and is
+imported by `scripts/import-psp.ts`, which pinned the column mapping the
+auto-mapper used to guess at.
 
 ---
 

@@ -32,7 +32,7 @@ Sampark is a **collection and reconciliation layer** that sits beside PSP. PSP s
 |---|---|---|
 | 1 | **No login for teachers** | Passwords are the single biggest adoption killer. A tokenised link, opened from WhatsApp, is the entire onboarding. |
 | 2 | **Scoped links** | A request link opens exactly one group and exactly the fields requested. A teacher's durable link is a menu of *her own* open requests and nothing else — no other teacher's work, no navigation past it, and nothing archived or closed. |
-| 3 | **Nothing overwrites master silently** | Every teacher submission is a *proposed change* in a review queue. Master data moves only on explicit approval. Same philosophy as the Fee App: append-only, corrections via review. |
+| 3 | **Nothing overwrites master silently** | A correction to **master data** — any field with a `target_column` — is a *proposed change* in a review queue, and moves only on explicit approval. Same philosophy as the Fee App: append-only, corrections via review. Marks and one-off questions are not master data and land directly; see "two destinations" in section 6. |
 | 4 | **Student ID is the key** | Never match by name. Student ID first, SR number as fallback. |
 | 5 | **Validate at entry** | A 9-digit phone number or 30 marks out of 25 must be impossible to submit, not cleaned up later. |
 | 6 | **Offline-tolerant** | Work saves to the phone as they type and submits when signal returns. Amet and the villages are not reliable. |
@@ -52,7 +52,7 @@ Sampark is a **collection and reconciliation layer** that sits beside PSP. PSP s
 | DB access | `@neondatabase/serverless` + **Drizzle ORM** | Type-safe, migrations in the repo |
 | Styling | **Tailwind CSS v4** + custom token layer | Tokens carried over from the prototype |
 | Admin auth | **Auth.js v5**, Credentials provider | 3–5 users; no third-party dependency, no cost |
-| Teacher auth | **Token in URL** + optional 4-digit PIN | No account, ever |
+| Teacher auth | **Token in URL** | No account, ever. The PIN this table used to offer was removed — see section 6 |
 | Excel | **ExcelJS** | Read for import, write for export |
 | CSV | **PapaParse** | PSP exports are usually CSV |
 | Hosting | **Vercel** | Native Neon integration via the Vercel marketplace |
@@ -92,7 +92,7 @@ CREATE TABLE students (
   id              TEXT PRIMARY KEY,           -- VPPS student ID, e.g. 'S1001'
   sr_no           TEXT,
   admission_no    TEXT,
-  class_label     TEXT NOT NULL,              -- '6', '9', '12 Sci'
+  class_label     TEXT NOT NULL,              -- one of the nineteen; see below
   section         TEXT,
   roll_no         INTEGER,
   name            TEXT NOT NULL,
@@ -108,6 +108,9 @@ CREATE TABLE students (
   village         TEXT,
   address         TEXT,
   bus_route       TEXT,
+  house           TEXT,                       -- since shipped; see note
+  aadhaar_last4   TEXT,                       -- since shipped; PSP masks Aadhaar
+  photo_path      TEXT,                       -- since shipped; blob pathname
   status          TEXT NOT NULL DEFAULT 'active',  -- active | left | tc_issued
   source          TEXT DEFAULT 'psp',
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -117,6 +120,19 @@ CREATE INDEX ON students (class_label, roll_no);
 CREATE INDEX ON students (sr_no);
 CREATE INDEX ON students (status);
 ```
+
+**`class_label` is settled, and not the way this section guessed.** The nineteen
+labels are the fee app's, character for character — `Nursery`, `JKG`, `SKG`,
+`Class 1`…`Class 10`, `11 Arts`/`Commerce`/`Science`, `12 Arts`/`Commerce`/`Science`.
+The fee app owns class allocation and corrected data goes back to it, so the two
+systems join on the label; `12 Sci` would break that join. `src/lib/classes.ts`
+holds the list and every path normalises through it. **This closes open decision
+#3 in section 13.**
+
+`house`, `aadhaar_last4` and `photo_path` were added after this section was
+written. The lesson from adding them is in `src/lib/student-export.ts`: the
+workbook's column list is now derived from the live schema and guarded by a test,
+because the hand-written copy silently went two columns out of date.
 
 ```sql
 -- ============ FIELD REGISTRY ============
@@ -160,11 +176,15 @@ CREATE TABLE student_records (
 ```sql
 -- ============ PEOPLE ============
 CREATE TABLE teachers (
-  id           TEXT PRIMARY KEY,
-  name         TEXT NOT NULL,
-  phone        TEXT NOT NULL,
-  classes      TEXT[] NOT NULL DEFAULT '{}',
-  active       BOOLEAN NOT NULL DEFAULT true
+  id              TEXT PRIMARY KEY,
+  name            TEXT NOT NULL,
+  phone           TEXT NOT NULL,
+  classes         TEXT[] NOT NULL DEFAULT '{}',
+  houses          TEXT[] NOT NULL DEFAULT '{}',  -- since shipped: house in-charge
+  routes          TEXT[] NOT NULL DEFAULT '{}',  -- since shipped: route in-charge
+  link_token      TEXT,                          -- since shipped: the durable /t/ link
+  link_issued_at  TIMESTAMPTZ,
+  active          BOOLEAN NOT NULL DEFAULT true
 );
 
 CREATE TABLE users (                          -- admin console only
@@ -186,12 +206,11 @@ CREATE TABLE requests (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   token         TEXT UNIQUE NOT NULL,         -- 16-char url-safe, crypto random
   title         TEXT NOT NULL,
-  class_label   TEXT NOT NULL,
+  class_label   TEXT,                         -- NULLABLE: see note below
   teacher_id    TEXT NOT NULL REFERENCES teachers(id),
   field_keys    TEXT[] NOT NULL,
   period        TEXT,                         -- required when collecting marks
   due_date      DATE NOT NULL,
-  pin           TEXT,                         -- optional 4-digit gate
   status        TEXT NOT NULL DEFAULT 'open', -- open | submitted | closed | expired
   created_by    TEXT NOT NULL REFERENCES users(id),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -201,6 +220,25 @@ CREATE TABLE requests (
 );
 CREATE UNIQUE INDEX ON requests (token);
 ```
+
+**Two amendments to the table above.**
+
+`class_label` is **nullable**. A round can be scoped to a house or a bus route
+instead of a class, and those span classes — the frozen roster below is what
+actually says who is in scope, so the label is a description rather than the
+definition.
+
+**The `pin` column is gone.** This plan offered an optional 4-digit gate on `/r/*`
+(see section 5, and open decision #5); it was removed on request and a link is now
+a pure bearer token. The threat model here already accepted forwarding as
+proportionate — the same teacher carries a paper register with the same data — and
+what remains is the short expiry, the three-day grace cut-off, close/reopen, and
+the fact that a request link reaches exactly one group. Worth revisiting before an
+Aadhaar collection round. See "The PIN was removed" in the README.
+
+Since shipped and not in the table: `archived_at`, `sent_at`/`sent_by`,
+`contact_phone`, and `batch_id` — a send-to-many round is one row in
+`request_batches` and many requests beneath it.
 
 ```sql
 -- ============ ROSTER SNAPSHOT ============
@@ -270,17 +308,26 @@ REVOKE DELETE ON submissions FROM app_rw;
 
 Migrations run as the Neon owner role. The app runs as `app_rw` and has no DDL rights.
 
-### 4.3 Useful view
+### 4.3 Useful view — NOT FOLLOWED, and the view is dropped
 
-```sql
-CREATE VIEW request_progress AS
-SELECT r.id, r.title, r.class_label, t.name AS teacher, r.due_date, r.status,
-       (SELECT count(*) FROM request_students rs WHERE rs.request_id = r.id)            AS roster_size,
-       (SELECT count(DISTINCT s.student_id) FROM submissions s WHERE s.request_id = r.id) AS students_answered,
-       (SELECT count(*) FROM submissions s WHERE s.request_id = r.id
-          AND s.review_status = 'pending' AND s.action = 'changed')                     AS changes_pending
-FROM requests r JOIN teachers t ON t.id = r.teacher_id;
-```
+This section proposed a `request_progress` view supplying `roster_size`,
+`students_answered` and `changes_pending`. It was built, and it was **dropped**:
+`drizzle/sql/grants.sql` now carries an explicit `DROP VIEW IF EXISTS
+request_progress` and a note headed "request_progress IS GONE, AND PLAN SECTION
+4.3 IS NOT BEING FOLLOWED".
+
+The reason is worth keeping. It disagreed with the board on both numbers it
+supplied. `students_answered` counted a child who answered *any* field, so a round
+asking for three things called a child done when she had one — the teacher's page
+said 46/46 and the office board said 40 of 46, about the same round. Two
+definitions of "answered" is a bug that renders as a support call.
+
+There is now exactly one definition, in TypeScript where the board can share it:
+`isAnsweredFully` in `src/lib/answered.ts` — covered on **every** field the request
+asked about. `src/lib/progress.ts` builds the per-teacher rollup on top of it.
+
+**Do not re-add the view.** A second place that computes progress is a second
+answer to the same question.
 
 ---
 
@@ -294,8 +341,8 @@ Everything hinges on the token. Treat it as a bearer credential.
 | Token scope | A request token resolves to exactly one `request` → one group → one field set. A teacher token resolves to that one teacher's currently-open requests and nothing else. Both enforced server-side in `lib/auth/token.ts` |
 | Expiry | Rejected after `due_date + 3 days` grace, or once `status = 'closed'` |
 | Re-submission | Allowed until admin closes the request. Later submissions append; they never overwrite |
-| Optional PIN | Last 4 digits of the teacher's registered mobile. Off by default; on for Aadhaar/DOB collection |
-| Rate limiting | 30 requests/min per token, 100/hour per IP. Upstash Redis or a simple Neon counter table |
+| ~~Optional PIN~~ | **Removed.** A link is a pure bearer token; see the note in section 4.1. Sensitive rounds are kept off the durable page instead, by `NEVER_ON_TEACHER_PAGE` — Aadhaar, Jan Aadhaar, DOB and photo |
+| Rate limiting | Four budgets, counted in a Neon table rather than Upstash: 30/min per token and 100/hour per IP, plus 60/min and 500/hour for photo uploads, so a class of forty-six photographs does not starve her own answer flushes. Not in memory — Vercel runs many instances and each would keep a private tally |
 | Indexing | `X-Robots-Tag: noindex, nofollow` on all `/r/*` responses |
 | Referrer leak | `Referrer-Policy: no-referrer` on `/r/*` so the token never leaks to third-party assets |
 | PII in URL | Only the token. No student ID, no name, no class |
@@ -318,41 +365,72 @@ Everything hinges on the token. Treat it as a bearer credential.
 PUBLIC (no auth)
   /r/[token]                     teacher form — the only page teachers ever see
   /r/[token]/done                confirmation
+  /t/[token]                     the durable teacher link — see section 5
 
 ADMIN (Auth.js session)
   /login
   /                              dashboard: open requests, overdue, pending review count
-  /requests                      status board
-  /requests/new                  builder: class → fields → teacher → due date
+  /requests                      per-teacher progress board; ?view=rounds for the
+                                 one-row-per-link table, which owns close/archive
+  /requests/new                  builder: audience → fields → teacher → due date
+  /requests/bulk                 send-to-many: many groups in one round
+  /requests/batch/[id]           one send-to-many round, as one thing
   /requests/[id]                 detail, share panel, progress, close/reopen
   /review                        approval queue, batch approve/reject
+  /marks                         a marks round: who has entered, and what
   /students                      master, search, filter
   /students/[id]                 single record + its full change history
   /students/import               CSV/XLSX upload with column mapping and dry-run preview
+  /settings                      index of the six below
   /settings/fields               field registry editor
-  /settings/teachers             teachers and their classes
+  /settings/teachers             teachers, their classes, houses and routes
+  /settings/subjects             who teaches what
   /settings/users                admin users (owner only)
   /settings/audit                change log
 ```
 
+An audience is a class, a **house** or a **bus route**; the last two span classes,
+which is why `requests.class_label` is nullable.
+
 ### API
 
+**This section proposed a REST endpoint per mutation. That is not what was built.**
+Admin mutations landed as **Next.js Server Actions**, because every one of them is
+submitted from a form on a page that is already behind the session gate — a route
+would mean re-deriving the user, hand-writing the fetch, and keeping a second copy
+of the argument types. What is genuinely an API is what a *non-page* client calls:
+the teacher's phone, a download, an upload.
+
+`/api/requests/[id]`, `/close`, `/reopen`, `GET`/`POST /api/review` were never
+built and should not be. **Do not create them.**
+
 ```
-POST   /api/requests                     create request + freeze roster snapshot
-GET    /api/requests/[id]
-POST   /api/requests/[id]/close
-POST   /api/requests/[id]/reopen
+ROUTES (src/app/api/**/route.ts)
+  POST   /api/requests                   create request + freeze roster snapshot
+  GET    /api/r/[token]                  → { request, fieldDefs, roster[] }  (rate limited)
+  POST   /api/r/[token]                  → submit batch                      (rate limited)
+  GET    /api/r/[token]/photo            her own roster's photos             (rate limited)
+  GET    /api/photos                     the same bytes, admin session instead
+  POST   /api/students/import            multipart, dry-run flag
+  GET    /api/export/students.xlsx       master record; honours the /students filters
+  GET    /api/export/marks.xlsx          one period, split by who entered it
+  GET    /api/export/request/[id]        one round
+  GET    /api/export/batch/[id]          a whole send-to-many round, one file
+  /api/auth/[...nextauth]
 
-GET    /api/r/[token]                    → { request, fieldDefs, roster[] }   (rate limited)
-POST   /api/r/[token]                    → submit batch                       (rate limited)
-
-GET    /api/review?requestId=            pending changes
-POST   /api/review                       { keys[], decision } — transactional
-
-POST   /api/students/import              multipart, dry-run flag
-GET    /api/export/students.xlsx
-GET    /api/export/request/[id].xlsx     collected data in the shape you need
+SERVER ACTIONS ("use server")
+  review/actions.ts              decide() — THE review transaction, below
+  requests/[id]/actions.ts       close, reopen, archive, remind, rotate
+  requests/bulk/actions.ts       plan and send a fan-out
+  requests/batch/[id]/actions.ts the round as one thing
+  requests/adhoc-actions.ts      one-off questions
+  settings/{fields,subjects,teachers,users}/actions.ts
+  login/actions.ts
 ```
+
+Both photo routes exist because there are two readers with two different proofs of
+entitlement — an admin session, and a teacher's own frozen roster. Neither store
+is public; there is no URL to a photograph of a child that works without one.
 
 ### Critical: the review transaction
 
@@ -360,10 +438,32 @@ Approving must be atomic. In one transaction:
 
 1. `UPDATE submissions SET review_status = 'approved' WHERE id = ANY(...) AND review_status = 'pending'`
 2. `INSERT INTO change_log (...)` one row per approved submission
-3. `UPDATE students SET <target_column> = new_value` **or** `INSERT INTO student_records ... ON CONFLICT DO UPDATE`
+3. `UPDATE students SET <target_column> = new_value`
 4. `UPDATE students SET updated_at = now()`
 
 The `AND review_status = 'pending'` guard makes double-approval a no-op. Do not skip it.
+
+**Step 3 lost its second half: two destinations, and only one is reviewed.**
+
+A field with a `target_column` is master data and takes the path above, unchanged.
+A field **without** one — a subject mark, a one-off `q_*` question — is written
+straight to `student_records` at submit time by `recordSubmissions`, with
+`review_status = 'applied'`, and never enters the queue. The approval path still
+contains a `student_records` branch, but it is a drain for old rows rather than a
+route anything new travels.
+
+This is not a hole in principle 3, because every reason that principle exists is a
+property of master data and not of `student_records`: nothing else writes that
+table, so there is no import to lose a precedence argument to and no
+`value_sources` to get wrong; there is no prior value to destroy, since a mark is
+collected rather than confirmed; and the row is keyed by
+`(student, field, period)`, so a correction overwrites the one value it is about.
+
+What it buys is the point. A marks round is forty-six children times four
+subjects. Asking the office to approve a hundred and eighty rows it cannot check
+is asking it to click Approve without reading — and a review nobody can perform is
+worse than none, because the record then claims someone checked. The full
+reasoning is at the head of `src/lib/submissions.ts`.
 
 ---
 
@@ -383,30 +483,35 @@ sampark/
 │   ├── migrations/
 │   └── seed/
 │       ├── field_defs.ts
-│       ├── teachers.ts
-│       └── students.sample.csv
+│       ├── sources.ts          ← precedence sources + field_sources
+│       └── teachers.ts         ← ships EMPTY; the repo is public
 │
 ├── src/
 │   ├── app/
 │   │   ├── (admin)/
 │   │   │   ├── layout.tsx
 │   │   │   ├── page.tsx
-│   │   │   ├── requests/
+│   │   │   ├── requests/           ← new · bulk · batch/[id] · [id]
 │   │   │   ├── review/
+│   │   │   ├── marks/
 │   │   │   ├── students/
 │   │   │   └── settings/
 │   │   ├── r/[token]/
 │   │   │   ├── page.tsx            ← teacher form, no admin shell
 │   │   │   └── done/page.tsx
+│   │   ├── t/[token]/page.tsx      ← the durable teacher link
 │   │   ├── login/page.tsx
 │   │   └── api/
 │   │
 │   ├── components/
 │   │   ├── admin/
+│   │   ├── ui/                     ← controls.ts: class strings, not components
 │   │   └── teacher/
 │   │       ├── StudentRow.tsx      ← सही है / बदलें / नहीं है
 │   │       ├── ProgressRail.tsx
-│   │       └── OfflineQueue.tsx
+│   │       ├── draft.ts            ← local draft, keyed by token
+│   │       ├── autosave.ts         ← save as she types, tuned to the rate limit
+│   │       └── photo-queue.ts      ← IndexedDB, drains one at a time
 │   │
 │   ├── lib/
 │   │   ├── db.ts
@@ -434,17 +539,26 @@ DATABASE_URL_UNPOOLED=       # direct connection, for migrations only
 AUTH_SECRET=                 # openssl rand -base64 32
 AUTH_URL=https://data.veerpatta.in
 ACADEMIC_YEAR=2026-27
-UPSTASH_REDIS_REST_URL=      # optional, rate limiting
-UPSTASH_REDIS_REST_TOKEN=
+BLOB_READ_WRITE_TOKEN=       # private Vercel Blob store, for student photos
 ```
 
 Never prefix any of these with `NEXT_PUBLIC_`.
 
-This list originally carried `APP_TIMEZONE=Asia/Kolkata`. It was never read, and
-it is gone: the school's zone is a constant in `src/lib/today.ts` because a
-client component cannot read a server-only variable, so making it configurable
-would risk the two halves of the app disagreeing about what day it is — see the
-note in that file.
+**Two settings this list used to carry have been deleted, for the same reason
+each time: nothing read them, and an advertised setting nobody reads is worse
+than an absent one — it invites somebody to set it and expect an effect.**
+
+- `APP_TIMEZONE=Asia/Kolkata`. The school's zone is a constant in
+  `src/lib/today.ts` because a client component cannot read a server-only
+  variable, so making it configurable would risk the two halves of the app
+  disagreeing about what day it is — which is the exact bug that file exists to
+  fix. A second school in a second zone belongs on the school record.
+- `UPSTASH_REDIS_REST_URL` / `_TOKEN`. Rate limiting is counted in Postgres, in
+  the `rate_limits` table — see section 5 and `src/lib/ratelimit.ts`.
+
+`BLOB_READ_WRITE_TOKEN` is read by the `@vercel/blob` SDK rather than by our own
+code, so it will not show up in a `process.env` search, but a photo round cannot
+run without it.
 
 ---
 
@@ -509,12 +623,29 @@ Each phase ends with something demonstrable. Do not start the next phase until t
 
 ### Phase 4 — Export and share (half day)
 
-- `GET /api/export/students.xlsx` — one sheet per class
-- `GET /api/export/request/[id].xlsx` — collected data, shaped for its purpose
+- `GET /api/export/students.xlsx` — one sheet per class. Since shipped and grown:
+  it honours the `/students` filters, carries house, masked Aadhaar and
+  provenance, and draws each child's photograph into the sheet at print
+  resolution. Its column list is derived from the live schema, not hand-written —
+  see `src/lib/student-export.ts` and the drift guard in `tests/student-export.test.ts`
+- `GET /api/export/request/[id]` — collected data, shaped for its purpose. Plus
+  `/api/export/batch/[id]`, since a send-to-many round is one file
+- `GET /api/export/marks.xlsx` — **shipped.** The office's own workbook for a
+  period, split by whoever entered each mark, with a summary sheet leading
+  because the first question after a marks round is "who has not sent theirs"
 - **FA marks export must match the existing `FA_Marks_Pattern.xlsx` layout exactly** (header rows for school name / course type / exam date / total marks, then `Student Name | Maths | Physics | Chemistry | Biology | Science combine`, with the combine column computed)
-- WhatsApp reminder builder on `/requests/[id]` for teachers who haven't submitted
+- WhatsApp reminder builder on `/requests/[id]` for teachers who haven't submitted.
+  Since shipped, with one rule worth keeping: **one nudge per person, never one
+  per link** — a teacher with three classes was getting three near-identical
+  messages. See `src/lib/reminders.ts`
 
 **Done when:** you can hand LEAD the FA file without touching it.
+
+**Still open, and it is the only thing left in this phase.** The FA export is
+blocked on being given `FA_Marks_Pattern.xlsx` itself: "matches the pattern" is
+not something that can be written from a description, and a near-miss means
+someone redoes it by hand in Excel, which is the entire problem it exists to
+remove. Everything else here shipped. See the TODO at the foot of `src/lib/excel.ts`.
 
 ### Phase 5 — Offline and PWA (1 day)
 
@@ -532,7 +663,10 @@ Each phase ends with something demonstrable. Do not start the next phase until t
 - `/settings/fields` registry editor
 - `/settings/audit` change log view
 - Tests on `lib/auth/token.ts` and the review transaction — these two are where a bug is expensive
-- Neon PITR confirmed; weekly `pg_dump` to Google Drive
+- Neon PITR confirmed; weekly verified `pg_dump`. **Not to Google Drive** —
+  `scripts/backup.ps1` writes to a directory outside the repo, and the dump holds
+  every student's name, phone number and Aadhaar number, so it stays off shared
+  drives. See the README's Backups section, including the 6-hour PITR retention
 
 **Total: roughly 6–7 working days of build.**
 
@@ -549,15 +683,29 @@ Seed `field_defs` with these. Add to it as needs appear — it's a row, not a de
 | `father_name` | Father's name | पिता का नाम | verify | text | `father_name` | — |
 | `mother_name` | Mother's name | माता का नाम | verify | text | `mother_name` | — |
 | `dob` | Date of birth | जन्म तिथि | verify | date | `dob` | not future, age 2–22 |
-| `aadhaar` | Aadhaar number | आधार नंबर | verify | tel | `aadhaar` | exactly 12 digits |
-| `jan_aadhaar` | Jan Aadhaar | जन आधार | verify | text | `jan_aadhaar` | — |
-| `village` | Village | गाँव | verify | text | `village` | — |
+| `aadhaar` | Aadhaar number | आधार नंबर | **collect** | tel | `aadhaar` | exactly 12 digits |
+| `jan_aadhaar` | Jan Aadhaar | जन आधार | **collect** | text | `jan_aadhaar` | — |
+| `village` | Village | गाँव | **collect** | text | `village` | — |
 | `bus_route` | Bus route | बस रूट | verify | select | `bus_route` | from route list |
 | `category` | Category | श्रेणी | verify | select | `category` | GEN/OBC/SC/ST/EWS |
-| `fa_maths` | FA Maths | गणित | collect | number | — (`fa_marks`) | 0 to max |
-| `fa_physics` | FA Physics | भौतिक विज्ञान | collect | number | — (`fa_marks`) | 0 to max |
-| `fa_chemistry` | FA Chemistry | रसायन विज्ञान | collect | number | — (`fa_marks`) | 0 to max |
-| `fa_biology` | FA Biology | जीव विज्ञान | collect | number | — (`fa_marks`) | 0 to max |
+| `gender` | Gender | लिंग | verify | select | `gender` | — |
+| `house` | House | सदन | verify | select | `house` | one of the four |
+| `photo` | Photograph | फ़ोटो | collect | photo | `photo_path` | JPEG, ≤1.5 MB |
+| `fa_*` | per subject | | collect | number | — (`fa_marks`) | 0 to max |
+
+**As built: 13 hand-written fields plus 16 generated, not the fourteen above.**
+Three corrections worth carrying, because each was learned rather than decided:
+
+- **`aadhaar`, `jan_aadhaar` and `village` are `collect`, not `verify`.** Verify
+  mode shows the teacher what we hold and asks her to confirm it. PSP holds none
+  of these — its Aadhaar column is masked, which is why `students.aadhaar_last4`
+  exists — so there is nothing to show and confirming a blank is not a question.
+- **The `fa_*` rows are generated, not written.** Sixteen of them, from `SUBJECTS`
+  in `src/lib/subjects.ts`, which also supplies their `sort_order`. Adding a
+  subject is one entry in that array; hand-maintaining sixteen near-identical rows
+  is sixteen chances to mistype a key.
+- **`bus_route`'s option list is populated** — 29 routes in `src/lib/routes.ts`,
+  wired in at `drizzle/seed/field_defs.ts`.
 
 **Templates** (a saved field set + a name):
 
@@ -628,6 +776,13 @@ through `/api/photos` (admin session) or `/api/r/<token>/photo` (the teacher's
 own frozen roster) — there is no public URL to a photograph of a child. See
 `src/lib/photos.ts`. Document upload is still out.
 
+Since then, photographs also **print**. The students workbook embeds the full
+800px image and draws it at 96px — about an inch — because an inch at 300dpi
+wants roughly 300px of source, and the 96px thumbnail it used to embed came out
+visibly soft. A printed class list with a recognisable face on it is the one
+thing the office wants that file for. They render as pictures on the teacher's
+own screen too, rather than as a blob pathname. See `src/lib/photo-store.ts`.
+
 - Parent-facing access of any kind
 - Document upload
 - Attendance
@@ -641,15 +796,15 @@ own frozen roster) — there is no public URL to a photograph of a child. See
 
 ## 13. Open decisions
 
-| # | Question | Needed by |
-|---|---|---|
-| 1 | Final field list for `field_defs` seed | Phase 1 |
-| 2 | A real PSP export (one class is enough) to fix the import column mapping | Phase 1 |
-| 3 | Class label convention — `12 Sci` vs `12-A Science` vs stream as a separate column | Phase 1 |
-| 4 | Who gets `admin` vs `office` role — specifically, can Komal Mam approve into master? | Phase 3 |
-| 5 | Optional PIN on by default, or only for Aadhaar collection? | Phase 3 |
-| 6 | Subdomain: `data.veerpatta.in` or something teacher-friendlier and shorter | Phase 0 |
-| 7 | Max marks per FA subject — 25 assumed, confirm against LEAD's pattern | Phase 4 |
+| # | Question | Needed by | Status |
+|---|---|---|---|
+| 1 | Final field list for `field_defs` seed | Phase 1 | **Closed** — 13 hand-written + 16 generated `fa_*`; bus routes populated (29) |
+| 2 | A real PSP export (one class is enough) to fix the import column mapping | Phase 1 | **Closed** — arrived; see `scripts/import-psp.ts` |
+| 3 | Class label convention — `12 Sci` vs `12-A Science` vs stream as a separate column | Phase 1 | **Closed by the data** — the fee app's nineteen, verbatim. See 4.1 |
+| 4 | Who gets `admin` vs `office` role — specifically, can Komal Mam approve into master? | Phase 3 | **Open.** Loosening it is two sites, not one: `canApproveIntoMaster`, and the direct call in `api/students/import/route.ts` |
+| 5 | ~~Optional PIN on by default, or only for Aadhaar collection?~~ | Phase 3 | **Moot** — the PIN was removed |
+| 6 | Subdomain: `data.veerpatta.in` or something teacher-friendlier and shorter | Phase 0 | Open |
+| 7 | Max marks per FA subject — 25 assumed, confirm against LEAD's pattern | Phase 4 | **Open, and now load-bearing** — assumed across all sixteen generated fields |
 
 ---
 
