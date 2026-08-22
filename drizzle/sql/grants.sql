@@ -43,6 +43,12 @@ GRANT SELECT ON sources, field_sources TO app_rw;
 GRANT SELECT, INSERT ON submissions, change_log TO app_rw;
 
 -- change_log is written once and never touched again.
+--
+-- A row with a NULL submission_id is not a broken row: it is the office editing
+-- a student directly on /students/[id], where there is no submission because
+-- nobody proposed anything. Its `decision` reads 'edited'. Still append-only,
+-- still INSERT and SELECT only, and the grants below are what make that true
+-- rather than the application remembering to behave.
 REVOKE UPDATE, DELETE ON change_log FROM app_rw;
 
 -- submissions.review_status is the sole updatable column anywhere in the audit

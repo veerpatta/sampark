@@ -40,7 +40,7 @@ export type StudentColumn = Exclude<
   "createdAt" | "updatedAt" | "source"
 >;
 
-type ColumnSpec = {
+export type ColumnSpec = {
   column: StudentColumn;
   label: string;
   /** Lowercased header names seen in real PSP exports, for auto-mapping. */

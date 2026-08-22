@@ -28,10 +28,13 @@ import type { Student } from "../../drizzle/schema";
  * full resolution is about 2.3 MB — an ordinary attachment — and it is only the
  * whole-school export, which nobody prints, that reaches 25 MB.
  *
- * 800px is the ceiling and no change here can raise it: downscale.ts resizes on
- * the teacher's phone and the 3-8 MB original is never uploaded, deliberately,
- * because sending one over 2G is a minute per child. At the size the sheet
- * draws it that is still an eightfold oversample.
+ * 800px is the ceiling and no change here can raise it: components/ui/downscale
+ * resizes before upload and the 3-8 MB original is never sent, deliberately,
+ * because pushing one over 2G is a minute per child. At the size the sheet
+ * draws it that is still an eightfold oversample. Both doors run that same
+ * module — the teacher's phone and the office replacing a photo on
+ * /students/[id] — which is what keeps this assertion true of every blob in the
+ * store rather than only of the ones a teacher sent.
  *
  * Concurrent, because five hundred sequential round trips to the blob store is
  * a minute of wall clock. Capped, because each one is a billable simple

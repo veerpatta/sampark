@@ -19,6 +19,14 @@
  * cheap phone out of memory, and the symptom is the tab dying mid-round with
  * her work in it. Every bitmap is closed and every object URL revoked on every
  * path out of here, including the failing ones.
+ *
+ * WHY IT SITS IN ui/ AND NOT teacher/. The office console replaces photographs
+ * too, and it runs this same module rather than a second one — so a face
+ * uploaded from a desk produces the identical 800px/96px pair as one taken on a
+ * phone in a staffroom. That is what lets photo-store.ts fetch full-then-thumb,
+ * and the workbook draw at 96px, without either of them knowing which door a
+ * photograph came in through. Everything still in components/teacher/ is
+ * genuinely Hindi-first and phone-only; this never was.
  */
 
 /** Long edge of the stored photo. A face at 800px is plenty to recognise. */

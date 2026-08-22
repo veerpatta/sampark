@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { UserCircle } from "@phosphor-icons/react";
 import { Bi } from "./Bi";
-import { downscale } from "./downscale";
+import { downscale } from "@/components/ui/downscale";
 import { tick } from "./haptics";
 import { usePhotos } from "./photo-context";
 import { T } from "./strings";

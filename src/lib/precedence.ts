@@ -217,6 +217,23 @@ export function teacherOrigin(studentId: string, fieldKey: string): OriginWrite 
   return { studentId, fieldKey, sourceKey: "teacher" };
 }
 
+/**
+ * The office typed this into /students/[id] by hand.
+ *
+ * `office` was seeded as a source from the beginning (drizzle/seed/sources.ts)
+ * and named in HUMAN_SOURCES above, but nothing wrote it until the student page
+ * became editable — mayWrite's "the office set this by hand" branch was
+ * unreachable. This is the function that reaches it.
+ *
+ * `fieldKey` is a DATABASE COLUMN NAME — 'phone', 'photo_path' — because that
+ * is what value_sources holds and what mayWrite looks up in `field_sources`.
+ * Passing a field registry key here would stamp provenance under a name no
+ * import ever checks, and the next PSP run would sail straight over the edit.
+ */
+export function officeOrigin(studentId: string, fieldKey: string): OriginWrite {
+  return { studentId, fieldKey, sourceKey: "office" };
+}
+
 /* --------------------------------------------------------------- reporting */
 
 export type SourceRow = Source;

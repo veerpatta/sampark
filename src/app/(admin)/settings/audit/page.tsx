@@ -3,6 +3,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { currentUser } from "@/lib/auth/session";
 import { DataTable, type Column } from "@/components/admin/DataTable";
+import { decisionChip } from "@/components/ui/controls";
 import { redirect } from "next/navigation";
 
 export const metadata = { title: "Audit log — Sampark" };
@@ -11,10 +12,18 @@ export const dynamic = "force-dynamic";
 const PAGE_SIZE = 100;
 
 /**
- * The change log: every DECISION taken about the master record.
+ * The change log: every DECISION taken about the master record, and every
+ * direct EDIT made to it.
  *
  * Success criterion 5 from the plan: every change to a student record has a
  * name and a timestamp attached to it. This is the screen that proves it.
+ *
+ * Two shapes of row live here now. `approved` and `rejected` are verdicts on
+ * something a teacher proposed, and carry the submission they were about.
+ * `edited` is the office typing into /students/[id] directly: no submission,
+ * because nobody proposed anything — submission_id is NULL and that is the
+ * whole distinction. Both name a user and a time, which is all this screen ever
+ * claimed to guarantee.
  *
  * MARKS ARE NOT HERE, and their absence is not a gap. A change_log row records
  * that a named user decided something, and nobody decides a mark — it is
@@ -135,15 +144,7 @@ export default async function AuditPage({
       key: "decision",
       header: "Decision",
       cell: (row) => (
-        <span
-          className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-            row.entry.decision === "approved"
-              ? "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
-              : "bg-[var(--color-absent-bg)] text-[var(--color-absent-fg)]"
-          }`}
-        >
-          {row.entry.decision}
-        </span>
+        <span className={decisionChip(row.entry.decision)}>{row.entry.decision}</span>
       ),
     },
     {
@@ -181,11 +182,12 @@ export default async function AuditPage({
           </Link>
         </div>
         <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
-          {total.toLocaleString("en-IN")} decision{total === 1 ? "" : "s"}
-          {student ? ` for ${student}` : ""} about the master record ·
-          append-only, enforced by database grants rather than by this
-          application behaving itself · marks are not decided, so they are
-          on{" "}
+          {total.toLocaleString("en-IN")} entr{total === 1 ? "y" : "ies"}
+          {student ? ` for ${student}` : ""} about the master record —
+          decisions on what teachers proposed, and edits the office typed
+          directly · append-only, enforced by database grants rather than by
+          this application behaving itself · marks are neither decided nor
+          typed here, so they are on{" "}
           <Link
             href="/marks"
             className="text-[var(--color-brand-600)] hover:underline"
@@ -200,7 +202,7 @@ export default async function AuditPage({
         columns={columns}
         rows={entries}
         rowKey={(row) => String(row.entry.id)}
-        empty="Nothing has been approved or rejected yet."
+        empty="Nothing has been decided or edited yet."
       />
 
       {student ? (

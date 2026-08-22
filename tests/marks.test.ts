@@ -75,6 +75,10 @@ describe("a mark is recorded at submit, not at review", () => {
     assert.equal(submission!.action, "changed");
   });
 
+  // The premise widened when the office gained a direct edit on /students/[id]:
+  // a change_log row now means a named user decided something OR typed it. A
+  // mark is still neither — it is written the moment the teacher submits, with
+  // no user in the loop at all — so this stays exactly as true as it was.
   test("writes no change_log row, because nobody decided anything", async () => {
     const scenario = await createScenario(MARKS);
     const [first] = scenario.resolved.roster;
@@ -90,7 +94,7 @@ describe("a mark is recorded at submit, not at review", () => {
     assert.deepEqual(
       log,
       [],
-      "a change_log row asserts a named user decided something, and none did",
+      "a change_log row asserts a named user decided or typed something, and none did",
     );
   });
 

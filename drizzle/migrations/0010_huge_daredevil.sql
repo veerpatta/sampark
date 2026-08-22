@@ -1,0 +1,1 @@
+ALTER TABLE "change_log" ALTER COLUMN "submission_id" DROP NOT NULL;

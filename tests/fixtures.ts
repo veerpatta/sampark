@@ -51,9 +51,15 @@ const ownerDb = drizzle(neon(ownerUrl), { schema });
  * teachers, surfacing as a foreign-key violation on requests.teacher_id that
  * looks exactly like a flaky test and is not one.
  *
- * Eight is enough for every file here and still keeps the ids readable. If a
- * new test file collides again, widen this rather than renaming the file —
- * a naming rule nobody can see is a trap the next person walks into too.
+ * Eight was enough right up until `student-edit.test.ts` was added beside
+ * `student-export.test.ts` — both truncate to "STUDENTE". Widened to TEN,
+ * following this note's own advice: widen rather than rename, because a naming
+ * rule nobody can see is a trap the next person walks into too.
+ *
+ * The budget is the id length. A fixture student is
+ * ZZTEST(6) + tag(10) + S1(2) + suffix(6) = 24 characters, and photoPathname
+ * refuses a student id longer than 32 — so there is room, but not unlimited
+ * room. Check that regex before widening again.
  */
 const FILE_TAG = (process.argv[1] ?? "x")
   .replace(/\\/g, "/")
@@ -61,9 +67,9 @@ const FILE_TAG = (process.argv[1] ?? "x")
   .pop()!
   .replace(/\.test\.ts$/, "")
   .replace(/[^a-z]/gi, "")
-  .slice(0, 8)
+  .slice(0, 10)
   .toUpperCase()
-  .padEnd(8, "X");
+  .padEnd(10, "X");
 
 const PREFIX = `ZZTEST${FILE_TAG}`;
 
@@ -359,6 +365,17 @@ export async function cleanup() {
   await ownerDb
     .delete(schema.requestBatches)
     .where(like(schema.requestBatches.createdBy, `${PREFIX}%`));
+  // BY STUDENT, and it has to be, because of the office edit.
+  //
+  // The delete higher up finds change_log rows through their submissions. A
+  // direct edit on /students/[id] has no submission — submission_id is NULL by
+  // design — so it is invisible to that query and survives it. It also carries
+  // decided_by, which is a foreign key to users, so the very next statement
+  // would fail on a row this function had just decided not to look at. Another
+  // teardown foreign-key violation that reads like a flaky test and is not one.
+  await ownerDb
+    .delete(schema.changeLog)
+    .where(like(schema.changeLog.studentId, `${PREFIX}%`));
   await ownerDb.delete(schema.users).where(like(schema.users.id, `${PREFIX}%`));
 }
 
@@ -391,6 +408,23 @@ export async function changeLogFor(submissionIds: string[]) {
     .select()
     .from(schema.changeLog)
     .where(inArray(schema.changeLog.submissionId, submissionIds));
+}
+
+/**
+ * Every change_log row about one student, however it got there.
+ *
+ * changeLogFor above asks "what did THESE submissions produce", which is the
+ * right question for the review tests and the wrong one here: an office edit
+ * has no submission to ask about. Kept as a second function rather than a
+ * widening of the first, because review.test.ts asserts an exact row count and
+ * would start counting hand edits too.
+ */
+export async function changeLogForStudent(studentId: string) {
+  return db
+    .select()
+    .from(schema.changeLog)
+    .where(eq(schema.changeLog.studentId, studentId))
+    .orderBy(schema.changeLog.id);
 }
 
 function futureDate(): string {

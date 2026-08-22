@@ -28,6 +28,13 @@ agent, start from **[PROMPTS.md](./PROMPTS.md)**.
   with a `target_column` — is a *proposed* change in a review queue, never a
   write. Marks and one-off questions are not master data and land directly; see
   [Two destinations](#two-destinations-and-only-one-of-them-is-reviewed).
+  **Silently is the operative word.** An owner or admin can also type a
+  correction straight into `/students/[id]`, which is not an exception to the
+  rule: the gate is the same `canApproveIntoMaster` that governs the queue, so
+  the person typing is the person who would otherwise have clicked Approve on
+  the identical change; every field lands in `change_log` with their name on
+  it; and the value is stamped `office`, which no import can overwrite. See
+  [The third door](#the-third-door-into-the-master-record).
 - **Student ID is the key.** Never match by name.
 - **Validate at entry.** A 9-digit phone number must be impossible to submit.
 
@@ -310,7 +317,8 @@ src/
     api/                requests · r/[token] (+ /photo) · photos
                         students/import · export/{students,marks}.xlsx
                         export/{request,batch}/[id] · auth
-  components/           admin/ · teacher/ · ui/
+  components/           admin/ · teacher/ · ui/ (downscale.ts lives in ui/, not
+                        teacher/: both surfaces resize photos with it)
   lib/
     db.ts               the single database entry point
     auth/token.ts       THE one place TEACHER authorization lives
@@ -318,6 +326,7 @@ src/
     fields.ts           field registry validators (shared client + server)
     field-keys.ts       key shapes: fa_* marks, q_* one-off questions
     students.ts         master-record reads
+    student-edit.ts     the office's direct edit — fields, rules, and the write
     students-import.ts  match / diff / preview / apply
     import-plan.ts      what an import may touch, given precedence
     precedence.ts       who wins when the third file disagrees
@@ -456,6 +465,61 @@ perform is worse than no review, because the record then claims someone checked.
 
 The reasoning lives at the head of `src/lib/submissions.ts`.
 
+### The third door into the master record
+
+There are three ways a row in `students` changes, and only two of them existed
+for most of this project's life: the review queue, and an import. The third is an
+owner or admin typing into `/students/[id]`.
+
+That page was read-only for a long time, and said so on screen: *a change typed
+here would carry no proposal, no reviewer and no audit trail.* The objection was
+right and it is answerable rather than absolute.
+
+- **No reviewer** — the form is gated on `canApproveIntoMaster`, the same
+  function that decides who may approve a teacher's correction. The person
+  typing is the person who would otherwise have clicked Approve on the identical
+  change. The `office` **role**, confusingly, cannot do this.
+- **No audit trail** — every field appends a `change_log` row with a name and a
+  timestamp, and it appears in the Change history card directly below the form
+  and on `/settings/audit`. Those rows carry `decision = 'edited'` and a **null
+  `submission_id`**, which is the whole distinction: no submission, because
+  nobody proposed anything.
+- **No proposal** — a proposal exists to keep an unreviewed *teacher* out of
+  master. There is no teacher here.
+
+What actually makes it safe is provenance. An edit claims its field for
+`office`, and `src/lib/precedence.ts` lists that in `HUMAN_SOURCES`, so no
+import can ever quietly undo it. That source key was seeded from the first
+migration and had no writer at all until this feature — the hook was built
+before the thing that hangs off it.
+
+Two rules in `src/lib/student-edit.ts` are worth knowing because they contradict
+the importer on purpose:
+
+- **A cleared box erases.** The importer's rule is that a blank means "no
+  change", and it is right, because an empty column in a spreadsheet is a column
+  the file does not carry. A pre-filled box that a person selected and deleted is
+  the opposite situation.
+- **A `normalise()` warning refuses the whole save.** The importer answers bad
+  input with "leave that cell alone and note it in the preview". On a form that
+  would be silent: she types a corrected number, is told it saved, and the old
+  one is still there. Nothing is written while any field is invalid — a partial
+  save is the outcome nobody can reconstruct afterwards.
+
+And one trap, documented at `optionsFor`: the importer normalises `category`
+against `GEN/OBC/SC/ST/EWS`, which is simply wrong about this school — PSP writes
+`GENERAL`, 45 children are `SBC`, and nobody is `EWS`. The dropdowns are built
+from the field registry, and a `<select>` is validated against the options it
+rendered, so the form cannot offer a value it will then refuse.
+
+**A pending teacher correction is warned about, not resolved.** If a field has a
+submission sitting in `/review`, the form says so and says what happens next:
+approving it later **replaces** what the office typed, because the review path
+writes master unconditionally and stamps `teacher`, which outranks `office`. The
+queue is deliberately left alone — silently rejecting a teacher's proposal
+because somebody edited the same field is how a teacher learns her corrections
+disappear.
+
 ### The PIN was removed
 
 Plan section 5 offers an optional 4-digit PIN on `/r/*`. It was removed on
@@ -534,11 +598,13 @@ text sent both `Class 6` and `Nursery` to the end.
    validates against the wrong ceiling — see the warning at the head of
    `drizzle/seed/field_defs.ts`
 2. **Whether `office` can approve into master.** Currently `office` can create
-   requests but cannot import or approve. Loosening it is **two** sites, not one:
-   `canApproveIntoMaster` in `src/lib/auth/session.ts`, and the direct call in
-   `src/app/api/students/import/route.ts`. Note separately that
-   `canManageSettings` is owner-only, so `admin` cannot reach the field registry
-   or the user list either
+   requests but cannot import, approve, or edit a student. Loosening it is
+   **four** sites, not one: `canApproveIntoMaster` in `src/lib/auth/session.ts`,
+   and the three direct calls in `src/app/api/students/import/route.ts`,
+   `src/app/(admin)/students/[id]/actions.ts` and the `POST` in
+   `src/app/api/photos/route.ts`. Note separately that `canManageSettings` is
+   owner-only, so `admin` cannot reach the field registry or the user list
+   either
 3. **LEAD's `FA_Marks_Pattern.xlsx`.** The one thing blocking Phase 4; see the
    build status above
 4. **The public subdomain.** The plan proposed `data.veerpatta.in`; nothing is

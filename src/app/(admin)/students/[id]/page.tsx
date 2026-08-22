@@ -1,14 +1,21 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
-import { currentUser } from "@/lib/auth/session";
+import { canApproveIntoMaster, currentUser } from "@/lib/auth/session";
 import { IMPORT_COLUMNS } from "@/lib/students-import";
-import { readStudentColumn } from "@/lib/student-columns";
+import {
+  readStudentColumn,
+  STUDENT_COLUMN_BY_DB_NAME,
+} from "@/lib/student-columns";
+import { editFields, registryOptions } from "@/lib/student-edit";
 import { titleCaseName } from "@/lib/classes";
+import { decisionChip } from "@/components/ui/controls";
 import { HouseChip } from "@/components/HouseChip";
 import { Avatar } from "@/components/admin/Avatar";
 import { Card } from "@/components/admin/Card";
+import { PhotoEditor } from "@/components/admin/PhotoEditor";
+import { StudentEditForm } from "@/components/admin/StudentEditForm";
 import type { Student } from "../../../../../drizzle/schema";
 
 export const metadata = { title: "Student — Sampark" };
@@ -21,9 +28,24 @@ export const dynamic = "force-dynamic";
  * number is wrong: it answers "what do we hold, who last changed it, and when"
  * without anyone opening the database.
  *
- * Read-only on purpose. Master data moves through the review queue or through
- * an import — never through a free-text box on a detail page, because a change
- * made here would carry no proposal, no reviewer and no audit trail.
+ * EDITABLE, FOR THE PEOPLE WHO COULD ALREADY APPROVE THE SAME CHANGE.
+ *
+ * This page was read-only for a long time, on the stated grounds that a change
+ * typed here "would carry no proposal, no reviewer and no audit trail". Two of
+ * those three are now supplied and the third does not apply: the form is gated
+ * on canApproveIntoMaster, so the person typing is the person who would have
+ * approved the identical correction in /review; every field written appends a
+ * change_log row, which is the card at the bottom of this page; and a proposal
+ * exists to keep an unreviewed TEACHER out of master, which is not what is
+ * happening here.
+ *
+ * What actually makes it safe is the provenance stamp. An edit claims its field
+ * for `office`, which lib/precedence.ts treats as human and therefore permanent
+ * against every import — so correcting a number here cannot be quietly undone
+ * by the next PSP file. See lib/student-edit.ts.
+ *
+ * The `office` ROLE, confusingly, cannot do this: it can create requests and
+ * read everything, but approving into master is owner and admin only.
  */
 export default async function StudentDetailPage({
   params,
@@ -36,7 +58,7 @@ export default async function StudentDetailPage({
   // Every one of these needs only the id from the URL. The history and the
   // records do not wait on the student row existing — if it does not, the
   // notFound() below throws the whole page away and their answers with it.
-  const [session, [student], history, records] = await Promise.all([
+  const [session, [student], history, records, waiting, options] = await Promise.all([
     currentUser(),
     db
       .select()
@@ -91,10 +113,69 @@ export default async function StudentDetailPage({
       .leftJoin(schema.teachers, eq(schema.teachers.id, schema.requests.teacherId))
       .where(eq(schema.studentRecords.studentId, studentId))
       .orderBy(desc(schema.studentRecords.period), asc(schema.studentRecords.fieldKey)),
+    /*
+     * Corrections a teacher has proposed for this child that nobody has decided
+     * yet.
+     *
+     * Worth surfacing beside the boxes, because approving one LATER overwrites
+     * whatever the office types now: decideSubmissions writes master
+     * unconditionally and stamps `teacher`, which outranks `office`. So this is
+     * not "something is waiting", it is "this field is about to be argued over".
+     *
+     * A direct query rather than listPendingReview(), which is scoped by request
+     * and assembles far more than a warning line needs. Covered by
+     * submissions_student_field_idx.
+     */
+    db
+      .select({
+        targetColumn: schema.fieldDefs.targetColumn,
+        label: schema.fieldDefs.labelEn,
+        teacherName: schema.teachers.name,
+      })
+      .from(schema.submissions)
+      .innerJoin(
+        schema.fieldDefs,
+        eq(schema.fieldDefs.key, schema.submissions.fieldKey),
+      )
+      .leftJoin(schema.requests, eq(schema.requests.id, schema.submissions.requestId))
+      .leftJoin(schema.teachers, eq(schema.teachers.id, schema.requests.teacherId))
+      .where(
+        and(
+          eq(schema.submissions.studentId, studentId),
+          eq(schema.submissions.reviewStatus, "pending"),
+        ),
+      ),
+    // The closed sets for gender and category. A read, not a constant, because
+    // /settings/fields owns them — see registryOptions.
+    registryOptions(),
   ]);
 
   if (!session) redirect("/login");
   if (!student) notFound();
+
+  // Editing master data takes the same role as approving a correction into it.
+  // The `office` role reads this page and gets no form.
+  const canEdit = canApproveIntoMaster(session.role);
+  const fields = canEdit ? editFields(student as Student, options) : [];
+
+  // Keyed by students column, because that is what the form's inputs are named.
+  // A field with no target_column collects into student_records and is not on
+  // this form at all, so it is dropped here rather than warned about.
+  const pendingByColumn = new Map<string, string>();
+  for (const row of waiting) {
+    // target_column is a DATABASE name; the form's inputs are named by Drizzle
+    // property. STUDENT_COLUMN_BY_DB_NAME is the one sanctioned mapping — see
+    // the warning at the top of student-columns.ts about the half of the
+    // registry where the two strings differ.
+    const property = row.targetColumn
+      ? STUDENT_COLUMN_BY_DB_NAME.get(row.targetColumn)
+      : undefined;
+    if (!property) continue;
+    pendingByColumn.set(
+      property,
+      `${row.teacherName ?? "A teacher"} has proposed a change to ${row.label}.`,
+    );
+  }
 
   return (
     <div className="space-y-5 md:space-y-8">
@@ -105,11 +186,19 @@ export default async function StudentDetailPage({
             pathname printed as text would be noise. Initials when there is no
             photograph: two thirds of these children have none, and a column of
             grey circles gives the eye nothing to land on. */}
-        <Avatar
-          pathname={student.photoPath}
-          name={titleCaseName(student.name)}
-          size="page"
-        />
+        <div>
+          <Avatar
+            pathname={student.photoPath}
+            name={titleCaseName(student.name)}
+            size="page"
+          />
+          {canEdit ? (
+            <PhotoEditor
+              studentId={student.id}
+              hasPhoto={Boolean(student.photoPath)}
+            />
+          ) : null}
+        </div>
         <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-2">
           <h1 className="text-[1.625rem] font-semibold leading-8 tracking-[-0.02em]">
@@ -157,11 +246,30 @@ export default async function StudentDetailPage({
               );
             })}
           </dl>
-          <p className="mt-5 border-t border-[var(--color-border)] pt-4 text-xs text-[var(--color-ink-muted)]">
-            Read-only. Master data moves through the review queue or an import —
-            a change typed here would carry no proposal, no reviewer and no
-            audit trail.
-          </p>
+          {canEdit ? (
+            /* CLOSED, this card reads exactly as it always did. Open, it is the
+               editor — the same idiom as Settings → Teachers, and for the same
+               reason: the page stays scannable, and editing is a deliberate tap
+               rather than a text box under every value on a screen people open
+               mainly to read. */
+            <details className="mt-5 border-t border-[var(--color-border)] pt-4">
+              <summary className="min-h-[var(--tap-min)] cursor-pointer list-none text-sm font-medium text-[var(--color-brand-600)]">
+                Edit these details ▾
+              </summary>
+              <div className="mt-4">
+                <StudentEditForm
+                  studentId={student.id}
+                  fields={fields}
+                  pending={pendingByColumn}
+                />
+              </div>
+            </details>
+          ) : (
+            <p className="mt-5 border-t border-[var(--color-border)] pt-4 text-xs text-[var(--color-ink-muted)]">
+              Read-only for your role. Correcting master data takes the same
+              permission as approving a teacher&rsquo;s correction into it.
+            </p>
+          )}
         </Card>
 
         <div className="space-y-5 md:space-y-8">
@@ -211,9 +319,9 @@ export default async function StudentDetailPage({
           <Card title="Change history" flush>
             {history.length === 0 ? (
               <p className="p-4 text-sm text-[var(--color-ink-muted)]">
-                Nothing has been approved or rejected for this student. Values
+                Nothing has been decided or edited for this student. Values
                 loaded by import do not appear here — the change log records
-                decisions, and an import is not one.
+                what a named person decided or typed, and an import is neither.
               </p>
             ) : (
               /* A list, not a table. Five columns — when, who, field, the
@@ -244,11 +352,7 @@ export default async function StudentDetailPage({
                       </span>
                     </div>
                     <span
-                      className={`mt-1.5 inline-block rounded px-2 py-0.5 text-xs font-medium ${
-                        row.entry.decision === "approved"
-                          ? "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
-                          : "bg-[var(--color-absent-bg)] text-[var(--color-absent-fg)]"
-                      }`}
+                      className={`mt-1.5 inline-block ${decisionChip(row.entry.decision)}`}
                     >
                       {row.entry.decision}
                     </span>

@@ -592,14 +592,25 @@ export const rateLimits = pgTable("rate_limits", {
 
 export const changeLog = pgTable("change_log", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
-  submissionId: uuid("submission_id")
-    .notNull()
-    .references(() => submissions.id),
+  /**
+   * NULL when the change did not come from a teacher submission.
+   *
+   * It was NOT NULL until the office gained a direct edit on /students/[id].
+   * That path has no submission to point at — nobody proposed anything, an
+   * approver typed the value in — and the alternative was inventing a
+   * submissions row that referenced a request that never happened. A log which
+   * fabricates a proposal to satisfy a foreign key is worse than one that
+   * admits there wasn't one.
+   *
+   * So: `submission_id IS NULL` reads as "an admin edited this by hand", and
+   * `decision` says 'edited' for exactly those rows.
+   */
+  submissionId: uuid("submission_id").references(() => submissions.id),
   studentId: text("student_id").notNull(),
   fieldKey: text("field_key").notNull(),
   fromValue: text("from_value"),
   toValue: text("to_value"),
-  decision: text("decision").notNull(), // approved | rejected
+  decision: text("decision").notNull(), // approved | rejected | edited
   decidedBy: text("decided_by")
     .notNull()
     .references(() => users.id),

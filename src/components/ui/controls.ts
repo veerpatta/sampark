@@ -200,3 +200,28 @@ export function mono(): string {
 export function stepBadge(): string {
   return "flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface-muted)] font-mono text-[11px] font-medium text-[var(--color-ink-muted)]";
 }
+
+/**
+ * The badge on one row of the change log.
+ *
+ * Three values now, not two. `approved` and `rejected` are verdicts on
+ * something a teacher proposed; `edited` is the office typing into
+ * /students/[id] directly, which is a fact rather than a verdict — so it gets
+ * the brand tint that `chip({ on: true })` uses and not the confirm green.
+ * Colouring an edit green would file it alongside approvals and quietly claim
+ * somebody reviewed it.
+ *
+ * Here rather than in the two pages that render it, because it was already
+ * copy-pasted twice as `decision === "approved" ? green : red` — and that
+ * expression does not just fail to handle a third value, it actively
+ * mis-handles it, painting a successful edit in the rejection colour.
+ */
+export function decisionChip(decision: string): string {
+  const tone =
+    decision === "approved"
+      ? "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
+      : decision === "edited"
+        ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
+        : "bg-[var(--color-absent-bg)] text-[var(--color-absent-fg)]";
+  return `rounded px-2 py-0.5 text-xs font-medium ${tone}`;
+}
