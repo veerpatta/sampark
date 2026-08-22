@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canApproveIntoMaster, currentUser } from "@/lib/auth/session";
+import { listImportSources } from "@/lib/precedence";
 import { IMPORT_COLUMNS } from "@/lib/students-import";
 import { ImportWizard } from "./ImportWizard";
 
@@ -24,6 +25,11 @@ export default async function StudentImportPage() {
     label: spec.label,
   }));
 
+  // Read from the sources table, not written out here: which files exist is
+  // administrative data, and a list hardcoded in a component is one that drifts
+  // from the rows the precedence layer actually consults.
+  const sources = await listImportSources();
+
   return (
     <div className="space-y-8">
       <header>
@@ -41,8 +47,10 @@ export default async function StudentImportPage() {
         <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
           Rows are matched on Student ID first, then SR number — never on name.
           A blank cell means &ldquo;no change&rdquo;, so an export with only two
-          filled columns will only ever touch those two. Nothing is written
-          until you confirm the dry run.
+          filled columns will only ever touch those two. You say which file this
+          is, and precedence decides what it may overwrite — an approved teacher
+          correction, or a value the office set by hand, is never replaced by an
+          import. Nothing is written until you confirm the dry run.
         </p>
       </header>
 
@@ -55,7 +63,7 @@ export default async function StudentImportPage() {
         Use a computer for this one.
       </p>
 
-      <ImportWizard columns={columns} />
+      <ImportWizard columns={columns} sources={sources} />
     </div>
   );
 }

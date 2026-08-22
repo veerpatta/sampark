@@ -327,8 +327,8 @@ src/
     field-keys.ts       key shapes: fa_* marks, q_* one-off questions
     students.ts         master-record reads
     student-edit.ts     the office's direct edit — fields, rules, and the write
-    students-import.ts  match / diff / preview / apply
-    import-plan.ts      what an import may touch, given precedence
+    students-import.ts  match / diff / preview / apply, through precedence
+    import-plan.ts      the same question for the CLI importers
     precedence.ts       who wins when the third file disagrees
     student-columns.ts  field_defs.target_column -> Drizzle property name
     student-export.ts   the workbook's columns, derived from the live schema
@@ -464,6 +464,32 @@ asking it to click Approve without reading — and a review nobody can actually
 perform is worse than no review, because the record then claims someone checked.
 
 The reasoning lives at the head of `src/lib/submissions.ts`.
+
+### The upload screen asks which file it is
+
+`/students/import` takes a source before it will dry-run, and that is not
+bureaucracy — precedence is a question about *who is speaking*. The fee app is
+authoritative for class allocation, PSP for identity, and an approved teacher
+correction outranks both.
+
+This was a real hole rather than a hypothetical one. `applyPreview` diffed each
+cell against the record and wrote whatever differed, consulting neither
+`mayWrite` nor `recordOrigins` — so the one import path the office actually uses
+could silently undo a month of approved corrections by re-importing last term's
+export. Every *other* importer went through `import-plan.ts` and was safe. The
+protection existed; the screen simply did not ask for it.
+
+Now the dry run reports refusals out loud — `N values are owned by something
+this file does not outrank` — and each one shows the field, the value it wanted
+to write, and the reason. A row whose every change was refused is listed rather
+than filed under "already matches", because telling the office a file agrees
+with the record when it was overruled is worse than saying nothing.
+
+Two implementations of this question now exist, and both are live:
+`students-import.ts` for the upload screen, which matches ID → SR number →
+a generated `TMP-` id, and `import-plan.ts` for the CLI scripts, which is keyed
+on student id alone. Worth merging one day; not worth merging blind, because the
+matching rules are the part where a bug rewrites the wrong child's record.
 
 ### The third door into the master record
 

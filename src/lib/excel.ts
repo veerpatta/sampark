@@ -31,6 +31,17 @@ export type ImportPreviewRow = {
    * nothing is silently discarded.
    */
   warnings: string[];
+  /**
+   * Cells a higher-precedence source owns, which this file may not overwrite.
+   *
+   * SEPARATE FROM `warnings`, and counted separately, because it is a different
+   * kind of fact. A warning says the file gave us something unusable. This says
+   * the file gave us something perfectly good and we refused it — because a
+   * teacher's approved correction, or the office's own edit, already owns that
+   * field. That is the outcome a re-import of last term's export most needs to
+   * report, and burying it in a warnings list is how it goes unread.
+   */
+  blocked?: { column: string; from: string | null; to: string | null; reason: string }[];
 };
 
 export type ImportPreview = {

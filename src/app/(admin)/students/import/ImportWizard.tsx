@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { ImportPreviewRow, ImportRowOutcome } from "@/lib/excel";
 import { Card } from "@/components/admin/Card";
-import { btn } from "@/components/ui/controls";
+import { btn, field } from "@/components/ui/controls";
 
 type ColumnOption = { value: string; label: string };
 
@@ -21,7 +21,11 @@ type Inspection = {
 type Preview = {
   rows: ImportPreviewRow[];
   counts: Record<ImportRowOutcome, number>;
+  /** Values a higher-precedence source owns, which this file may not write. */
+  blockedCount: number;
 };
+
+export type SourceOption = { key: string; label: string };
 
 const IGNORE = "";
 
@@ -30,14 +34,27 @@ const IGNORE = "";
  * whole screen: the office sees exactly which students change and to what,
  * before a single row is written.
  */
-export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
+export function ImportWizard({
+  columns,
+  sources,
+}: {
+  columns: ColumnOption[];
+  sources: SourceOption[];
+}) {
   const [file, setFile] = useState<File | null>(null);
+  // No default. Which file this is decides what it is allowed to overwrite, and
+  // a pre-selected source is a guess the office would have to notice was wrong.
+  const [source, setSource] = useState("");
   const [sheet, setSheet] = useState<string | null>(null);
   const [sheetList, setSheetList] = useState<string[]>([]);
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [map, setMap] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<Preview | null>(null);
-  const [result, setResult] = useState<{ inserted: number; updated: number } | null>(null);
+  const [result, setResult] = useState<{
+    inserted: number;
+    updated: number;
+    blockedCount?: number;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -51,7 +68,10 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
     body.set("mode", mode);
     const chosen = wantedSheet === undefined ? sheet : wantedSheet;
     if (chosen) body.set("sheet", chosen);
-    if (mode !== "inspect") body.set("map", JSON.stringify(usableMap(map)));
+    if (mode !== "inspect") {
+      body.set("map", JSON.stringify(usableMap(map)));
+      body.set("source", source);
+    }
 
     try {
       const response = await fetch("/api/students/import", {
@@ -104,7 +124,8 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
   const identifiable = mapped.has("id") || mapped.has("srNo");
   const insertable = mapped.has("name") && mapped.has("classLabel");
   const duplicates = findDuplicateTargets(map);
-  const canDryRun = mapped.size > 0 && duplicates.length === 0 && (identifiable || insertable);
+  const canDryRun =
+    mapped.size > 0 && duplicates.length === 0 && (identifiable || insertable) && source !== "";
 
   return (
     <div className="space-y-8">
@@ -251,6 +272,36 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
             ) : null}
           </div>
 
+          {/*
+            WHICH FILE IS THIS? Asked here rather than at upload, because it is
+            not a property of the file on disk — it is a claim about who wrote
+            it, and it decides what the file is allowed to overwrite. The fee
+            app owns class allocation; PSP owns identity; neither may touch a
+            field a teacher's approved correction or the office already claimed.
+          */}
+          <label className="mt-5 block border-t border-[var(--color-border)] pt-4">
+            <span className="text-xs font-medium text-[var(--color-ink-muted)]">
+              Where did this file come from?
+            </span>
+            <select
+              value={source}
+              onChange={(event) => setSource(event.target.value)}
+              className={`mt-1 max-w-sm ${field()}`}
+            >
+              <option value="">Choose one…</option>
+              {sources.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-[var(--color-ink-muted)]">
+              This decides what the file may overwrite. A value a teacher&rsquo;s
+              approved correction owns, or one the office set by hand, is never
+              replaced by an import.
+            </span>
+          </label>
+
           <button
             type="button"
             onClick={onDryRun}
@@ -271,6 +322,23 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
             <Count label="Unchanged" value={preview.counts.skip} tone="muted" />
             <Count label="Errors" value={preview.counts.error} tone="danger" />
           </div>
+
+          {/*
+            SAID OUT LOUD, NOT BURIED. The outcome the office most needs from a
+            dry run is that a re-import of last term's export did NOT undo a
+            month of approved corrections — and the only way to know that is to
+            be told, rather than to read a clean-looking run that changed
+            nothing where you expected changes.
+          */}
+          {preview.blockedCount > 0 ? (
+            <Note tone="warning">
+              {preview.blockedCount}{" "}
+              {preview.blockedCount === 1 ? "value is" : "values are"} owned by
+              something this file does not outrank and will be left alone. They
+              are marked <strong>refused</strong> in the rows below — this is the
+              protection working, not an error.
+            </Note>
+          ) : null}
 
           <PreviewTable rows={preview.rows} />
 
@@ -316,8 +384,12 @@ export function ImportWizard({ columns }: { columns: ColumnOption[] }) {
 
 function PreviewTable({ rows }: { rows: ImportPreviewRow[] }) {
   // Unchanged rows are the majority of a healthy re-import and reading them
-  // teaches nobody anything. Show what moves.
-  const interesting = rows.filter((row) => row.outcome !== "skip");
+  // teaches nobody anything. Show what moves — AND what was refused, which is a
+  // 'skip' outcome but the opposite of uninteresting: the file disagreed with
+  // the record and lost, which is the one thing a dry run must not hide.
+  const interesting = rows.filter(
+    (row) => row.outcome !== "skip" || (row.blocked?.length ?? 0) > 0,
+  );
   const shown = interesting.slice(0, 200);
 
   if (interesting.length === 0) {
@@ -379,6 +451,21 @@ function PreviewTable({ rows }: { rows: ImportPreviewRow[] }) {
                     </li>
                   ))}
                 </ul>
+                {row.blocked?.map((refusal) => (
+                  <p
+                    key={refusal.column}
+                    className="mt-1 text-xs text-[var(--color-warning)]"
+                  >
+                    <span className="font-medium">refused</span>{" "}
+                    <span className="text-[var(--color-ink-muted)]">
+                      {refusal.column}:
+                    </span>{" "}
+                    <span className="line-through opacity-60">
+                      {refusal.from ?? "empty"}
+                    </span>{" "}
+                    <span aria-hidden>→</span> {refusal.to} — {refusal.reason}
+                  </p>
+                ))}
                 {row.warnings.map((warning) => (
                   <p
                     key={warning}
@@ -395,7 +482,7 @@ function PreviewTable({ rows }: { rows: ImportPreviewRow[] }) {
       {interesting.length > shown.length ? (
         <p className="border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-xs text-[var(--color-ink-muted)]">
           Showing the first {shown.length} of {interesting.length} affected
-          rows. All {interesting.length} will be written.
+          rows.
         </p>
       ) : null}
     </div>

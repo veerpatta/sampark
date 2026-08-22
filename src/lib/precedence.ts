@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import type { Source } from "../../drizzle/schema";
 
@@ -240,6 +240,25 @@ export type SourceRow = Source;
 
 export async function listSources(): Promise<Source[]> {
   return db.select().from(schema.sources).orderBy(schema.sources.rank);
+}
+
+/**
+ * The sources a FILE may claim to be.
+ *
+ * `kind` is the filter, and it is doing real work. `teacher` is collected
+ * through the review queue and `office` is typed by hand on a student page —
+ * an upload declaring itself either of those would let a spreadsheet inherit
+ * the one precedence rank that no import is ever allowed to beat, which is
+ * exactly the protection HUMAN_SOURCES exists to provide.
+ */
+export async function listImportSources(): Promise<
+  { key: string; label: string }[]
+> {
+  return db
+    .select({ key: schema.sources.key, label: schema.sources.label })
+    .from(schema.sources)
+    .where(and(eq(schema.sources.kind, "import"), eq(schema.sources.active, true)))
+    .orderBy(schema.sources.rank);
 }
 
 /** Which source owns a field right now — for the admin settings screen. */

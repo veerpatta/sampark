@@ -8,6 +8,17 @@ import {
 } from "./classes";
 import { HOUSES, normaliseHouse } from "./houses";
 import {
+  loadOrigins,
+  loadPrecedence,
+  mayWrite,
+  originOf,
+  recordOrigins,
+  type OriginMap,
+  type OriginWrite,
+  type Precedence,
+  type SourceKey,
+} from "./precedence";
+import {
   cellToString,
   excelSerialToDate,
   type ImportPreview,
@@ -358,7 +369,25 @@ export type ImportPlanRow = {
     | { kind: "update"; id: string; values: Record<string, unknown> };
 };
 
-export type ImportPlan = ImportPreview & { writes: ImportPlanRow[] };
+export type ImportPlan = ImportPreview & {
+  writes: ImportPlanRow[];
+  /** Which file this is, for precedence and for the origin stamp. */
+  sourceKey: SourceKey;
+  /** Provenance for everything the plan intends to write. */
+  origins: OriginWrite[];
+  /** How many values were refused because something outranks this source. */
+  blockedCount: number;
+};
+
+/**
+ * Everything the planner needs to know about who owns what, lifted out so
+ * planRows stays pure and testable without a connection.
+ */
+export type PrecedenceContext = {
+  sourceKey: SourceKey;
+  precedence: Precedence;
+  origins: OriginMap;
+};
 
 /**
  * Work out what the file would do, without doing any of it.
@@ -369,6 +398,7 @@ export type ImportPlan = ImportPreview & { writes: ImportPlanRow[] };
 export async function buildPreview(
   table: ParsedTable,
   map: ColumnMap,
+  sourceKey: SourceKey,
 ): Promise<ImportPlan> {
   const mapped = mappedPairs(map);
 
@@ -381,7 +411,16 @@ export async function buildPreview(
     if (sr) srNos.push(sr);
   }
 
-  return planRows(table, map, await loadCandidates(ids, srNos));
+  const existing = await loadCandidates(ids, srNos);
+
+  // Provenance for the students this file could touch. One extra query per run,
+  // which is the cost value_sources' own schema comment already accounts for.
+  const [precedence, origins] = await Promise.all([
+    loadPrecedence(),
+    loadOrigins(existing.map((student) => student.id)),
+  ]);
+
+  return planRows(table, map, existing, { sourceKey, precedence, origins });
 }
 
 /**
@@ -396,6 +435,7 @@ export function planRows(
   table: ParsedTable,
   map: ColumnMap,
   existing: Student[],
+  context: PrecedenceContext,
 ): ImportPlan {
   const mapped = mappedPairs(map);
 
@@ -426,12 +466,58 @@ export function planRows(
   table.rows.forEach((row, index) => {
     // +2 because row 1 is the header and spreadsheets count from 1 — the number
     // shown in the preview has to be the number the office sees in Excel.
-    const plan = planRow(row, index + 2, mapped, byId, bySr, seenInFile);
+    const plan = planRow(row, index + 2, mapped, byId, bySr, seenInFile, context);
     counts[plan.preview.outcome] += 1;
     writes.push(plan);
   });
 
-  return { rows: writes.map((entry) => entry.preview), counts, writes };
+  /*
+   * PROVENANCE FOR EVERY VALUE THE PLAN INTENDS TO WRITE.
+   *
+   * Computed here, alongside the writes, rather than worked out again at apply
+   * time — the two must describe the same set of values, and the only way to
+   * guarantee that is to derive them together. A value written without its
+   * origin recorded is indistinguishable from one nobody has claimed, and the
+   * next file overwrites it; see the note on recordOrigins.
+   */
+  const origins: OriginWrite[] = [];
+  for (const entry of writes) {
+    const written = entry.write;
+    if (!written) continue;
+    const studentId =
+      written.kind === "insert" ? String(written.values.id) : written.id;
+    for (const column of Object.keys(written.values)) {
+      if (column === "id") continue;
+      origins.push({
+        studentId,
+        fieldKey: dbColumnName(column as StudentColumn),
+        sourceKey: context.sourceKey,
+      });
+    }
+  }
+
+  const blockedCount = writes.reduce(
+    (total, entry) => total + (entry.preview.blocked?.length ?? 0),
+    0,
+  );
+
+  return {
+    rows: writes.map((entry) => entry.preview),
+    counts,
+    writes,
+    sourceKey: context.sourceKey,
+    origins,
+    blockedCount,
+  };
+}
+
+/**
+ * Drizzle property name -> database column name, which is what value_sources
+ * and field_sources both speak. See the warning at the top of
+ * student-columns.ts about the half of these where the two strings differ.
+ */
+function dbColumnName(property: string): string {
+  return property.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }
 
 function mappedPairs(map: ColumnMap): [string, StudentColumn][] {
@@ -448,6 +534,7 @@ function planRow(
   byId: Map<string, Student>,
   bySr: Map<string, Student[]>,
   seenInFile: Set<string>,
+  context: PrecedenceContext,
 ): ImportPlanRow {
   const warnings: string[] = [];
   const values: Partial<Record<StudentColumn, string>> = {};
@@ -517,7 +604,8 @@ function planRow(
     seenInFile.add(`sr:${srNo}`);
   }
 
-  if (existing) return planUpdate(existing, values, rowNumber, matchedBy, warnings);
+  if (existing)
+    return planUpdate(existing, values, rowNumber, matchedBy, warnings, context);
 
   // ---- no match: this is a new student ----
   if (!values.name) return error("No name — cannot create a student record");
@@ -564,8 +652,10 @@ function planUpdate(
   rowNumber: number,
   matchedBy: "id" | "sr_no" | null,
   warnings: string[],
+  context: PrecedenceContext,
 ): ImportPlanRow {
   const changes: ImportPreviewRow["changes"] = {};
+  const blocked: NonNullable<ImportPreviewRow["blocked"]> = [];
   const update: Record<string, unknown> = {};
 
   for (const [column, incoming] of Object.entries(values) as [
@@ -577,6 +667,33 @@ function planUpdate(
     const current = existing[column];
     const currentText = current === null || current === undefined ? null : String(current);
     if (currentText === incoming) continue;
+
+    /*
+     * MAY THIS FILE ACTUALLY WRITE THIS FIELD?
+     *
+     * This screen used to skip the question entirely: it diffed the cell
+     * against the record and wrote whatever differed. That meant a
+     * well-meaning re-import of last term's export could silently undo a
+     * month of approved teacher corrections — the precise failure
+     * lib/precedence.ts was written to prevent, and which it did prevent for
+     * every importer EXCEPT the one the office actually uses.
+     *
+     * A refusal is not a row error. The rest of the row still lands; this one
+     * cell is reported as refused, with the reason mayWrite gives, so the dry
+     * run says out loud what it declined to touch.
+     */
+    const fieldKey = dbColumnName(column);
+    const verdict = mayWrite(
+      fieldKey,
+      context.sourceKey,
+      originOf(context.origins, existing.id, fieldKey),
+      context.precedence,
+    );
+
+    if (!verdict.write) {
+      blocked.push({ column, from: currentText, to: incoming, reason: verdict.reason });
+      continue;
+    }
 
     changes[column] = { from: currentText, to: incoming };
     update[column] = column === "rollNo" ? Number(incoming) : incoming;
@@ -590,8 +707,12 @@ function planUpdate(
         studentId: existing.id,
         matchedBy,
         changes: {},
-        message: "Already matches",
+        // A row every one of whose values was refused has NOT "already
+        // matched" — saying so would be the screen telling the office that a
+        // file it is about to trust agrees with the record when it does not.
+        message: blocked.length > 0 ? "Every changed value was refused" : "Already matches",
         warnings,
+        blocked: blocked.length > 0 ? blocked : undefined,
       },
     };
   }
@@ -604,6 +725,7 @@ function planUpdate(
       matchedBy,
       changes,
       warnings,
+      blocked: blocked.length > 0 ? blocked : undefined,
     },
     write: { kind: "update", id: existing.id, values: update },
   };
@@ -645,6 +767,20 @@ export async function applyPreview(plan: ImportPlan): Promise<{
     );
     await db.batch(statements as [(typeof statements)[number], ...typeof statements]);
   }
+
+  /*
+   * STAMP WHAT WE JUST WROTE.
+   *
+   * Last, and deliberately not inside the chunks above. The neon-http driver
+   * has no transaction spanning several batches, so there is no ordering here
+   * that makes the whole run atomic — and given that, stamping after the write
+   * is the safe half of the trade. An origin recorded for a value that failed
+   * to land claims the file owns a field it never wrote, which would block the
+   * source that really should own it; a value written whose origin is missing
+   * is merely unclaimed, and the next run of the same file re-writes and
+   * re-stamps it. Unclaimed is recoverable. A false claim is not.
+   */
+  await recordOrigins(plan.origins);
 
   return { inserted: inserts.length, updated: updates.length };
 }

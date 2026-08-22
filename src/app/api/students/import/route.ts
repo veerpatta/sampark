@@ -5,6 +5,7 @@ import {
   UnauthorizedError,
 } from "@/lib/auth/session";
 import { parseTabularFile } from "@/lib/excel";
+import { listImportSources, type SourceKey } from "@/lib/precedence";
 import {
   applyPreview,
   buildPreview,
@@ -120,10 +121,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Column map missing." }, { status: 400 });
   }
 
-  const plan = await buildPreview(table, map);
+  /*
+   * WHICH FILE IS THIS?
+   *
+   * An import has to declare its source, because precedence is a question
+   * about who is speaking — the fee app is authoritative for class allocation,
+   * PSP for identity, and an approved teacher correction outranks both. Before
+   * this, the upload screen declared nothing and consulted nothing, so it wrote
+   * whatever the spreadsheet said over whatever was there.
+   *
+   * Validated against the `sources` table rather than a literal list here.
+   * Which sources exist is administrative data (drizzle/seed/sources.ts), and a
+   * hardcoded array in a route handler is how it drifts from the rows the
+   * precedence layer actually reads.
+   */
+  const sourceKey = String(form.get("source") ?? "");
+  const importable = await listImportSources();
+  if (!importable.some((source) => source.key === sourceKey)) {
+    return NextResponse.json(
+      {
+        error:
+          "Say which file this is before importing it — precedence cannot be applied to an unnamed source.",
+        sources: importable,
+      },
+      { status: 400 },
+    );
+  }
+
+  const plan = await buildPreview(table, map, sourceKey as SourceKey);
 
   if (mode === "preview") {
-    return NextResponse.json({ rows: plan.rows, counts: plan.counts });
+    return NextResponse.json({
+      rows: plan.rows,
+      counts: plan.counts,
+      blockedCount: plan.blockedCount,
+    });
   }
 
   if (mode === "apply") {
@@ -134,7 +166,11 @@ export async function POST(request: Request) {
       );
     }
     const result = await applyPreview(plan);
-    return NextResponse.json({ ...result, counts: plan.counts });
+    return NextResponse.json({
+      ...result,
+      counts: plan.counts,
+      blockedCount: plan.blockedCount,
+    });
   }
 
   return NextResponse.json({ error: "Unknown mode." }, { status: 400 });

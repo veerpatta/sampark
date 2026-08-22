@@ -3,10 +3,36 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   parseIndianDate,
-  planRows,
+  planRows as planRowsWithContext,
   suggestColumnMap,
   type ColumnMap,
+  type PrecedenceContext,
 } from "../src/lib/students-import";
+import type { Student } from "../drizzle/schema";
+import type { ParsedTable } from "../src/lib/excel";
+
+/**
+ * A file nobody has an opinion about yet.
+ *
+ * Empty precedence and empty provenance, so mayWrite lets everything through
+ * and these tests go on asserting the matching and diff rules they were written
+ * for. Who is allowed to overwrite whom is precedence's own subject and is
+ * tested against a real database in office-edit.test.ts and precedence.test.ts;
+ * mixing it in here would make every assertion below depend on two things at
+ * once.
+ */
+const OPEN: PrecedenceContext = {
+  sourceKey: "psp",
+  precedence: { owners: new Map(), ranks: new Map() },
+  origins: new Map(),
+};
+
+const planRows = (
+  table: ParsedTable,
+  map: ColumnMap,
+  existing: Student[],
+  context: PrecedenceContext = OPEN,
+) => planRowsWithContext(table, map, existing, context);
 
 /**
  * Rule 7 is the one this file exists for: match on student ID first, then SR
@@ -336,5 +362,110 @@ describe("suggestColumnMap", () => {
     const map = suggestColumnMap(["Mobile", "Mobile No", "Phone"]);
     const targets = Object.values(map).filter(Boolean);
     assert.equal(new Set(targets).size, targets.length);
+  });
+});
+
+describe("precedence on the upload screen", () => {
+  /*
+   * THE HOLE THIS CLOSES.
+   *
+   * planRows used to diff the cell against the record and write whatever
+   * differed, consulting nothing. So the one import path the office actually
+   * uses — this screen — could silently undo an approved teacher correction by
+   * re-importing last term's export. Every other importer went through
+   * import-plan.ts and was safe; this one did not.
+   */
+  const owned = (sourceKey: string): PrecedenceContext => ({
+    sourceKey: "psp",
+    precedence: { owners: new Map(), ranks: new Map([["psp", 30]]) },
+    origins: new Map([
+      ["S1001|phone", { sourceKey, sourceUpdatedAt: new Date() }],
+    ]),
+  });
+
+  const file = () =>
+    table([
+      {
+        "Student ID": "S1001",
+        "SR No": "",
+        Class: "Class 6",
+        Name: "Aarav",
+        Mobile: "9812345670",
+        "Father Name": "",
+      },
+    ]);
+
+  const stored = () => [
+    student({ id: "S1001", name: "Aarav", classLabel: "Class 6", phone: "9800000000" }),
+  ];
+
+  test("a re-import cannot undo an approved teacher correction", () => {
+    const plan = planRows(file(), MAP, stored(), owned("teacher"));
+    const row = byRow(plan, 2);
+
+    assert.equal(row.changes.phone, undefined, "the phone must not be written");
+    assert.equal(plan.writes[0]!.write, undefined, "and nothing is queued for it");
+    assert.match(row.blocked![0]!.reason, /teacher's correction was approved/);
+    assert.equal(plan.blockedCount, 1);
+  });
+
+  test("nor undo what the office set by hand", () => {
+    const plan = planRows(file(), MAP, stored(), owned("office"));
+    assert.match(byRow(plan, 2).blocked![0]!.reason, /the office set this by hand/);
+  });
+
+  test("a refused row does not claim it already matched", () => {
+    // "Already matches" would tell the office the file agrees with the record,
+    // when in fact it disagreed and was overruled.
+    const row = byRow(planRows(file(), MAP, stored(), owned("teacher")), 2);
+    assert.equal(row.outcome, "skip");
+    assert.match(row.message!, /refused/i);
+  });
+
+  test("a source may always correct itself", () => {
+    // Otherwise re-importing a newer PSP export would do nothing at all.
+    const plan = planRows(file(), MAP, stored(), owned("psp"));
+    assert.deepEqual(plan.rows[0]!.changes.phone, {
+      from: "9800000000",
+      to: "9812345670",
+    });
+    assert.equal(plan.blockedCount, 0);
+  });
+
+  test("what it does write, it claims", () => {
+    // A value written without its origin recorded is indistinguishable from one
+    // nobody has claimed, and the next file overwrites it.
+    const plan = planRows(file(), MAP, stored(), owned("psp"));
+    assert.ok(
+      plan.origins.some(
+        (origin) =>
+          origin.studentId === "S1001" &&
+          origin.fieldKey === "phone" &&
+          origin.sourceKey === "psp",
+      ),
+    );
+  });
+
+  test("origins use the database column name, not the property name", () => {
+    // value_sources and field_sources both speak snake_case. Stamping
+    // "fatherName" would claim a field nothing ever looks up.
+    const plan = planRows(
+      table([
+        {
+          "Student ID": "S1001",
+          "SR No": "",
+          Class: "Class 6",
+          Name: "Aarav",
+          Mobile: "",
+          "Father Name": "Suresh",
+        },
+      ]),
+      MAP,
+      stored(),
+      OPEN,
+    );
+    const keys = plan.origins.map((origin) => origin.fieldKey);
+    assert.ok(keys.includes("father_name"), keys.join(","));
+    assert.equal(keys.includes("fatherName"), false);
   });
 });
