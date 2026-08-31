@@ -220,9 +220,8 @@ const DUE_FMT = new Intl.DateTimeFormat("en-IN", {
 const formatDue = (date: string) => DUE_FMT.format(new Date(`${date}T12:00:00+05:30`));
 
 /**
- * Past the due date but still inside the grace period — resolveTeacherToken
- * has already refused anything beyond it, so reaching here means she can still
- * answer and should be told so rather than shown a red flag.
+ * Past the due date. The deadline remains useful for prioritising the work, but
+ * it never disables the card or the request behind it.
  */
 function isOverdue(dueDate: string): boolean {
   // Was the only screen in the app computing this in the school's own zone

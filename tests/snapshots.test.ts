@@ -31,6 +31,7 @@ const student = (over: Partial<Student> = {}): Student =>
     address: null,
     busRoute: "Amet City",
     house: "Rana Pratap",
+    photoPath: null,
     aadhaarLast4: null,
     status: "active",
     source: "psp",
@@ -105,6 +106,23 @@ describe("buildSnapshots", () => {
 
     assert.ok("mother_name" in snapshot.values);
     assert.equal(snapshot.values.mother_name, null);
+  });
+
+  it("prefills a photo request from the student's existing backend photo", () => {
+    const pathname = "students/s1/20260831-0123456789abcdef01234567.jpg";
+    const snapshot = buildSnapshots(
+      [student({ photoPath: pathname })],
+      [
+        field({
+          key: "photo",
+          inputType: "photo",
+          targetColumn: "photo_path",
+        }),
+      ],
+      new Map(),
+    ).get("s1")!;
+
+    assert.equal(snapshot.values.photo, pathname);
   });
 });
 

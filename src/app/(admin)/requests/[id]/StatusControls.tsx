@@ -79,7 +79,7 @@ export function StatusControls({
       <span className="text-xs text-[var(--color-ink-muted)]">
         {closed
           ? "The link is dead — it 404s exactly like an unknown token."
-          : "Closing kills the link straight away, before the due date."}
+          : "Closing kills the link straight away, whatever the due date."}
       </span>
     </div>
   );

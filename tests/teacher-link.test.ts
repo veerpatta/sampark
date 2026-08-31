@@ -7,7 +7,6 @@ import { createBatch, getBatch, markGroupSent } from "../src/lib/batches";
 import { recordSubmissions } from "../src/lib/submissions";
 import { photoPathname } from "../src/lib/photos";
 import {
-  GRACE_DAYS,
   generateToken,
   isListableOnTeacherPage,
   resolveTeacherToken,
@@ -173,17 +172,20 @@ describe("rotation and revoke-all", () => {
 });
 
 describe("the two resolvers agree, except where they must not", () => {
-  test("an expired request drops off the page and off its own link together", async () => {
+  test("an overdue request stays on the page and its own link keeps working", async () => {
     const scenario = await createFanOutScenario();
-    const created = await makeRequest(scenario, 0, futureDate(1));
+    const created = await makeRequest(scenario, 0, "2000-01-01");
     const token = await giveLink(scenario.groups[0]!.teacherId);
 
-    const later = new Date(Date.now() + (GRACE_DAYS + 3) * 86400000);
-    assert.equal(await resolveToken(created.token, later), null);
+    assert.ok(await resolveToken(created.token));
 
-    const page = await resolveTeacherToken(token, later);
+    const page = await resolveTeacherToken(token);
     assert.ok(page, "her page still opens");
-    assert.deepEqual(page!.items, [], "but the dead request is not on it");
+    assert.deepEqual(
+      page!.items.map((item) => item.token),
+      [created.token],
+      "the overdue request remains available",
+    );
   });
 
   test("an ARCHIVED request leaves the page while its own link still opens", async () => {

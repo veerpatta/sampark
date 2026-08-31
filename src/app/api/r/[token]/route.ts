@@ -13,8 +13,8 @@ import { guard } from "./guard";
  * The teacher-facing API. The only endpoints reachable without an account.
  *
  * Both verbs resolve the token first and return an identical 404 for every
- * rejection — unknown, expired, closed. resolveToken returns null
- * for all of them so this file cannot tell them apart even by accident.
+ * rejection — unknown or deliberately closed. Due dates are informational and
+ * never block a read or write.
  *
  * Security headers for /api/r/* are set in next.config.ts.
  */

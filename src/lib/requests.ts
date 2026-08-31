@@ -734,11 +734,8 @@ export function groupBoardRows(
       sample: children.slice(0, 3).map((child) => child.audienceLabel),
       requestIds: children.map((child) => child.id),
       /*
-       * Never 'expired'. Nothing in the codebase writes that value — it is read
-       * by checkRequestAccess and derived from the due date, never stored — so a
-       * line claiming it would be describing a state no child can be in.
-       *
-       * The partial case is not folded into one word either: the board shows
+       * Due dates do not change link state. The partial case is not folded into
+       * one word either: the board shows
        * this alongside "3/5 closed" rather than picking a side, because a chip
        * that claims one state nineteen rows disagree about is worse than a chip
        * that says how they disagree.

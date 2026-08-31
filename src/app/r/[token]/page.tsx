@@ -11,9 +11,9 @@ import { T } from "@/components/teacher/strings";
  * exactly the fields requested. Authorization is resolved in
  * `src/lib/auth/token.ts` and nowhere else.
  *
- * Every rejection (unknown token, expired, closed) renders an
- * identical 404. resolveToken returns null for all of them so this page cannot
- * accidentally tell them apart.
+ * Every rejection (unknown token or deliberately closed) renders an identical
+ * 404. A passed due date is not a rejection; the deadline remains visible and
+ * the teacher can keep working.
  */
 export const dynamic = "force-dynamic";
 

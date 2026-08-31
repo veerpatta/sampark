@@ -588,7 +588,7 @@ export type BatchLink = {
    */
   classLabels: string[];
   sentAt: Date | null;
-  /** open | submitted | closed | expired. What the LINK is doing. */
+  /** open | submitted | closed. What the link is doing. */
   status: string;
   /** Whether the office has already swept this one off the boards. */
   archivedAt: Date | null;

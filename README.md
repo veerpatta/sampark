@@ -551,10 +551,12 @@ disappear.
 Plan section 5 offers an optional 4-digit PIN on `/r/*`. It was removed on
 request, so a link is now a pure bearer token. The plan's threat model already
 accepted forwarding as proportionate — the same teacher carries a paper register
-with the same data — and what remains is the short expiry, the three-day grace
-cut-off, **close/reopen**, and the fact that a request link reaches only one
-group. Closing a request is now the fastest way to kill a link that has gone
-somewhere it should not. Worth revisiting before an Aadhaar collection round.
+with the same data — and what remains is explicit **close/reopen**, token
+rotation/revocation, rate limiting, and the fact that a request link reaches only
+one group. A due date is a deadline, not an expiry: teachers can keep adding or
+correcting data after it passes. Closing a request is the way to kill a link that
+has gone somewhere it should not. Worth revisiting before an Aadhaar collection
+round.
 
 ### The durable teacher link
 

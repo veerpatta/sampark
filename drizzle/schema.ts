@@ -414,9 +414,10 @@ export const requests = pgTable(
      * link is now a pure bearer token: whoever holds it can open that one
      * class. The plan's threat model already accepted forwarding as
      * proportionate — the same teacher carries a paper register with the same
-     * data — and the mitigations that remain are the short expiry, the 3-day
-     * grace cut-off, close/reopen, and the fact that no link reaches more than
-     * one class. Worth revisiting before an Aadhaar collection round.
+     * data — and the mitigations that remain are explicit close/reopen, token
+     * rotation/revocation, rate limiting, and the fact that no request link
+     * reaches more than one group. Worth revisiting before an Aadhaar
+     * collection round.
      *
      * RECONSIDERED when marks began applying without review: a forwarded link
      * now writes a stored value with no human in the loop, where before the
@@ -427,7 +428,7 @@ export const requests = pgTable(
      * fields are unchanged, so a leaked link still cannot alter a phone number,
      * a parent's name or a photograph.
      */
-    status: text("status").notNull().default("open"), // open | submitted | closed | expired
+    status: text("status").notNull().default("open"), // open | submitted | closed (expired is legacy-closed)
     /**
      * The number this link was actually sent to, when it is not the teacher's
      * saved one. NULL means "use teachers.phone".

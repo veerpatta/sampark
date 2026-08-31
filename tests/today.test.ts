@@ -58,8 +58,7 @@ describe("isoDayFrom", () => {
     assert.equal(isoDayFrom(new Date("2026-08-16T19:00:00Z"), 5), "2026-08-22");
   });
 
-  it("goes backwards for the grace floor", () => {
-    // What the token resolver's loose floor uses. Negative days, same rule.
+  it("goes backwards as well as forwards", () => {
     assert.equal(isoDayFrom(new Date("2026-08-16T09:00:00Z"), -4), "2026-08-12");
   });
 

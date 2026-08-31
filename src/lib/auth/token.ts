@@ -1,11 +1,10 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "../db";
 // Sits below this file on purpose — lib/requests.ts imports generateToken from
 // here, so the shared "answered" rule cannot live there. See lib/answered.ts.
 import { answersForRequest, coveredStudentsQuery } from "../answered";
 import { compareClassLabels, compareStudentNames } from "../classes";
-import { isoDayFrom } from "../today";
 import type { RosterSnapshot } from "../snapshots";
 import type { FieldDef } from "../../../drizzle/schema";
 
@@ -28,9 +27,6 @@ import type { FieldDef } from "../../../drizzle/schema";
  * through. Neither kind can reach another teacher's requests.
  */
 
-/** Grace period after due_date during which a link still opens. */
-export const GRACE_DAYS = 3;
-
 /**
  * 12 random bytes -> 16 url-safe characters -> ~96 bits of entropy.
  * Combined with rate limiting this makes enumeration infeasible.
@@ -39,7 +35,7 @@ export function generateToken(): string {
   return randomBytes(12).toString("base64url");
 }
 
-export type TokenRejection = "not_found" | "expired" | "closed";
+export type TokenRejection = "not_found" | "closed";
 
 export type TokenCheckInput = {
   status: string; // open | submitted | closed | expired
@@ -54,28 +50,14 @@ export type TokenCheckResult =
  * Pure predicate over a request row. Kept separate from the database read so it
  * can be unit tested without a connection.
  *
- * `now` is injectable so expiry tests do not depend on the wall clock.
- *
  * The optional PIN from plan section 5 was removed on request — see the note on
- * `requests` in drizzle/schema.ts. What is left is the whole gate: an open
- * request, inside its due date plus the grace period.
+ * `requests` in drizzle/schema.ts. A due date is a deadline for the teacher and
+ * the office, not an authorization boundary: an overdue link remains usable
+ * until the office deliberately closes it.
  */
-export function checkRequestAccess(
-  request: TokenCheckInput,
-  now: Date = new Date(),
-): TokenCheckResult {
+export function checkRequestAccess(request: TokenCheckInput): TokenCheckResult {
   if (request.status === "closed" || request.status === "expired") {
     return { ok: false, reason: "closed" };
-  }
-
-  const due =
-    typeof request.dueDate === "string"
-      ? new Date(`${request.dueDate}T23:59:59+05:30`)
-      : request.dueDate;
-
-  const hardStop = new Date(due.getTime() + GRACE_DAYS * 24 * 60 * 60 * 1000);
-  if (now > hardStop) {
-    return { ok: false, reason: "expired" };
   }
 
   return { ok: true };
@@ -147,18 +129,14 @@ export type ResolvedRequest = {
 /**
  * Resolve a token to exactly one request, one class and one field set.
  *
- * Returns null for EVERY rejection — unknown token, expired, closed. The caller
- * renders an identical 404 in all cases. A response that distinguished
- * "expired" from "never existed" would confirm to anyone probing that a token
- * was real, which is the first half of an attack.
+ * Returns null for EVERY rejection — unknown token or deliberately closed. The
+ * caller renders an identical 404 in both cases. Due dates never reject a
+ * request; they remain visible as deadlines after they pass.
  *
  * The roster is read from `request_students`, never recomputed from `students`.
  * The teacher must see what she was sent.
  */
-export async function resolveToken(
-  token: string,
-  now: Date = new Date(),
-): Promise<ResolvedRequest | null> {
+export async function resolveToken(token: string): Promise<ResolvedRequest | null> {
   // A token is 16 base64url characters. Anything else cannot be one, and
   // bailing here keeps junk out of the query.
   if (!/^[A-Za-z0-9_-]{16}$/.test(token)) return null;
@@ -177,7 +155,6 @@ export async function resolveToken(
 
   const access = checkRequestAccess(
     { status: row.request.status, dueDate: row.request.dueDate },
-    now,
   );
   if (!access.ok) return null;
 
@@ -315,15 +292,6 @@ export type ResolvedTeacherPage = {
 };
 
 /**
- * The school's calendar date `days` before `now`, as YYYY-MM-DD.
- *
- * The zone lives in lib/today.ts now. This file had the only correct answer in
- * the app for a while and the boards had a different one; one implementation is
- * how they stop being able to disagree.
- */
-const isoDaysBefore = (now: Date, days: number) => isoDayFrom(now, -days);
-
-/**
  * Resolve a durable teacher token to whatever is currently open for her.
  *
  * Returns null for EVERY rejection — malformed, unknown, revoked, teacher
@@ -337,14 +305,12 @@ const isoDaysBefore = (now: Date, days: number) => isoDayFrom(now, -days);
  * broken — after which the whole point of the durable link is gone. It leaks
  * nothing: reaching a 200 already requires holding a live 16-character token.
  *
- * EVERY ACCEPT AND REJECT IS checkRequestAccess. The SQL below narrows only on
- * things authorization does not depend on — whose requests they are, whether
- * the office is still watching them, and a deliberately LOOSE date floor that
- * can only ever admit rows the pure predicate then re-checks.
+ * EVERY ACCEPT AND REJECT IS checkRequestAccess. The query deliberately has no
+ * due-date filter: overdue work stays on the teacher's page until the office
+ * closes or archives it.
  */
 export async function resolveTeacherToken(
   token: string,
-  now: Date = new Date(),
 ): Promise<ResolvedTeacherPage | null> {
   // The same shape guard as resolveToken, before any query runs.
   if (!/^[A-Za-z0-9_-]{16}$/.test(token)) return null;
@@ -383,19 +349,13 @@ export async function resolveTeacherToken(
         // still opens — that is unchanged — but a MENU should only offer what
         // somebody is still watching. This page is stricter than /r/ on purpose.
         isNull(schema.requests.archivedAt),
-        // A LOOSE floor, and the direction matters. checkRequestAccess accepts
-        // until dueDate 23:59:59 IST + GRACE_DAYS; taking an extra day here
-        // guarantees this filter can only admit rows the pure predicate then
-        // re-checks, never reject one it would have accepted. Tighten it and an
-        // authorization decision has quietly moved into SQL.
-        gte(schema.requests.dueDate, isoDaysBefore(now, GRACE_DAYS + 1)),
       ),
     )
     .orderBy(asc(schema.requests.dueDate), asc(schema.requests.createdAt));
 
   const open = rows.filter(
     (row) =>
-      checkRequestAccess({ status: row.status, dueDate: row.dueDate }, now).ok &&
+      checkRequestAccess({ status: row.status, dueDate: row.dueDate }).ok &&
       isListableOnTeacherPage(row.fieldKeys),
   );
 

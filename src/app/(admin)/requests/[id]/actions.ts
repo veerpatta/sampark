@@ -13,7 +13,7 @@ import {
  * Close and reopen a request.
  *
  * Closing is how the office says "we have what we need" — the link stops
- * opening immediately, before the due date and its grace period run out.
+ * opening immediately. Due dates themselves never disable a link.
  * resolveToken treats a closed request exactly like one that never existed, so
  * a forwarded link goes dead the moment this is clicked. That makes it the main
  * mitigation left now the PIN is gone.
@@ -209,7 +209,7 @@ export async function bulkCloseRequests(ids: string[]): Promise<BulkOutcome> {
     .update(schema.requests)
     .set({ status: "closed", closedAt: new Date() })
     // Only the ones that are actually open. Re-closing a closed request would
-    // move its closedAt, which is the timestamp the grace period reads.
+    // move its closedAt, which is part of the request's audit history.
     .where(
       and(
         inArray(schema.requests.id, list),

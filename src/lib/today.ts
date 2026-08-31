@@ -6,9 +6,8 @@
  * while the teacher's own page and the token resolver used Asia/Kolkata. IST is
  * UTC+5:30, so between 18:30 and 24:00 UTC — half past midnight to six in the
  * morning, IST — the two disagreed by a day. In that window the console called
- * a request overdue that the teacher's page still showed as due today, and the
- * grace period the resolver enforced was a day out of step with the "past due"
- * the office was reading. Nobody is at a desk at 2am, but the boards are
+ * a request overdue that the teacher's page still showed as due today. Nobody
+ * is at a desk at 2am, but the boards are
  * rendered by whoever opens them and the cron-free reminders are sent by hand
  * the moment somebody notices — which is exactly first thing in the morning.
  *
@@ -56,8 +55,8 @@ export function todayISO(now: Date = new Date()): string {
 /**
  * The school's calendar date `days` either side of an instant.
  *
- * Negative goes back, which is what the token resolver's grace floor wants.
- * Adding whole days to the millisecond value rather than with `setDate` keeps
+ * Negative goes back. Adding whole days to the millisecond value rather than
+ * with `setDate` keeps
  * it independent of the machine's own zone — a server in UTC and a browser in
  * IST both land on the same answer.
  */

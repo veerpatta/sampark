@@ -211,7 +211,7 @@ CREATE TABLE requests (
   field_keys    TEXT[] NOT NULL,
   period        TEXT,                         -- required when collecting marks
   due_date      DATE NOT NULL,
-  status        TEXT NOT NULL DEFAULT 'open', -- open | submitted | closed | expired
+  status        TEXT NOT NULL DEFAULT 'open', -- open | submitted | closed
   created_by    TEXT NOT NULL REFERENCES users(id),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   opened_at     TIMESTAMPTZ,
@@ -232,9 +232,10 @@ definition.
 (see section 5, and open decision #5); it was removed on request and a link is now
 a pure bearer token. The threat model here already accepted forwarding as
 proportionate — the same teacher carries a paper register with the same data — and
-what remains is the short expiry, the three-day grace cut-off, close/reopen, and
-the fact that a request link reaches exactly one group. Worth revisiting before an
-Aadhaar collection round. See "The PIN was removed" in the README.
+what remains is explicit close/reopen, token rotation/revocation, rate limiting,
+and the fact that a request link reaches exactly one group. A due date remains a
+visible deadline but never disables the link. Worth revisiting before an Aadhaar
+collection round. See "The PIN was removed" in the README.
 
 Since shipped and not in the table: `archived_at`, `sent_at`/`sent_by`,
 `contact_phone`, and `batch_id` — a send-to-many round is one row in
@@ -339,7 +340,7 @@ Everything hinges on the token. Treat it as a bearer credential.
 |---|---|
 | Token generation | `crypto.randomBytes(12).toString('base64url')` — 16 chars, ~96 bits |
 | Token scope | A request token resolves to exactly one `request` → one group → one field set. A teacher token resolves to that one teacher's currently-open requests and nothing else. Both enforced server-side in `lib/auth/token.ts` |
-| Expiry | Rejected after `due_date + 3 days` grace, or once `status = 'closed'` |
+| Expiry | Due dates never expire links. Access ends only when the office closes the request (or a legacy row is already marked `expired`) |
 | Re-submission | Allowed until admin closes the request. Later submissions append; they never overwrite |
 | ~~Optional PIN~~ | **Removed.** A link is a pure bearer token; see the note in section 4.1. Sensitive rounds are kept off the durable page instead, by `NEVER_ON_TEACHER_PAGE` — Aadhaar, Jan Aadhaar, DOB and photo |
 | Rate limiting | Four budgets, counted in a Neon table rather than Upstash: 30/min per token and 100/hour per IP, plus 60/min and 500/hour for photo uploads, so a class of forty-six photographs does not starve her own answer flushes. Not in memory — Vercel runs many instances and each would keep a private tally |
@@ -351,7 +352,7 @@ Everything hinges on the token. Treat it as a bearer credential.
 | Admin session | Auth.js JWT session, 8-hour expiry, secure httpOnly cookie |
 | Approval rights | `office` role cannot approve into master. Only `admin` / `owner` |
 
-**Threat we accept:** a teacher forwards a link. A request link (`/r/`) exposes one group's names and numbers; a durable teacher link (`/t/`) exposes the list of whatever is currently open for that one teacher, and through it those groups' rosters. It never reaches another teacher's work. This is proportionate for the same reason it always was — the same teacher already carries a paper register with the same data — but it is a larger blast radius than a single request link, and it is bounded by four things rather than by scope alone: `/r/` links still expire on `due_date + 3 days`; the durable link lists only what is open, so it shrinks to nothing between rounds; the owner can rotate one teacher's link or revoke every link from Settings, instantly and without a deploy; and a round collecting Aadhaar, Jan Aadhaar or date of birth never appears on a durable page at all — it goes out one message at a time, the way every round did before.
+**Threat we accept:** a teacher forwards a link. A request link (`/r/`) exposes one group's names and numbers; a durable teacher link (`/t/`) exposes the list of whatever is currently open for that one teacher, and through it those groups' rosters. It never reaches another teacher's work. This is proportionate for the same reason it always was — the same teacher already carries a paper register with the same data — but it is a larger blast radius than a single request link. Due dates do not expire access, so it is bounded by deliberate controls instead: the office can close and reopen each request; the owner can rotate one teacher's link or revoke every link from Settings, instantly and without a deploy; rate limits make token enumeration infeasible; and a round collecting Aadhaar, Jan Aadhaar, date of birth or photos never appears on a durable page at all — it goes out one message at a time, the way every round did before.
 
 **Threat we do not accept:** token enumeration. 96 bits of entropy plus rate limiting makes guessing infeasible.
 
@@ -659,7 +660,7 @@ remove. Everything else here shipped. See the TODO at the foot of `src/lib/excel
 ### Phase 6 — Hardening (1 day)
 
 - Rate limiting on `/api/r/*`
-- Token expiry and close/reopen
+- Non-expiring due dates and explicit close/reopen
 - `/settings/fields` registry editor
 - `/settings/audit` change log view
 - Tests on `lib/auth/token.ts` and the review transaction — these two are where a bug is expensive
@@ -822,7 +823,7 @@ One prompt per phase. Run them in order and review the diff before merging.
 > In this Next.js + Drizzle + Neon repo, implement the schema in section 4 of SAMPARK_BUILD_PLAN.md as `drizzle/schema.ts`. Generate the migration. Write a seed script for `field_defs` from section 9 and `teachers`. Then build `/students/import`: accept CSV or XLSX, let the user map columns to fields, run a dry-run that reports would-insert / would-update / would-skip counts with a per-row preview, and only write on explicit confirmation. Match on student ID first, then SR number, never on name. Blank cells mean no change.
 
 **Phase 2**
-> Implement request creation. `POST /api/requests` generates a 16-char url-safe crypto-random token, inserts the request, and freezes the roster into `request_students` with a JSONB snapshot of the current values for the requested fields. Build `/requests/new` and `/requests`. Build `/r/[token]` as a server component that resolves the token in `lib/auth/token.ts`, returns 404 for invalid/expired/closed tokens, and renders the roster read-only. Add `X-Robots-Tag: noindex, nofollow` and `Referrer-Policy: no-referrer` headers on `/r/*` in next.config.ts.
+> Implement request creation. `POST /api/requests` generates a 16-char url-safe crypto-random token, inserts the request, and freezes the roster into `request_students` with a JSONB snapshot of the current values for the requested fields. Build `/requests/new` and `/requests`. Build `/r/[token]` as a server component that resolves the token in `lib/auth/token.ts`, returns 404 for invalid or deliberately closed tokens, keeps overdue links usable, and renders the roster read-only. Add `X-Robots-Tag: noindex, nofollow` and `Referrer-Policy: no-referrer` headers on `/r/*` in next.config.ts.
 
 **Phase 3**
 > Build the teacher submit flow. Each student row has तीन actions: सही है (confirm), बदलें (correct, reveals inputs), नहीं है (not in class). Marks-mode fields skip the confirm step and show numeric inputs directly. Validate client-side from the field registry and re-validate identically server-side. `POST /api/r/[token]` inserts submissions; a confirmation matching the frozen snapshot must produce action='confirmed' with no reviewable change. Then build `/review` with batch approve/reject in a single transaction that guards on `review_status = 'pending'`, writes change_log, and updates students or student_records per the field's target.
