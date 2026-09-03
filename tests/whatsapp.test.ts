@@ -103,6 +103,116 @@ describe("buildReminderMessage", () => {
     assert.ok(message.includes(base.url));
     assert.ok(!message.includes("सही है"), "the how-to belongs in the first message");
   });
+
+  /**
+   * Naming who is left, which is the whole point of the change.
+   *
+   * "20 of 24 done" made her open the link and hunt for the four cards she
+   * skipped, while the app held the answer the entire time.
+   */
+  const four = [
+    { studentId: "S1", rollNo: 12, name: "Anita Kumari", classLabel: "Class 8" },
+    { studentId: "S2", rollNo: 19, name: "Deepak Sharma", classLabel: "Class 8" },
+    { studentId: "S3", rollNo: 23, name: "Pooja Meena", classLabel: "Class 8" },
+    { studentId: "S4", rollNo: 31, name: "Vikram Singh", classLabel: "Class 8" },
+  ];
+
+  it("names the children who are left, and asks for them", () => {
+    const message = buildReminderMessage({
+      ...base,
+      audience: { kind: "class", label: "Class 8" },
+      outstanding: 4,
+      pending: four,
+    });
+
+    assert.ok(message.includes("12. Anita Kumari"));
+    assert.ok(message.includes("31. Vikram Singh"));
+    assert.ok(message.includes("4 students are left"));
+    assert.ok(message.includes("इनकी जानकारी भर दें"), "the ask, in her language");
+  });
+
+  it("keeps the link the last thing in the bubble", () => {
+    // She has to tap it. A list scrolling past it would bury it.
+    const message = buildReminderMessage({
+      ...base,
+      audience: { kind: "class", label: "Class 8" },
+      outstanding: 4,
+      pending: four,
+    });
+    assert.ok(
+      message.indexOf("Vikram Singh") < message.indexOf(base.url),
+      "the names must sit above the URL",
+    );
+  });
+
+  it("says nothing extra when the caller never looked", () => {
+    // undefined and null are different states: not looking must not become a
+    // confident claim about a number nobody counted.
+    const bare = buildReminderMessage({
+      ...base,
+      audience: { kind: "class", label: "Class 8" },
+    });
+    assert.ok(!bare.includes("students are"));
+    assert.ok(!bare.includes("बाकी हैं —"));
+  });
+
+  it("gives the count when the list is too long to be worth carrying", () => {
+    const message = buildReminderMessage({
+      ...base,
+      audience: { kind: "house", label: "Rana Pratap" },
+      outstanding: 140,
+      pending: null,
+    });
+    assert.ok(message.includes("140 students are still left"));
+    assert.ok(!message.includes("please fill these in"));
+  });
+
+  it("names the register a child came from only when the link spans several", () => {
+    // A subject link is eighty-four children from three books, and a bare name
+    // does not say which. A class link repeating its own label is noise.
+    const spanning = buildReminderMessage({
+      ...base,
+      audience: { kind: "subject", label: "Chemistry — H", fieldKeys: ["fa_chemistry"] },
+      outstanding: 4,
+      pending: four,
+    });
+    assert.ok(spanning.includes("Anita Kumari (Class 8)"));
+
+    const oneClass = buildReminderMessage({
+      ...base,
+      audience: { kind: "class", label: "Class 8" },
+      outstanding: 4,
+      pending: four,
+    });
+    assert.ok(!oneClass.includes("(Class 8)"));
+  });
+
+  it("keeps Latin digits in the roll numbers, like every other string here", () => {
+    const message = buildReminderMessage({
+      ...base,
+      audience: { kind: "class", label: "Class 8" },
+      outstanding: 4,
+      pending: four,
+    });
+    assert.ok(!/[०-९]/.test(message));
+  });
+
+  it("survives the round trip into a wa.me link at full length", () => {
+    const long = Array.from({ length: 25 }, (_, i) => ({
+      studentId: `S${i}`,
+      rollNo: i + 1,
+      name: `Some Long Child Name ${i + 1}`,
+      classLabel: "Class 8",
+    }));
+    const message = buildReminderMessage({
+      ...base,
+      audience: { kind: "class", label: "Class 8" },
+      outstanding: 25,
+      pending: long,
+    });
+    const link = buildWhatsAppLink("9876543210", message);
+    assert.equal(new URL(link).searchParams.get("text"), message);
+  });
 });
 
 describe("buildWhatsAppLink", () => {
@@ -390,6 +500,42 @@ describe("buildRoundReminderMessage", () => {
     );
   });
 
+  it("delegates byte for byte WITH the names too", () => {
+    /**
+     * THE HALF OF THE CONTRACT THAT IS EASY TO MISS.
+     *
+     * buildRoundReminderMessage delegates when there is one form and no durable
+     * page, and its own comment says most of the staff are in that branch. If
+     * only the round builder learned about pending names, every one of those
+     * teachers would silently keep receiving the old nameless message and
+     * nobody would find out from a passing test suite.
+     */
+    const pending = [
+      { studentId: "S1", rollNo: 12, name: "Anita Kumari", classLabel: "Class 8" },
+      { studentId: "S2", rollNo: 19, name: "Deepak Sharma", classLabel: "Class 8" },
+    ];
+    const withNames = { ...item, answered: 22, pending };
+
+    const round = buildRoundReminderMessage({
+      teacherName: "Sunita",
+      items: [withNames],
+    });
+
+    assert.equal(
+      round,
+      buildReminderMessage({
+        teacherName: "Sunita",
+        audience: withNames.audience,
+        title: withNames.title,
+        dueDate: withNames.dueDate,
+        url: withNames.url,
+        outstanding: 2,
+        pending,
+      }),
+    );
+    assert.ok(round.includes("12. Anita Kumari"), "the names must reach her");
+  });
+
   it("sends her durable page ONCE instead of a link per form", () => {
     const message = buildRoundReminderMessage({
       teacherName: "Prateek",
@@ -408,6 +554,95 @@ describe("buildRoundReminderMessage", () => {
     );
     assert.ok(message.includes("https://x.invalid/t/abc"));
     assert.ok(!message.includes("/r/a"), "a per-form link survived alongside her page");
+  });
+
+  const list = (n: number, prefix: string) =>
+    Array.from({ length: n }, (_, i) => ({
+      studentId: `${prefix}${i}`,
+      rollNo: i + 1,
+      name: `${prefix} Child ${i + 1}`,
+      classLabel: "Class 8",
+    }));
+
+  it("names a short list inline but never a slice of a long one", () => {
+    /**
+     * Among several items the names run together on one wrapped line, so the cap
+     * is much lower than the vertical block's. Twenty-five comma-joined is three
+     * hundred and seventy characters of unbroken text — fewer lines than the
+     * wall, and less use than the "20 of 45 done" sitting directly above it.
+     *
+     * So a long list names NOBODY rather than its first eight: a roll-ordered
+     * slice is still an arbitrary subset, and the progress line already carries
+     * the honest version.
+     */
+    const message = buildRoundReminderMessage({
+      teacherName: "Prateek",
+      items: [
+        {
+          ...item,
+          audience: { kind: "class", label: "Class 8" },
+          url: "https://x.invalid/r/a",
+          dueDate: "2026-08-01",
+          answered: 40,
+          rosterSize: 44,
+          pending: list(4, "Nearly"),
+        },
+        {
+          ...item,
+          audience: { kind: "class", label: "Class 9" },
+          url: "https://x.invalid/r/b",
+          dueDate: "2026-08-20",
+          answered: 20,
+          rosterSize: 45,
+          pending: list(25, "Many"),
+        },
+      ],
+    });
+
+    assert.ok(
+      message.includes("Nearly Child 1"),
+      "the nearly-finished list is where naming earns its place",
+    );
+    assert.ok(
+      !message.includes("Many Child 1"),
+      "a long list must show no names at all inline, not its first eight",
+    );
+    assert.ok(message.includes("20 of 45 done"), "progress still carries it");
+  });
+
+  it("spends the budget oldest-deadline-first, whole items only", () => {
+    // Items arrive in due-date order, so the thing she is latest on gets named.
+    // Six inline lists of eight would be forty-eight names in one message; the
+    // budget stops that, and an item that cannot fit shows none rather than some.
+    const short = (prefix: string, dueDate: string) => ({
+      ...item,
+      audience: { kind: "class" as const, label: `Class ${prefix}` },
+      url: `https://x.invalid/r/${prefix}`,
+      dueDate,
+      answered: 0,
+      rosterSize: 8,
+      pending: list(8, prefix),
+    });
+
+    const message = buildRoundReminderMessage({
+      teacherName: "Prateek",
+      items: [
+        short("A", "2026-08-01"),
+        short("B", "2026-08-02"),
+        short("C", "2026-08-03"),
+        short("D", "2026-08-04"),
+        short("E", "2026-08-05"),
+        short("F", "2026-08-06"),
+      ],
+    });
+
+    // 40 / 8 = five items named, and the sixth is over budget.
+    assert.ok(message.includes("A Child 1"));
+    assert.ok(message.includes("E Child 1"));
+    assert.ok(
+      !message.includes("F Child 1"),
+      "the sixth list exhausted the budget and must name nobody",
+    );
   });
 
   it("falls back to one link per form when she has no page", () => {

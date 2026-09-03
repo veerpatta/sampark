@@ -40,6 +40,8 @@ function row(over: Partial<RequestBoardRow> = {}): RequestBoardRow {
     batchId: null,
     createdAt: new Date("2026-08-10T04:00:00Z"),
     sentAt: new Date("2026-08-10T05:00:00Z"),
+    remindedAt: null,
+    reminderCount: 0,
     ...over,
   };
 }
@@ -234,5 +236,113 @@ describe("groupProgressByTeacher", () => {
       TODAY,
     );
     assert.equal(teacher!.changesPending, 7);
+  });
+
+  /**
+   * Whether today's chase has already reached her.
+   *
+   * The rule is `every`, over the forms she has NOT finished, and both halves
+   * have a failure behind them.
+   */
+  describe("remindedToday", () => {
+    // 2026-08-13 in Asia/Kolkata. Late enough in UTC that the IST date is
+    // already the 13th, which is the window lib/today.ts exists for.
+    const TODAY_AT = new Date("2026-08-13T06:00:00Z");
+    const YESTERDAY_AT = new Date("2026-08-12T06:00:00Z");
+
+    it("is true only when every unfinished form was chased today", () => {
+      // One message carries all of them, so a teacher with one of two ticked was
+      // sent something that did not cover the other — she belongs back in the
+      // queue. Same rule as groupLinksByRecipient.
+      const [partial] = groupProgressByTeacher(
+        [
+          row({ id: "R1", remindedAt: TODAY_AT, reminderCount: 1 }),
+          row({ id: "R2", remindedAt: null }),
+        ],
+        MARKS,
+        TODAY,
+      );
+      assert.equal(partial!.remindedToday, false);
+
+      const [both] = groupProgressByTeacher(
+        [
+          row({ id: "R1", remindedAt: TODAY_AT, reminderCount: 1 }),
+          row({ id: "R2", remindedAt: TODAY_AT, reminderCount: 2 }),
+        ],
+        MARKS,
+        TODAY,
+      );
+      assert.equal(both!.remindedToday, true);
+    });
+
+    it("ignores forms she has already finished", () => {
+      // A chase is only ever about what is outstanding. Letting a link she
+      // completed last week count would leave her permanently un-ticked.
+      const [teacher] = groupProgressByTeacher(
+        [
+          row({ id: "R1", studentsAnswered: 24, remindedAt: null }),
+          row({ id: "R2", remindedAt: TODAY_AT, reminderCount: 1 }),
+        ],
+        MARKS,
+        TODAY,
+      );
+      assert.equal(teacher!.remindedToday, true);
+    });
+
+    it("goes stale overnight, so a new day opens a fresh chase", () => {
+      const [teacher] = groupProgressByTeacher(
+        [row({ id: "R1", remindedAt: YESTERDAY_AT, reminderCount: 1 })],
+        MARKS,
+        TODAY,
+      );
+      assert.equal(teacher!.remindedToday, false);
+      assert.equal(teacher!.lastRemindedAt, YESTERDAY_AT);
+    });
+
+    it("is false for a teacher with nothing left to chase", () => {
+      const [teacher] = groupProgressByTeacher(
+        [row({ id: "R1", studentsAnswered: 24 })],
+        MARKS,
+        TODAY,
+      );
+      assert.equal(teacher!.remindedToday, false);
+    });
+
+    it("reports the most times any one of her links has been chased", () => {
+      const [teacher] = groupProgressByTeacher(
+        [
+          row({ id: "R1", remindedAt: TODAY_AT, reminderCount: 1 }),
+          row({ id: "R2", remindedAt: TODAY_AT, reminderCount: 3 }),
+        ],
+        MARKS,
+        TODAY,
+      );
+      assert.equal(teacher!.reminderCount, 3);
+    });
+  });
+
+  /**
+   * The three states of `pending` must survive the grouping.
+   *
+   * Flattening a missing map entry to `[]` would have the reminder announce that
+   * nobody is left on a list the office is actively chasing.
+   */
+  describe("pending", () => {
+    it("keeps absent, null and a list apart", () => {
+      const names = new Map([
+        ["R2", null],
+        ["R3", [{ studentId: "S1", rollNo: 4, name: "Anita", classLabel: null }]],
+      ]);
+      const [teacher] = groupProgressByTeacher(
+        [row({ id: "R1" }), row({ id: "R2" }), row({ id: "R3" })],
+        MARKS,
+        TODAY,
+        names,
+      );
+      const byId = new Map(teacher!.forms.map((f) => [f.requestId, f.pending]));
+      assert.equal(byId.get("R1"), undefined, "nobody looked at R1");
+      assert.equal(byId.get("R2"), null, "R2 was looked at and is too long");
+      assert.equal(byId.get("R3")?.length, 1);
+    });
   });
 });

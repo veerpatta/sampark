@@ -11,6 +11,11 @@ import {
   unknownClassLabelMessage,
 } from "./classes";
 import { listClassRoster } from "./students";
+import {
+  comparePending,
+  NAME_LIST_CEILING,
+  type PendingStudent,
+} from "./pending";
 import { buildSnapshots, recordKey, type RosterSnapshot } from "./snapshots";
 import type { AudienceKind } from "./ownership";
 import { hasPhone, isCompletePhone, normalisePhone, samePhone } from "./phone";
@@ -484,6 +489,15 @@ export type RequestBoardRow = {
    * question after a round that has gone quiet.
    */
   sentAt: Date | null;
+  /**
+   * The LAST time somebody chased her about this one, and how many times.
+   *
+   * Different from sentAt, which happens once: a chase happens again every week
+   * the answers do not arrive. Together they are what stops the office nudging
+   * the same teacher twice from two different corridors. See markGroupReminded.
+   */
+  remindedAt: Date | null;
+  reminderCount: number;
 };
 
 /*
@@ -538,6 +552,8 @@ export async function listRequests(
       createdAt: schema.requests.createdAt,
       batchId: schema.requests.batchId,
       sentAt: schema.requests.sentAt,
+      remindedAt: schema.requests.remindedAt,
+      reminderCount: schema.requests.reminderCount,
     })
     .from(schema.requests)
     .innerJoin(schema.teachers, eq(schema.teachers.id, schema.requests.teacherId))
@@ -616,6 +632,8 @@ export async function listRequests(
     batchId: row.batchId,
     createdAt: row.createdAt,
     sentAt: row.sentAt,
+    remindedAt: row.remindedAt,
+    reminderCount: row.reminderCount,
   }));
 }
 
@@ -794,29 +812,125 @@ export async function listRequestBoard(
  * does not. Getting that wrong drops a child off the very list the office uses
  * to chase her. See coveredStudentsQuery.
  */
-export async function listNonResponders(requestId: string): Promise<
-  { studentId: string; rollNo: number | null; name: string }[]
-> {
+export async function listNonResponders(
+  requestId: string,
+): Promise<PendingStudent[]> {
+  const byRequest = await listPendingByRequest([requestId]);
+  return byRequest.get(requestId) ?? [];
+}
+
+/**
+ * The same question, asked about many requests at once.
+ *
+ * ONE DEFINITION, AND THIS IS IT. listNonResponders used to carry its own copy
+ * of the subtraction and now delegates here, because the reminder message needs
+ * this for every teacher on a board while the request page needs it for one, and
+ * lib/answered.ts records what happens when a rule like this gets written twice:
+ * five independent versions, four agreeing, and the fifth quietly disagreeing
+ * about the very list the office chases from.
+ *
+ * IT PROJECTS RATHER THAN SELECTING THE SNAPSHOT. `select()` pulls the whole
+ * `snapshot` jsonb — fine for one class, several hundred kilobytes of prefilled
+ * field values for every open request at once, of which this wants two strings.
+ *
+ * IT TAKES THE IDS THE CALLER ALREADY HAS and never goes looking for open
+ * requests itself. A second query deciding what is outstanding is a second
+ * opinion about it, which is exactly how the `request_progress` view drifted away
+ * from listRequests — see the note above it.
+ *
+ * A request with nobody pending gets an ENTRY WITH AN EMPTY ARRAY; a request that
+ * was never asked about gets no entry at all. Callers filter by
+ * NAME_LIST_CEILING, so "absent" and "nobody left" are genuinely different
+ * answers and must not collapse into one — see the null handling in
+ * lib/whatsapp.ts.
+ */
+export async function listPendingByRequest(
+  requestIds: string[],
+): Promise<Map<string, PendingStudent[]>> {
+  const pending = new Map<string, PendingStudent[]>();
+  if (requestIds.length === 0) return pending;
+
   const [roster, answered] = await Promise.all([
     db
-      .select()
+      .select({
+        requestId: schema.requestStudents.requestId,
+        studentId: schema.requestStudents.studentId,
+        rollNo: schema.requestStudents.rollNo,
+        // The frozen snapshot, not the live master record — this list is about
+        // what the teacher was sent.
+        name: sql<string | null>`${schema.requestStudents.snapshot}->>'name'`,
+        classLabel: sql<
+          string | null
+        >`${schema.requestStudents.snapshot}->>'classLabel'`,
+      })
       .from(schema.requestStudents)
-      .where(eq(schema.requestStudents.requestId, requestId)),
-    coveredStudentsQuery([requestId]),
+      .where(inArray(schema.requestStudents.requestId, requestIds)),
+    coveredStudentsQuery(requestIds),
   ]);
 
-  const done = new Set(answered.map((row) => row.studentId));
+  const done = new Set(
+    answered.map((row) => `${row.requestId}|${row.studentId}`),
+  );
 
-  return roster
-    .filter((row) => !done.has(row.studentId))
-    .map((row) => ({
+  for (const id of requestIds) pending.set(id, []);
+
+  for (const row of roster) {
+    if (done.has(`${row.requestId}|${row.studentId}`)) continue;
+    // Defensive: a request id the caller did not ask for cannot appear, but a
+    // roster row for one that has no bucket would otherwise be dropped silently.
+    const bucket = pending.get(row.requestId);
+    if (!bucket) continue;
+    bucket.push({
       studentId: row.studentId,
       rollNo: row.rollNo,
-      // The frozen snapshot, not the live master record — this list is about
-      // what the teacher was sent.
-      name: (row.snapshot as { name?: string }).name ?? row.studentId,
-    }))
-    .sort((a, b) => compareStudentNames(a.name, b.name));
+      name: row.name ?? row.studentId,
+      classLabel: row.classLabel,
+    });
+  }
+
+  for (const bucket of pending.values()) bucket.sort(comparePending);
+
+  return pending;
+}
+
+/**
+ * Names for a board's rows, ready to hand to groupProgressByTeacher.
+ *
+ * ONE HELPER RATHER THAN THE SAME FILTER ON THREE PAGES. The dashboard, the
+ * requests board and a round's own page all need exactly this, and the filter is
+ * the part that decides what a teacher reads in her WhatsApp — not somewhere it
+ * should be retyped and drift.
+ *
+ * THE TWO ABSENCES ARE DIFFERENT AND BOTH ARE DELIBERATE:
+ *   - a finished or closed row gets NO ENTRY — nobody chases it, so nobody asks.
+ *   - a row with more pending children than NAME_LIST_CEILING gets an explicit
+ *     `null`, which is what makes the reminder say "140 students are still left"
+ *     rather than falling silent. Leaving it out would read as "nobody looked".
+ *
+ * Only the rows that survive the filter reach the query, which is the point: a
+ * house link with two hundred stragglers costs no roster read for names that
+ * would never be printed.
+ */
+export async function pendingForBoard(
+  rows: RequestBoardRow[],
+): Promise<Map<string, PendingStudent[] | null>> {
+  const chased = rows.filter(
+    (row) => row.status === "open" && !isAnsweredFully(row),
+  );
+
+  const namable = chased.filter(
+    (row) => row.rosterSize - row.studentsAnswered <= NAME_LIST_CEILING,
+  );
+
+  const named: Map<string, PendingStudent[] | null> = new Map(
+    await listPendingByRequest(namable.map((row) => row.id)),
+  );
+
+  for (const row of chased) {
+    if (!named.has(row.id)) named.set(row.id, null);
+  }
+
+  return named;
 }
 
 export type CollectedRow = {

@@ -461,6 +461,42 @@ export const requests = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }),
     sentBy: text("sent_by").references(() => users.id),
     /**
+     * The LAST time somebody chased her about this link.
+     *
+     * NOT THE SAME SHAPE AS `sent_at`, and the difference is the whole reason
+     * this is two columns. Handing a link over happens once, so `sent_at` is
+     * both "when" and "whether". A chase happens again every week the answers do
+     * not arrive, so the useful facts are the most recent one and how many there
+     * have been — hence `reminder_count` beside it.
+     *
+     * `reminder_count` COUNTS MESSAGES THAT INCLUDED THIS LINK, which is what
+     * makes it correct to roll up across a teacher with `max` rather than `sum`
+     * (see TeacherProgress.reminderCount). One message covers every link she
+     * owes, so summing would report a teacher with three classes as chased three
+     * times for one WhatsApp.
+     *
+     * The uneven case is real and is not a bug: if a Resume adds a fourth link
+     * after she was already chased, the next chase covers all four, so three of
+     * them read 2 and the new one reads 1 — and `max` says 2, which is the number
+     * of messages she has actually received.
+     *
+     * A CHASE IS A DAY'S WORK, which is how this is read. "Already done" on the
+     * chase queue means `reminded_at` falls on today's date in Asia/Kolkata (see
+     * lib/today.ts), never "has ever been set". Treating it as permanent would
+     * open next week's queue with every teacher pre-ticked and nothing left to
+     * do, which is worse than not recording it at all.
+     *
+     * Untick clears it back to null and decrements the count, and is only ever
+     * offered for a tick made TODAY — the same reversibility `sent_at` has, and
+     * scoped so that undoing a mistap cannot erase a real nudge from last week.
+     * markGroupReminded enforces that server-side rather than trusting the
+     * screen, because a tab left open overnight would otherwise be a way to wipe
+     * a date the office is relying on.
+     */
+    remindedAt: timestamp("reminded_at", { withTimezone: true }),
+    remindedBy: text("reminded_by").references(() => users.id),
+    reminderCount: integer("reminder_count").notNull().default(0),
+    /**
      * Hidden from the boards, kept in the database.
      *
      * The office asked to be able to delete a closed request. A request that

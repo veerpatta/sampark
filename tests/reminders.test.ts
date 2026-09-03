@@ -33,6 +33,8 @@ function row(over: Partial<RequestBoardRow> = {}): RequestBoardRow {
     batchId: null,
     createdAt: new Date("2026-08-10T04:00:00Z"),
     sentAt: null,
+    remindedAt: null,
+    reminderCount: 0,
     ...over,
   };
 }

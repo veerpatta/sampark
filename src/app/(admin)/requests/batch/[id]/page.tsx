@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { canCreateRequests, currentUser } from "@/lib/auth/session";
 import { requestOrigin } from "@/lib/request-origin";
 import { getBatch } from "@/lib/batches";
-import { listRequests } from "@/lib/requests";
+import { listRequests, pendingForBoard } from "@/lib/requests";
 import { groupRemindersByTeacher } from "@/lib/reminders";
 import { groupLinksByRecipient } from "@/lib/send-queue";
 import { todayISO } from "@/lib/today";
@@ -42,9 +42,12 @@ export default async function BatchPage({
    * groups into one nudge, exactly as the dashboard does. A teacher taking
    * maths for three classes in this round gets one message, not three.
    */
+  const today = todayISO();
+  const boardRows = await listRequests({ batchId: batch.id });
   const outstanding = groupRemindersByTeacher(
-    await listRequests({ batchId: batch.id }),
-    todayISO(),
+    boardRows,
+    today,
+    await pendingForBoard(boardRows),
   );
 
   // Grouped HERE, on the server. groupLinksByRecipient is db-free so it could
@@ -109,7 +112,12 @@ export default async function BatchPage({
         groups={groups}
       />
 
-      <RoundNudge teachers={outstanding} origin={origin} />
+      <RoundNudge
+        teachers={outstanding}
+        origin={origin}
+        batchId={batch.id}
+        today={today}
+      />
 
       {/* The other half of a round's life. Sending it happens above; clearing
           it away once every class has answered used to mean going back to the

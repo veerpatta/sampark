@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import {
   classesByRequest,
@@ -731,4 +731,65 @@ export async function markGroupSent(
         : { sentAt: null, sentBy: null },
     )
     .where(inArray(schema.requests.id, requestIds));
+}
+
+/**
+ * Record that the office chased her about these links — or take it back.
+ *
+ * The same shape as markGroupSent, because the message is the same shape: one
+ * nudge carries everything she still owes, so every link it named was equally
+ * chased and ticking one without the others is a state the message cannot
+ * produce.
+ *
+ * WHAT MAKES IT DIFFERENT FROM `sent` IS THAT IT REPEATS. Handing a link over
+ * happens once; chasing it happens again every week the answers do not arrive.
+ * So `reminded_at` is the most recent nudge and `reminder_count` counts them,
+ * incremented in SQL rather than read-then-written — two people chasing the same
+ * teacher from two corridors is exactly the race this feature exists to reduce,
+ * and it should not be able to lose a count while doing it.
+ *
+ * THE UNTICK IS GUARDED TO TODAY, AND THE GUARD IS HERE RATHER THAN ON THE
+ * SCREEN. The queue only ever offers an untick beside a tick it is already
+ * showing, and it only shows today's — but a tab left open overnight would still
+ * be holding a button that, unguarded, would erase a date the office is now
+ * relying on and decrement a count that was never today's. A stale click on a
+ * stale tab does nothing instead.
+ */
+export async function markGroupReminded(
+  requestIds: string[],
+  userId: string,
+  reminded: boolean,
+  /** Today at the school, YYYY-MM-DD. Passed in so the guard is testable. */
+  today: string,
+): Promise<void> {
+  if (requestIds.length === 0) return;
+
+  if (reminded) {
+    await db
+      .update(schema.requests)
+      .set({
+        remindedAt: new Date(),
+        remindedBy: userId,
+        reminderCount: sql`${schema.requests.reminderCount} + 1`,
+      })
+      .where(inArray(schema.requests.id, requestIds));
+    return;
+  }
+
+  await db
+    .update(schema.requests)
+    .set({
+      remindedAt: null,
+      remindedBy: null,
+      reminderCount: sql`greatest(0, ${schema.requests.reminderCount} - 1)`,
+    })
+    .where(
+      and(
+        inArray(schema.requests.id, requestIds),
+        // Only ever undoes a chase made today. The date is compared in the
+        // school's zone, not the server's — see lib/today.ts for the 5½-hour
+        // window where those two disagree about which day it is.
+        sql`(${schema.requests.remindedAt} at time zone 'Asia/Kolkata')::date = ${today}::date`,
+      ),
+    );
 }

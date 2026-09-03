@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { btn, card, eyebrow } from "@/components/ui/controls";
+import { useCopy } from "@/components/ui/useCopy";
 
 /**
  * The share panel.
@@ -30,18 +30,7 @@ export function SharePanel({
   /** True once she has started, so the message becomes a nudge not a first ask. */
   reminder: boolean;
 }) {
-  const [copied, setCopied] = useState<"link" | "message" | null>(null);
-
-  async function copy(text: string, which: "link" | "message") {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(which);
-      setTimeout(() => setCopied(null), 2000);
-    } catch {
-      // Clipboard access can be refused; the text is on screen and selectable,
-      // so there is nothing to recover from.
-    }
-  }
+  const { copy, copiedKey: copied } = useCopy();
 
   return (
     <section className={`${card()} p-4 md:p-6`}>

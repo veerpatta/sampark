@@ -71,7 +71,13 @@ const SHAPE: Record<Shape, string> = {
  * one. `outline-solid` sets the variable back, and wins on specificity because
  * it carries the `:focus-visible` pseudo-class and `.outline-none` does not.
  */
-const FOCUS =
+/**
+ * Exported for the handful of controls that are not one of the shapes above —
+ * a bare `<summary>`, a text-only button inside a list — and which would
+ * otherwise each carry their own hand-typed copy of the four utilities. There is
+ * one focus ring in this app and it is this string.
+ */
+export const FOCUS =
   "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand-600)]";
 
 const TONE: Record<Tone, string> = {

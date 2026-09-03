@@ -11,10 +11,12 @@ import {
   buildRequestMessage,
   buildWhatsAppLink,
 } from "@/lib/whatsapp";
+import { NAME_LIST_CEILING } from "@/lib/pending";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { Card } from "@/components/admin/Card";
 import { btn } from "@/components/ui/controls";
 import { SharePanel } from "./SharePanel";
+import { WaitingList } from "./WaitingList";
 import { StatusControls } from "./StatusControls";
 import { RemoveControls } from "./RemoveControls";
 
@@ -46,18 +48,32 @@ export default async function RequestDetailPage({
   // Once she has started, nagging her with the original "please fill this in"
   // reads as if the office has not noticed her work. Switch to the nudge.
   const started = waiting.length < rosterSize;
-  const message = (started ? buildReminderMessage : buildRequestMessage)({
-    teacherName: teacher.name,
-    audience: {
-      kind: request.audienceKind,
-      label: request.audienceLabel,
-      fieldKeys: request.fieldKeys,
-      classLabels: classes.get(id) ?? [],
-    },
-    title: request.title,
-    dueDate: request.dueDate,
-    url,
-  });
+  const audience = {
+    kind: request.audienceKind,
+    label: request.audienceLabel,
+    fieldKeys: request.fieldKeys,
+    classLabels: classes.get(id) ?? [],
+  };
+  const message = started
+    ? buildReminderMessage({
+        teacherName: teacher.name,
+        audience,
+        title: request.title,
+        dueDate: request.dueDate,
+        url,
+        // The names of the children she still owes. This page already has them
+        // for the list below, so naming them in the message costs no query —
+        // which is why it was the first surface to get this.
+        outstanding: waiting.length,
+        pending: waiting.length > NAME_LIST_CEILING ? null : waiting,
+      })
+    : buildRequestMessage({
+        teacherName: teacher.name,
+        audience,
+        title: request.title,
+        dueDate: request.dueDate,
+        url,
+      });
 
   return (
     <div className="space-y-5 md:space-y-8">
@@ -100,29 +116,14 @@ export default async function RequestDetailPage({
               </span>
             </Row>
             <Row label="Still waiting">
-              {waiting.length === 0 ? (
-                <span className="text-[var(--color-success)]">
-                  none — every student answered
-                </span>
-              ) : (
-                <>
-                  <span
-                    className={
-                      started ? "" : "text-[var(--color-warning)]"
-                    }
-                  >
-                    {waiting.length} of {rosterSize}
-                  </span>
-                  <ul className="mt-1 text-xs font-normal text-[var(--color-ink-muted)]">
-                    {waiting.map((student) => (
-                      <li key={student.studentId}>
-                        {student.rollNo === null ? "" : `${student.rollNo}. `}
-                        {student.name}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
+              <WaitingList
+                waiting={waiting}
+                rosterSize={rosterSize}
+                // A class link's names need no class beside them; a subject,
+                // house or route link merges registers and they do.
+                spansClasses={request.audienceKind !== "class"}
+                notStarted={!started}
+              />
             </Row>
             <Row label="Fields asked for">
               <ul className="space-y-0.5">

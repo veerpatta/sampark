@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   listRequestBoard,
   listRequests,
+  pendingForBoard,
   type BoardEntry,
 } from "@/lib/requests";
 import { isAnsweredFully } from "@/lib/answered";
@@ -349,6 +350,7 @@ async function ByTeacher({ today }: { today: string }) {
     open,
     new Set(marksKeys.keys()),
     today,
+    await pendingForBoard(requests),
   );
 
   const outstanding = teachers.reduce(
@@ -388,6 +390,7 @@ async function ByTeacher({ today }: { today: string }) {
         <TeacherProgressList
           teachers={teachers}
           origin={origin}
+          today={today}
           empty="Nothing is open. Create a request and it will show up here as answers arrive."
         />
       </section>

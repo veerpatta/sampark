@@ -1,3 +1,4 @@
+import type { PendingStudent } from "./pending";
 import { groupProgressByTeacher, type TeacherProgress } from "./progress";
 import type { RequestBoardRow } from "./requests";
 
@@ -30,6 +31,8 @@ export type PendingForm = {
   answered: number;
   rosterSize: number;
   overdue: boolean;
+  /** Who is still missing. Three-state — see ProgressForm.pending. */
+  pending: PendingStudent[] | null | undefined;
 };
 
 export type TeacherReminder = {
@@ -48,6 +51,19 @@ export type TeacherReminder = {
   overdue: boolean;
   /** Children still unanswered for across every form she owes. */
   outstanding: number;
+  /** Today's chase has already reached her — see TeacherProgress.remindedToday. */
+  remindedToday: boolean;
+  /** The most recent chase on what she still owes. Null if never. */
+  lastRemindedAt: Date | null;
+  /** The most times any one of those links has been chased. */
+  reminderCount: number;
+  /**
+   * The links this nudge covers, for the tick that records it.
+   *
+   * The message goes to her once and carries all of them, so all of them are
+   * equally chased — which is why markGroupReminded takes a list and not an id.
+   */
+  requestIds: string[];
 };
 
 /**
@@ -69,8 +85,10 @@ export type TeacherReminder = {
 export function groupRemindersByTeacher(
   rows: RequestBoardRow[],
   today: string,
+  /** Who is still missing, per request id. See groupProgressByTeacher. */
+  pending?: ReadonlyMap<string, PendingStudent[] | null>,
 ): TeacherReminder[] {
-  return groupProgressByTeacher(rows, NO_MARKS_KEYS, today)
+  return groupProgressByTeacher(rows, NO_MARKS_KEYS, today, pending)
     .map(toReminder)
     .filter((entry): entry is TeacherReminder => entry !== null);
 }
@@ -109,12 +127,24 @@ export function toReminder(entry: TeacherProgress): TeacherReminder | null {
       answered: form.answered,
       rosterSize: form.rosterSize,
       overdue: form.overdue,
+      pending: form.pending,
     })),
     overdue: forms.some((form) => form.overdue),
     outstanding: forms.reduce(
       (sum, form) => sum + Math.max(0, form.rosterSize - form.answered),
       0,
     ),
+    /**
+     * Carried straight off the progress entry rather than recomputed.
+     *
+     * groupProgressByTeacher already rolls this up over exactly the unfinished
+     * forms, which is the same set `forms` above holds — so recomputing it here
+     * would be a second implementation of one rule that could only ever drift.
+     */
+    remindedToday: entry.remindedToday,
+    lastRemindedAt: entry.lastRemindedAt,
+    reminderCount: entry.reminderCount,
+    requestIds: forms.map((form) => form.requestId),
   };
 }
 

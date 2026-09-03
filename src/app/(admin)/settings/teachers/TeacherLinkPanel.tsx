@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { buildWhatsAppLink, teacherPageUrl } from "@/lib/whatsapp";
+import { useCopy } from "@/components/ui/useCopy";
 import { issueTeacherLink, revokeTeacherLink } from "./actions";
 
 /**
@@ -31,7 +31,7 @@ export function TeacherLinkPanel({
   token: string | null;
   issuedAt: Date | null;
 }) {
-  const [copied, setCopied] = useState(false);
+  const { copy, copied } = useCopy();
 
   if (!token) {
     return (
@@ -66,16 +66,6 @@ export function TeacherLinkPanel({
     `— Veer Patta School office · वीर पत्ता विद्यालय कार्यालय`,
   ].join("\n");
 
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Refused clipboard access. The URL is on screen and selectable.
-    }
-  }
-
   return (
     <div className="mt-3 border-t border-[var(--color-border)] pt-3">
       <p className="text-label font-medium">Personal link</p>
@@ -99,7 +89,7 @@ export function TeacherLinkPanel({
         </a>
         <button
           type="button"
-          onClick={() => void copy()}
+          onClick={() => void copy(url)}
           className="min-h-[var(--tap-min)] rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
         >
           {copied ? "Copied" : "Copy"}

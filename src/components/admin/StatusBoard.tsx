@@ -57,6 +57,7 @@ export function StatusBoard({
   requests,
   teachers,
   origin,
+  today,
 }: {
   requests: RequestBoardRow[];
   /** Already grouped by the page — it is the one thing here needing a query. */
@@ -72,6 +73,14 @@ export function StatusBoard({
    * lib/request-origin.ts.
    */
   origin: string;
+  /**
+   * The school's today, for "reminded 2 days ago" on each row.
+   *
+   * Handed down for the same reason `origin` is — a date computed in the browser
+   * is the visitor's calendar day, and lib/today.ts documents the five-and-a-half
+   * hour window where that is a different day from the school's.
+   */
+  today: string;
 }) {
   const open = requests.filter((request) => request.status === "open");
   if (open.length === 0) return null;
@@ -136,6 +145,7 @@ export function StatusBoard({
         <TeacherProgressList
           teachers={teachers}
           origin={origin}
+          today={today}
           limit={DASHBOARD_TEACHERS}
           more={
             <Link

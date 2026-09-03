@@ -1,13 +1,8 @@
 import Link from "next/link";
 import type { Bucket, ProgressForm, TeacherProgress } from "@/lib/progress";
-import {
-  buildRoundReminderMessage,
-  buildWhatsAppLink,
-  teacherPageUrl,
-} from "@/lib/whatsapp";
 import { toReminder } from "@/lib/reminders";
-import { btn } from "@/components/ui/controls";
 import { ProgressBar } from "./ProgressBar";
+import { RemindButton, remindedLabel } from "./RemindButton";
 
 /**
  * How far each teacher has got, and one way to chase her.
@@ -18,11 +13,17 @@ import { ProgressBar } from "./ProgressBar";
  * requests board had no per-teacher view at all. Two implementations of one
  * question drift, and the drift is invisible until somebody compares two tabs.
  *
- * A SERVER COMPONENT. The panel this replaces was "use client" but used no
- * hook, no handler and no browser API: every button in it is already an
- * `<a href>`, because a real link is never popup-blocked. `origin` arrives as a
- * prop and is never read off `window` — see lib/request-origin.ts for the bug
- * that caused on this exact button.
+ * STILL A SERVER COMPONENT, with the client boundary drawn around one button.
+ * The panel this replaces was "use client" but used no hook, no handler and no
+ * browser API. That stayed true until the chase needed a tick, which needs a
+ * transition — so the Remind button moved to components/admin/RemindButton.tsx
+ * and everything else here is unchanged. Its href is still a real `<a>`, because
+ * a real link is never popup-blocked, and the tick rides on `onClick`.
+ *
+ * `origin` and `today` arrive as props and are never read off `window` or the
+ * browser clock — see lib/request-origin.ts for the bug that caused on this exact
+ * button, and lib/today.ts for the five-hour window where a date computed in the
+ * browser is the wrong day.
  *
  * ONE REMIND PER PERSON, NEVER PER LINK. lib/reminders.ts exists because a
  * button on every row sent a teacher who takes maths for three classes three
@@ -84,12 +85,22 @@ function toneOf(form: ProgressForm): Tone {
 export function TeacherProgressList({
   teachers,
   origin,
+  today,
   limit,
   more,
   empty = "Everything open has been answered for.",
 }: {
   teachers: TeacherProgress[];
   origin: string;
+  /**
+   * The school's today, for "reminded 2 days ago".
+   *
+   * From the server for the same reason `origin` is: a date computed in the
+   * browser is the visitor's calendar day, and lib/today.ts documents the
+   * five-and-a-half-hour window in which that is a different day from the
+   * school's.
+   */
+  today: string;
   /** The dashboard shows the worst few; /requests shows everyone. */
   limit?: number;
   /** Rendered under a truncated list — "see all 14". */
@@ -144,7 +155,7 @@ export function TeacherProgressList({
                 </div>
               </div>
 
-              <RemindButton teacher={teacher} origin={origin} />
+              <Remind teacher={teacher} origin={origin} today={today} />
             </div>
 
             <ul className="mt-2 space-y-1.5">
@@ -216,55 +227,39 @@ function Count({ label, bucket }: { label: string; bucket: Bucket }) {
 }
 
 /**
- * The nudge, addressed to her, carrying everything she still owes.
+ * Her nudge, or nothing at all.
  *
- * A real link rather than a handler, so the tap goes straight to that teacher's
- * WhatsApp chat. Nothing when she has nothing outstanding — toReminder returns
- * null, and a Remind button on a finished teacher is a message with no content.
+ * Nothing when she has nothing outstanding — toReminder returns null, and a
+ * Remind button on a finished teacher is a message with no content.
+ *
+ * The button itself moved to components/admin/RemindButton.tsx, which is a client
+ * island: the tick that records the chase needs a transition, and this list is a
+ * server component that should stay one. See that file's header.
  */
-function RemindButton({
+function Remind({
   teacher,
   origin,
+  today,
 }: {
   teacher: TeacherProgress;
   origin: string;
+  today: string;
 }) {
   const reminder = toReminder(teacher);
   if (!reminder) return null;
 
-  const href = buildWhatsAppLink(
-    reminder.phone,
-    buildRoundReminderMessage({
-      teacherName: reminder.teacherName,
-      // Her durable page when she has one: it already carries every form, so
-      // sending it instead of N per-request links is the same collapse this
-      // component does on screen.
-      teacherPageUrl: reminder.linkToken
-        ? teacherPageUrl(origin, reminder.linkToken)
-        : undefined,
-      items: reminder.forms.map((form) => ({
-        audience: {
-          kind: form.audienceKind,
-          label: form.audienceLabel,
-          fieldKeys: form.fieldKeys,
-        },
-        title: form.title,
-        dueDate: form.dueDate,
-        url: `${origin}/r/${form.token}`,
-        answered: form.answered,
-        rosterSize: form.rosterSize,
-      })),
-    }),
-  );
+  const label = remindedLabel({ ...reminder, today });
 
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer noopener"
-      className={`${btn()} shrink-0 px-3 text-[13px]`}
-    >
-      Remind
-    </a>
+    <div className="flex shrink-0 flex-col items-end gap-1">
+      <RemindButton teacher={reminder} origin={origin} />
+      {/* On its own line under the button, never beside her name — see the note
+          on the two counts above. */}
+      {label ? (
+        <span className="text-right text-xs text-[var(--color-ink-muted)]">
+          {label}
+        </span>
+      ) : null}
+    </div>
   );
 }

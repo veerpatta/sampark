@@ -1,5 +1,7 @@
 import { isAnsweredFully } from "./answered";
+import type { PendingStudent } from "./pending";
 import type { RequestBoardRow } from "./requests";
+import { isoDay } from "./today";
 
 /**
  * How far each teacher has got, which is the question the office actually has.
@@ -50,6 +52,20 @@ export type ProgressForm = {
   sent: boolean;
   overdue: boolean;
   done: boolean;
+  /**
+   * Who on this list is still missing, when the caller looked them up.
+   *
+   * THREE-STATE, and the states are not interchangeable: `undefined` means
+   * nobody asked, `null` means the list was too long to be worth carrying, an
+   * array means these are they. lib/whatsapp.ts turns each into a different
+   * sentence, and this file must not flatten them on the way — a missing map
+   * entry defaulted to `[]` would have the reminder announce that nobody is
+   * left on a list the office is chasing.
+   */
+  pending: PendingStudent[] | null | undefined;
+  /** The LAST chase on this link, and how many there have been. */
+  remindedAt: Date | null;
+  reminderCount: number;
 };
 
 /** One kind of work, totalled across a teacher's links. */
@@ -82,6 +98,24 @@ export type TeacherProgress = {
   overdue: boolean;
   /** What she has sent that the office still owes her a decision on. */
   changesPending: number;
+  /**
+   * Has today's chase already reached her?
+   *
+   * `every`, over the forms she has NOT finished, and both halves matter.
+   *
+   * `every` because one message carries all of them at once, so a teacher with
+   * one of three ticked has been sent something that did not cover the other two
+   * — she belongs back in the queue. That is the same rule and the same reason as
+   * groupLinksByRecipient in lib/send-queue.ts.
+   *
+   * Over the UNFINISHED forms because a chase is only ever about those. Letting
+   * a link she completed last week count would leave her permanently ticked.
+   */
+  remindedToday: boolean;
+  /** The most recent chase across what she still owes. Null if never. */
+  lastRemindedAt: Date | null;
+  /** The most times any one of those links has been chased. */
+  reminderCount: number;
 };
 
 const emptyBucket = (): Bucket => ({
@@ -141,6 +175,15 @@ export function groupProgressByTeacher(
   rows: RequestBoardRow[],
   marksKeys: ReadonlySet<string>,
   today: string,
+  /**
+   * Who is still missing, per request id, when the caller fetched it.
+   *
+   * PASSED IN RATHER THAN QUERIED, so this file stays pure and DB-free like its
+   * header promises. An id absent from the map is `undefined` — "nobody looked" —
+   * which is exactly what a caller that filtered by NAME_LIST_CEILING means by
+   * leaving it out, and is deliberately not the same as an empty array.
+   */
+  pending?: ReadonlyMap<string, PendingStudent[] | null>,
 ): TeacherProgress[] {
   const groups = new Map<string, TeacherProgress>();
 
@@ -164,6 +207,9 @@ export function groupProgressByTeacher(
       outstanding: 0,
       overdue: false,
       changesPending: 0,
+      remindedToday: false,
+      lastRemindedAt: null,
+      reminderCount: 0,
     };
 
     const done = isAnsweredFully(row);
@@ -186,6 +232,9 @@ export function groupProgressByTeacher(
       // does not belong on.
       overdue: row.dueDate < today && !done,
       done,
+      pending: pending?.get(row.id),
+      remindedAt: row.remindedAt,
+      reminderCount: row.reminderCount,
     });
     groups.set(key, entry);
   }
@@ -211,6 +260,12 @@ export function groupProgressByTeacher(
         bucket.outstanding += Math.max(0, form.rosterSize - form.answered);
       }
 
+      // A chase covers what she still owes, so the roll-up is over exactly that.
+      const unfinished = forms.filter((form) => !form.done);
+      const remindedDays = unfinished.map((form) =>
+        form.remindedAt === null ? null : isoDay(form.remindedAt),
+      );
+
       return {
         ...entry,
         forms,
@@ -223,6 +278,20 @@ export function groupProgressByTeacher(
           buckets.mixed.outstanding,
         overdue: forms.some((form) => form.overdue),
         changesPending: forms.reduce((sum, form) => sum + form.changesPending, 0),
+        remindedToday:
+          unfinished.length > 0 && remindedDays.every((day) => day === today),
+        lastRemindedAt: unfinished.reduce<Date | null>(
+          (latest, form) =>
+            form.remindedAt !== null &&
+            (latest === null || form.remindedAt > latest)
+              ? form.remindedAt
+              : latest,
+          null,
+        ),
+        reminderCount: unfinished.reduce(
+          (most, form) => Math.max(most, form.reminderCount),
+          0,
+        ),
       };
     })
     .sort((a, b) => {

@@ -16,6 +16,12 @@
  */
 
 import { HOUSES } from "./houses";
+import {
+  MAX_NAMED_INLINE,
+  MAX_NAMED_TOTAL,
+  namesFor,
+  type PendingStudent,
+} from "./pending";
 import { subjectByFieldKey } from "./subjects";
 
 const DATE_FMT = new Intl.DateTimeFormat("en-IN", {
@@ -169,6 +175,123 @@ const HOW_TO = [
   `The list opens at the link below. Press "Correct" where it is right, or "Change" to fix it.`,
   `नीचे दिए लिंक पर सूची खुलेगी — जो सही है उस पर "Correct" दबाएँ, गलत हो तो "Change" दबाकर ठीक कर दें।`,
 ];
+
+/**
+ * How the children still missing are described to the teacher.
+ *
+ * `pending` is THREE-STATE and every state is a different sentence:
+ *   undefined -> the caller never looked. Say nothing, which is what every
+ *                reminder said before this existed.
+ *   null      -> the caller looked and the list is not worth carrying (past
+ *                NAME_LIST_CEILING, or it did not fit the message's budget).
+ *                Say the count.
+ *   an array  -> the full list. Name them, truncated at the cap.
+ *
+ * Collapsing undefined and null into one would make a reminder claim "24
+ * children are still left" on a screen that never counted them, which is the
+ * kind of confident wrong number the office would rightly stop trusting.
+ */
+export type PendingInput = {
+  /** Children still unanswered for. Needed to say the count when names are not shown. */
+  outstanding?: number;
+  pending?: PendingStudent[] | null;
+};
+
+/** The count on its own, when the names are not worth listing. */
+function outstandingLines(outstanding: number): string[] {
+  return [
+    `${outstanding} ${outstanding === 1 ? "student is" : "students are"} still left · ${outstanding} ${outstanding === 1 ? "बच्चा" : "बच्चे"} अभी बाकी ${outstanding === 1 ? "है" : "हैं"}।`,
+  ];
+}
+
+/**
+ * One child, as she reads them off the register.
+ *
+ * The roll number leads because that is the column she scans; a name with no
+ * roll still reads fine without one. The class is appended ONLY for a link whose
+ * roster spans registers — the same condition spannedClasses uses, and for the
+ * same reason: a subject link is eighty-four children from three books, and a
+ * bare name does not say which.
+ */
+function namePart(student: PendingStudent, spansClasses: boolean): string {
+  const roll = student.rollNo === null ? "" : `${student.rollNo}. `;
+  const where =
+    spansClasses && student.classLabel ? ` (${student.classLabel})` : "";
+  return `${roll}${student.name}${where}`;
+}
+
+function spansRegisters(audience: MessageAudience): boolean {
+  return audience.kind !== "class";
+}
+
+/**
+ * Who is still missing, rendered — and how much of the budget that cost.
+ *
+ * ONE FUNCTION FOR BOTH SHAPES AND FOR THE ACCOUNTING, which is the only way the
+ * two can be guaranteed to agree. This started as three functions — a block, an
+ * inline line, and a "how many did that spend" — and the third had to re-derive
+ * the first two's decision from the same inputs. Two of them taking different
+ * caps would have silently over-reported the spend and starved the next item.
+ *
+ * TWO SHAPES ON PURPOSE, and the precedent is describeAudienceLineHi above: a
+ * lone link and a line among three are different reading problems, and this file
+ * already keeps two renderings for exactly that reason.
+ *
+ *   block  — one name per line, under a reminder about a single list. Roll
+ *            numbers align down the left and it reads against a register.
+ *   inline — names run together on one wrapped line, for one item among several,
+ *            where three vertical lists would be the wall that
+ *            one-message-per-person exists to prevent.
+ */
+function renderPending(
+  input: PendingInput,
+  audience: MessageAudience,
+  budget: number,
+  shape: "block" | "inline",
+): { lines: string[]; spent: number } {
+  const nothing = { lines: [] as string[], spent: 0 };
+  const outstanding = input.outstanding ?? input.pending?.length ?? 0;
+  if (input.pending === undefined || outstanding === 0) return nothing;
+
+  if (shape === "inline") {
+    // Whole list or nothing: a slice of a longer one is an arbitrary subset, and
+    // the progress line directly above already says "20 of 45 done".
+    if (outstanding > MAX_NAMED_INLINE) return nothing;
+    const names = namesFor(
+      outstanding,
+      input.pending,
+      budget,
+      MAX_NAMED_INLINE,
+    );
+    if (names === null) return nothing;
+
+    const listed = names
+      .map((student) => namePart(student, spansRegisters(audience)))
+      .join(", ");
+    return {
+      lines: [`   still to fill · भरना बाकी: ${listed}`],
+      spent: names.length,
+    };
+  }
+
+  const names = namesFor(outstanding, input.pending, budget);
+  // Looked, and found too many to be worth listing. The count is the useful fact.
+  if (names === null) return { lines: outstandingLines(outstanding), spent: 0 };
+
+  const spans = spansRegisters(audience);
+  // The header carries the ASK as well as the count — "please fill these in" is
+  // the whole point of the message, and it costs nothing on a line that has to
+  // carry the number anyway.
+  const lines = [
+    `${outstanding} ${outstanding === 1 ? "student is" : "students are"} left — please fill these in:`,
+    `${outstanding} ${outstanding === 1 ? "बच्चा" : "बच्चे"} बाकी ${outstanding === 1 ? "है" : "हैं"} — इनकी जानकारी भर दें:`,
+    ...names.map((student) => namePart(student, spans)),
+  ];
+
+  const rest = outstanding - names.length;
+  if (rest > 0) lines.push(`…and ${rest} more · और ${rest}`);
+  return { lines, spent: names.length };
+}
 
 /** The initial "please fill this" message. */
 export function buildRequestMessage(input: RequestMessageInput): string {
@@ -330,6 +453,13 @@ export type ReminderItem = {
   /** How far along she is, for the "5 of 24 done" half-line. */
   answered: number;
   rosterSize: number;
+  /**
+   * Who on this list is still missing. Three-state — see PendingInput.
+   *
+   * `outstanding` is not carried separately here because this type already has
+   * both halves of it: rosterSize - answered.
+   */
+  pending?: PendingStudent[] | null;
 };
 
 export type RoundReminderInput = {
@@ -373,10 +503,22 @@ export function buildRoundReminderMessage(input: RoundReminderInput): string {
       title: only.title,
       dueDate: only.dueDate,
       url: only.url,
+      // Passed through, or the byte-for-byte contract below would hold only for
+      // the nameless case and most of the staff would silently keep the old
+      // message. There is a test on the equality WITH names for that reason.
+      outstanding: Math.max(0, only.rosterSize - only.answered),
+      pending: only.pending,
     });
   }
 
   const count = input.items.length;
+  /**
+   * Spent down the list, whole items at a time — see namesFor.
+   *
+   * Items arrive in due-date order (groupProgressByTeacher sorts them), so the
+   * thing she is latest on is the thing that gets named.
+   */
+  let budget = MAX_NAMED_TOTAL;
   const lines = [
     `Namaste ${input.teacherName},`,
     `नमस्ते ${input.teacherName} जी,`,
@@ -394,8 +536,19 @@ export function buildRoundReminderMessage(input: RoundReminderInput): string {
     const en = describeAudienceLine(item.audience);
     const hi = describeAudienceLineHi(item.audience);
     const due = formatDue(item.dueDate);
+    const named = renderPending(
+      {
+        outstanding: Math.max(0, item.rosterSize - item.answered),
+        pending: item.pending,
+      },
+      item.audience,
+      budget,
+      "inline",
+    );
     lines.push(`${index + 1}) ${en}${hi === en ? "" : ` · ${hi}`} — ${item.title}`);
     lines.push(`   ${progressLine(item)} · due ${due} · अंतिम तिथि ${due}`);
+    lines.push(...named.lines);
+    budget -= named.spent;
     // Her durable page carries all of them, so a per-form link underneath it
     // would be the same wall of links this message exists to collapse.
     if (!input.teacherPageUrl) lines.push(item.url);
@@ -423,9 +576,28 @@ function progressLine(item: ReminderItem): string {
   return `${item.answered} of ${item.rosterSize} done · ${item.rosterSize} में से ${item.answered} हो गए`;
 }
 
-/** The nudge for teachers who have not submitted yet. */
-export function buildReminderMessage(input: RequestMessageInput): string {
+/**
+ * The nudge for teachers who have not submitted yet.
+ *
+ * NAMES THE CHILDREN WHO ARE LEFT when the caller has looked them up. Saying
+ * only "still pending" made her open the link and hunt for the four cards she
+ * skipped, with the app holding the answer the whole time. See PendingInput for
+ * why not looking and finding too many are different states.
+ *
+ * The block sits between the sentence and the URL so the link stays the last
+ * thing in the bubble — it is what she has to tap, and a list scrolling past it
+ * would bury it.
+ */
+export function buildReminderMessage(
+  input: RequestMessageInput & PendingInput,
+): string {
   const due = formatDue(input.dueDate);
+  const { lines: names } = renderPending(
+    input,
+    input.audience,
+    MAX_NAMED_TOTAL,
+    "block",
+  );
   return [
     `Namaste ${input.teacherName},`,
     `नमस्ते ${input.teacherName} जी,`,
@@ -433,6 +605,7 @@ export function buildReminderMessage(input: RequestMessageInput): string {
     `${input.title} for ${describeAudienceEn(input.audience)} is still pending. It is due ${due}.`,
     `${describeAudienceHi(input.audience)} की ${input.title} अभी बाकी है। अंतिम तिथि ${due} है।`,
     ``,
+    ...(names.length > 0 ? [...names, ``] : []),
     input.url,
     ``,
     SIGN_OFF,

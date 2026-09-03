@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { asc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
-import { listRequests } from "@/lib/requests";
+import { listRequests, pendingForBoard } from "@/lib/requests";
 import { groupProgressByTeacher } from "@/lib/progress";
 import { marksFieldKeys } from "@/lib/marks";
 import { requestOrigin } from "@/lib/request-origin";
@@ -86,6 +86,9 @@ export default async function DashboardPage() {
     requests.filter((request) => request.status === "open"),
     new Set(marksKeys.keys()),
     today,
+    // Who is still missing, so the Remind button can name them. Filtered to the
+    // rows a chase would actually name — see pendingForBoard.
+    await pendingForBoard(requests),
   );
 
   const open = requests.filter((request) => request.status === "open");
@@ -117,7 +120,12 @@ export default async function DashboardPage() {
         templates={TEMPLATES}
       />
 
-      <StatusBoard requests={requests} teachers={progress} origin={origin} />
+      <StatusBoard
+        requests={requests}
+        teachers={progress}
+        origin={origin}
+        today={today}
+      />
 
       {/* Two across on a phone, not one. Four counts stacked vertically is a
           screenful of scrolling for four numbers, and the pairs read against
