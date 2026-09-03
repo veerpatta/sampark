@@ -17,7 +17,10 @@ export default function DashboardLoading() {
     <SkeletonPage>
       <SkeletonPageHeader />
       <SkeletonStatGrid />
-      <SkeletonCard lines={3} />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <SkeletonCard lines={3} />
+        <SkeletonCard lines={5} />
+      </div>
     </SkeletonPage>
   );
 }

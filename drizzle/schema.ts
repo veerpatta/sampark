@@ -625,6 +625,39 @@ export const studentDocuments = pgTable(
   (t) => [index("student_documents_student_idx").on(t.studentId, t.removedAt)],
 );
 
+/* ============ COMPLETENESS SNAPSHOTS ============ */
+
+/**
+ * How full each class's records were, one row per class per field per day.
+ *
+ * The board can say how complete the school is TODAY from `students` alone;
+ * what it could not say was whether that number was moving — and "Class 8
+ * went from 61% to 84% this month" is the sentence that tells a class teacher
+ * her five minutes were worth it (build plan §10, "show the payoff").
+ *
+ * STORED, NOT DERIVED. There is no way to reconstruct yesterday's completeness
+ * from today's rows: an import overwrites in place and value_sources keeps only
+ * the latest origin. So a cron writes one snapshot a day (api/cron/snapshot),
+ * and the dashboard fills any day the cron missed on first view. Idempotent by
+ * primary key: a second run on the same day updates rather than duplicates.
+ *
+ * Twelve fields — COMPLETENESS_COLUMNS in lib/completeness.ts — times about
+ * nineteen classes is a couple of hundred rows a day. A year is a small table.
+ */
+export const completenessSnapshots = pgTable(
+  "completeness_snapshots",
+  {
+    /** The school's calendar day (Asia/Kolkata), never the server's. See lib/today.ts. */
+    day: date("day").notNull(),
+    classLabel: text("class_label").notNull(),
+    /** A students column name from COMPLETENESS_COLUMNS, e.g. 'father_name'. */
+    field: text("field").notNull(),
+    filled: integer("filled").notNull(),
+    total: integer("total").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.classLabel, t.field] })],
+);
+
 /* ============ RATE LIMITING ============ */
 
 /**
@@ -697,4 +730,5 @@ export type NewSource = typeof sources.$inferInsert;
 export type FieldSource = typeof fieldSources.$inferSelect;
 export type ValueSource = typeof valueSources.$inferSelect;
 export type StudentDocument = typeof studentDocuments.$inferSelect;
+export type CompletenessSnapshot = typeof completenessSnapshots.$inferSelect;
 export type NewStudentDocument = typeof studentDocuments.$inferInsert;

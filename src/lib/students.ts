@@ -36,7 +36,12 @@ export type MissingField =
   | "dob"
   | "house"
   | "route"
-  | "father";
+  | "father"
+  | "mother"
+  | "gender"
+  | "category"
+  | "janAadhaar"
+  | "village";
 
 export type StudentSort = "name" | "class" | "recent" | "complete" | "fullest" | "id";
 
@@ -72,6 +77,11 @@ const MISSING_COLUMNS: Record<MissingField, AnyPgColumn> = {
   house: schema.students.house,
   route: schema.students.busRoute,
   father: schema.students.fatherName,
+  mother: schema.students.motherName,
+  gender: schema.students.gender,
+  category: schema.students.category,
+  janAadhaar: schema.students.janAadhaar,
+  village: schema.students.village,
 };
 
 export async function listStudents(query: StudentQuery): Promise<{

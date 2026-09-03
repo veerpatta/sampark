@@ -68,6 +68,13 @@ GRANT SELECT, INSERT ON student_documents TO app_rw;
 REVOKE UPDATE, DELETE ON student_documents FROM app_rw;
 GRANT UPDATE (removed_at, removed_by) ON student_documents TO app_rw;
 
+-- ----------------------------------------------------------- snapshots
+-- One row per class per field per day, upserted by the cron and by the
+-- dashboard. UPDATE for the upsert; no DELETE — a day's row is history, and
+-- the trend is the whole point of the table.
+GRANT SELECT, INSERT, UPDATE ON completeness_snapshots TO app_rw;
+REVOKE DELETE ON completeness_snapshots FROM app_rw;
+
 -- ----------------------------------------------------------------- sequences
 -- BIGSERIAL primary keys on change_log and student_records need their sequence.
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_rw;

@@ -126,7 +126,7 @@ export async function listMarksPeriods(): Promise<
  * the end, so anything without a teacher goes to `Unattributed` and is counted
  * there.
  */
-export async function collectedMarks(period: string): Promise<MarkRow[]> {
+export async function collectedMarks(period: string, classLabel?: string): Promise<MarkRow[]> {
   const rows = await db
     .select({
       studentId: schema.students.id,
@@ -161,6 +161,7 @@ export async function collectedMarks(period: string): Promise<MarkRow[]> {
       and(
         eq(schema.studentRecords.period, period),
         eq(schema.fieldDefs.recordKind, FA_MARKS_KIND),
+        classLabel ? eq(schema.students.classLabel, classLabel) : undefined,
       ),
     );
 
@@ -311,6 +312,34 @@ export async function marksFieldKeys(): Promise<Map<string, string>> {
     fields
       .filter((field) => field.recordKind === FA_MARKS_KIND)
       .map((field) => [field.key, field.labelEn]),
+  );
+}
+
+/** Label and ceiling per marks field, for a grid's column headings. */
+export async function marksFieldDefs(): Promise<
+  Map<string, { label: string; outOf: number | null; sortOrder: number }>
+> {
+  const fields = await db
+    .select({
+      key: schema.fieldDefs.key,
+      labelEn: schema.fieldDefs.labelEn,
+      recordKind: schema.fieldDefs.recordKind,
+      maxValue: schema.fieldDefs.maxValue,
+      sortOrder: schema.fieldDefs.sortOrder,
+    })
+    .from(schema.fieldDefs);
+
+  return new Map(
+    fields
+      .filter((field) => field.recordKind === FA_MARKS_KIND)
+      .map((field) => [
+        field.key,
+        {
+          label: field.labelEn,
+          outOf: field.maxValue === null || Number.isNaN(Number(field.maxValue)) ? null : Number(field.maxValue),
+          sortOrder: field.sortOrder ?? 100,
+        },
+      ]),
   );
 }
 
@@ -529,5 +558,114 @@ export function pivotStudentMarks(rows: StudentMark[]): StudentMarksGrid {
         outOf: subject.outOf,
         values: subject.values,
       })),
+  };
+}
+
+/* ----------------------------------------------------------- class grid */
+
+export type GridSubject = {
+  key: string;
+  label: string;
+  outOf: number | null;
+  entered: number;
+  average: number | null;
+};
+
+export type GridRow = {
+  studentId: string;
+  name: string;
+  rollNo: number | null;
+  /** Keyed by field key. Null where nothing has been entered. */
+  marks: Record<string, number | null>;
+  blanks: number;
+};
+
+export type MarksGrid = { subjects: GridSubject[]; rows: GridRow[] };
+
+/**
+ * One class, one period: every child down the side, every subject asked for
+ * across the top, and the blanks where a mark has not arrived.
+ *
+ * THE ROSTER LEADS, not the marks. A child with no marks at all is a full row
+ * of blanks, which is the row the office is looking for. Subjects are the
+ * union of what was ASKED for this class and what ARRIVED — a mark that came
+ * in through a request since removed still shows, in a column of its own.
+ *
+ * Averages ignore blanks: an average over "the marks entered so far" is a
+ * number a teacher can check against her register; one over the whole roll
+ * is a number that falls every time a child is admitted.
+ */
+export function buildMarksGrid(
+  roster: { id: string; name: string; rollNo: number | null }[],
+  rows: MarkRow[],
+  asked: { key: string; label: string; outOf: number | null; sortOrder: number }[],
+): MarksGrid {
+  const subjects = new Map<string, GridSubject & { sortOrder: number }>();
+  for (const subject of asked) {
+    subjects.set(subject.key, { ...subject, entered: 0, average: null });
+  }
+  for (const row of rows) {
+    if (!subjects.has(row.fieldKey)) {
+      subjects.set(row.fieldKey, {
+        key: row.fieldKey,
+        label: row.fieldLabel,
+        outOf: null,
+        sortOrder: row.sortOrder,
+        entered: 0,
+        average: null,
+      });
+    }
+  }
+
+  const byStudent = new Map<string, Map<string, number | null>>();
+  for (const row of rows) {
+    const marks = byStudent.get(row.studentId) ?? new Map();
+    const numeric = row.value === null || row.value.trim() === "" ? NaN : Number(row.value);
+    marks.set(row.fieldKey, Number.isFinite(numeric) ? numeric : null);
+    byStudent.set(row.studentId, marks);
+  }
+
+  const ordered = [...subjects.values()].sort(
+    (a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label),
+  );
+
+  const gridRows: GridRow[] = roster
+    .slice()
+    .sort((a, b) => (a.rollNo ?? 9999) - (b.rollNo ?? 9999) || compareStudentNames(a.name, b.name))
+    .map((student) => {
+      const marks: Record<string, number | null> = {};
+      let blanks = 0;
+      for (const subject of ordered) {
+        const value = byStudent.get(student.id)?.get(subject.key) ?? null;
+        marks[subject.key] = value;
+        if (value === null) blanks += 1;
+      }
+      return { studentId: student.id, name: student.name, rollNo: student.rollNo, marks, blanks };
+    });
+
+  const totals = new Map<string, { sum: number; n: number }>();
+  for (const row of gridRows) {
+    for (const subject of ordered) {
+      const value = row.marks[subject.key];
+      if (value === null || value === undefined) continue;
+      const total = totals.get(subject.key) ?? { sum: 0, n: 0 };
+      total.sum += value;
+      total.n += 1;
+      totals.set(subject.key, total);
+    }
+  }
+
+  return {
+    subjects: ordered.map((subject) => {
+      const total = totals.get(subject.key);
+      return {
+        key: subject.key,
+        label: subject.label,
+        outOf: subject.outOf,
+        entered: total?.n ?? 0,
+        average: total && total.n > 0 ? Math.round((total.sum / total.n) * 10) / 10 : null,
+      };
+    }),
+    rows: gridRows,
   };
 }

@@ -144,6 +144,8 @@ async function main() {
     ["/students", "the students board"],
     ["/students?sort=fullest&missing=phone", "the students board, sorted and filtered"],
     ["/students/new", "the add-a-student form"],
+    ["/students/health", "the data-health grid"],
+    [`/marks/grid?period=${encodeURIComponent(FIXTURE_PERIOD)}&class=${encodeURIComponent("Class 8")}`, "the class marks grid"],
     ["/students/import", "the import wizard"],
     ["/settings", "settings"],
     ["/settings/fields", "the field registry"],
@@ -214,6 +216,14 @@ async function main() {
 
   /* ------------------------------------------------------------------ */
   console.log("\nThe documents proxy is shut to strangers and honest to staff");
+
+  await step("the snapshot cron refuses a caller without the secret", async () => {
+    const response = await fetch(`${BASE}/api/cron/snapshot`);
+    assert.equal(response.status, 401, `got ${response.status}`);
+    const withCookie = await signedIn("/api/cron/snapshot");
+    assert.equal(withCookie.status, 401, "a session is not the secret");
+    return "401";
+  });
 
   await step("a stranger gets nothing from the documents proxy", async () => {
     const pathname = "documents/S1/20260903-000000000000000000000000.pdf";

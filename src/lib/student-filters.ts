@@ -16,7 +16,30 @@ import type { MissingField, StudentQuery, StudentSort } from "./students";
 
 export const SORTS: StudentSort[] = ["name", "class", "recent", "complete", "fullest", "id"];
 
+/**
+ * Every hole the board can filter on — one per tracked field in
+ * lib/completeness.ts, so every cell of the data-health heatmap is a link.
+ */
 export const MISSING_FIELDS: MissingField[] = [
+  "phone",
+  "photo",
+  "aadhaar",
+  "dob",
+  "house",
+  "route",
+  "father",
+  "mother",
+  "gender",
+  "category",
+  "janAadhaar",
+  "village",
+];
+
+/**
+ * The seven the "Work left" strip shows. The other five exist as filters and
+ * as heatmap cells; twelve chips on a phone above the board is a wall.
+ */
+export const QUICK_VIEW_FIELDS: MissingField[] = [
   "phone",
   "photo",
   "aadhaar",
@@ -35,6 +58,11 @@ export const MISSING_LABELS: Record<MissingField, string> = {
   house: "No house",
   route: "No route",
   father: "No father's name",
+  mother: "No mother's name",
+  gender: "No gender",
+  category: "No category",
+  janAadhaar: "No Jan Aadhaar",
+  village: "No village",
 };
 
 export const SORT_LABELS: Record<StudentSort, string> = {

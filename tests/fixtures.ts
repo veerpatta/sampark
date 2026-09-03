@@ -377,7 +377,15 @@ export async function cleanup() {
     .delete(schema.changeLog)
     .where(like(schema.changeLog.studentId, `${PREFIX}%`));
   await ownerDb.delete(schema.users).where(like(schema.users.id, `${PREFIX}%`));
+  // Snapshot rows a test wrote under a fixture class label. app_rw cannot
+  // delete these — a day's row is history — so the owner does.
+  await ownerDb
+    .delete(schema.completenessSnapshots)
+    .where(like(schema.completenessSnapshots.classLabel, `${PREFIX}%`));
 }
+
+/** The fixture prefix, for a test that has to invent a row of its own under it. */
+export const FIXTURE_PREFIX = PREFIX;
 
 export async function studentById(id: string) {
   const [row] = await db

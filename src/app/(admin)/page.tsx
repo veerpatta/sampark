@@ -7,6 +7,11 @@ import { marksFieldKeys } from "@/lib/marks";
 import { requestOrigin } from "@/lib/request-origin";
 import { todayISO } from "@/lib/today";
 import { countByClass } from "@/lib/students";
+import { ensureSnapshotToday, healthByClass, toHeatmap, trend, worstClasses } from "@/lib/data-health";
+import { recentActivity } from "@/lib/activity";
+import { ActivityList } from "@/components/admin/ActivityList";
+import { ProgressBar } from "@/components/admin/ProgressBar";
+import { Sparkline } from "@/components/admin/Sparkline";
 import { CLASS_LABELS } from "@/lib/classes";
 import { TEMPLATES } from "@/lib/templates";
 import { QuickSend } from "@/components/admin/QuickSend";
@@ -28,7 +33,11 @@ export default async function DashboardPage() {
 
   const origin = await requestOrigin();
 
-  const [requests, [students], counts, teachers, marksKeys] = await Promise.all([
+  // The trend's point for today, if the cron has not written it yet. Before
+  // the reads below, so the sparkline includes this morning.
+  await ensureSnapshotToday();
+
+  const [requests, [students], counts, teachers, marksKeys, health, series, activity] = await Promise.all([
     listRequests(),
     db
       .select({
@@ -43,7 +52,13 @@ export default async function DashboardPage() {
       .where(eq(schema.teachers.active, true))
       .orderBy(asc(schema.teachers.name)),
     marksFieldKeys(),
+    healthByClass(),
+    trend(30),
+    recentActivity(12),
   ]);
+
+  const grid = toHeatmap(health);
+  const behind = worstClasses(health, 3);
 
   // Grouped here rather than inside the card, because it is the one thing on
   // that card that needs a query — the registry read that says which fields are
@@ -112,6 +127,62 @@ export default async function DashboardPage() {
             ? `${overdue.length} of ${open.length} open request${open.length === 1 ? "" : "s"} past due.`
             : `All ${open.length} open request${open.length === 1 ? "" : "s"} still within date.`}
         </p>
+      ) : null}
+
+      {/* The two panels that say what is moving: how full the records are
+          getting, and what people did lately. After the counts, because they
+          are context rather than work — but on the first screen, because
+          "is it improving" is the question that keeps the rounds going. */}
+      {students?.total ? (
+        <div className="grid gap-5 md:gap-6 lg:grid-cols-2">
+          <Card
+            title="Data health"
+            action={
+              <Link href="/students/health" className="text-sm text-[var(--color-brand-600)] hover:underline">
+                By class and field
+              </Link>
+            }
+          >
+            <div className="flex items-end gap-4">
+              <span className="text-display font-semibold">{grid.school.percent}%</span>
+              <span className="pb-1 text-xs text-[var(--color-ink-muted)]">of tracked fields filled</span>
+              <Sparkline
+                points={series.map((point) => point.percent)}
+                width={140}
+                height={36}
+                label="School completeness over the last 30 days"
+                className="ml-auto"
+              />
+            </div>
+            {behind.length > 0 ? (
+              <ul className="mt-4 space-y-2">
+                {behind.map((row) => (
+                  <li key={row.classLabel} className="flex items-center gap-3 text-sm">
+                    <Link
+                      href={`/students?class=${encodeURIComponent(row.classLabel)}&sort=complete`}
+                      className="w-24 shrink-0 font-medium hover:underline"
+                    >
+                      {row.classLabel}
+                    </Link>
+                    <ProgressBar
+                      value={row.filled}
+                      max={row.total}
+                      label={`${row.classLabel}: ${row.percent}% complete`}
+                      tone={row.percent >= 80 ? "bg-[var(--color-success)]" : row.percent >= 50 ? "bg-[var(--color-warning)]" : "bg-[var(--color-danger)]"}
+                      className="h-1.5 flex-1"
+                    />
+                    <span className="w-10 text-right font-mono text-xs">{row.percent}%</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="mt-3 text-xs text-[var(--color-ink-muted)]">The three classes furthest behind.</p>
+          </Card>
+
+          <Card title="Recent activity" flush>
+            <ActivityList events={activity} />
+          </Card>
+        </div>
       ) : null}
 
       {overdue.length > 0 ? (

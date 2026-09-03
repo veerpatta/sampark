@@ -154,6 +154,11 @@ export default async function MarksPage({
             columns={columns}
             rows={summary}
             rowKey={(row) => `${row.teacher}|${row.classLabel}|${row.subject}`}
+            // Each line opens the class grid: every child, every subject,
+            // the blanks tinted — which children are still missing a mark.
+            href={(row) =>
+              `/marks/grid?period=${encodeURIComponent(selected!)}&class=${encodeURIComponent(row.classLabel)}`
+            }
             empty="No marks entered for this period yet."
           />
 

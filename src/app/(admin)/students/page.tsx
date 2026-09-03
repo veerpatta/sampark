@@ -8,6 +8,7 @@ import {
   MISSING_FIELDS,
   MISSING_LABELS,
   PAGE_SIZES,
+  QUICK_VIEW_FIELDS,
   SORT_LABELS,
   SORTS,
   parseFilters,
@@ -427,7 +428,7 @@ function QuickViews({
   facets: Awaited<ReturnType<typeof listFacets>>;
 }) {
   const views = [
-    ...MISSING_FIELDS.map((field) => ({
+    ...QUICK_VIEW_FIELDS.map((field) => ({
       href: `/students?missing=${field}&sort=class`,
       label: MISSING_LABELS[field],
       count: facets.missing.get(field) ?? 0,
