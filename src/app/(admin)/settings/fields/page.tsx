@@ -1,10 +1,12 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { asc } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { canManageSettings, currentUser } from "@/lib/auth/session";
 import { STUDENT_COLUMN_BY_DB_NAME } from "@/lib/student-columns";
 import { saveField, setFieldActive } from "./actions";
+import { Card } from "@/components/admin/Card";
+import { PageHeader } from "@/components/admin/PageHeader";
+import { SettingsCrumbs } from "@/components/admin/SettingsCrumbs";
 
 export const metadata = { title: "Field registry — Sampark" };
 export const dynamic = "force-dynamic";
@@ -35,50 +37,22 @@ export default async function FieldSettingsPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-display font-semibold">Field registry</h1>
-        {/* Sibling settings pages, on a pointer only — below md the Settings
-            tab lands on an index of all six. See settings/users/page.tsx. */}
-        <div className="mt-1 hidden flex-wrap items-baseline gap-3 md:flex">
-          <Link
-            href="/settings/teachers"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
-          >
-            teachers
-          </Link>
-          <Link
-            href="/settings/subjects"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
-          >
-            subjects
-          </Link>
-          <Link
-            href="/settings/users"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
-          >
-            admin users
-          </Link>
-          <Link
-            href="/settings/audit"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
-          >
-            audit log
-          </Link>
-        </div>
-        <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
-          Adding something new to collect is a row here, not a deployment.{" "}
-          <strong>Verify</strong> means the school already holds a value and
-          wants it confirmed; <strong>collect</strong> means it holds nothing.
-          A field with a target column writes to that column on the student
-          record; one without writes a period-scoped record instead, which is
-          how marks are stored.
-        </p>
-      </header>
+      <PageHeader
+        title="Field registry"
+        subtitle={
+          <>
+            Adding something new to collect is a row here, not a deployment.{" "}
+            <strong>Verify</strong> means the school already holds a value and
+            wants it confirmed; <strong>collect</strong> means it holds nothing.
+            A field with a target column writes to that column on the student
+            record; one without writes a period-scoped record instead, which is
+            how marks are stored.
+          </>
+        }
+      />
+      <SettingsCrumbs current="/settings/fields" />
 
-      <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-muted)]">
-          Add or update a field
-        </h2>
+      <Card title="Add or update a field">
         <form action={saveField} className="mt-4 grid gap-3 sm:grid-cols-3">
           <Field name="key" label="Key" placeholder="bank_account" required />
           <Field name="labelEn" label="English label" required />
@@ -129,11 +103,11 @@ export default async function FieldSettingsPage() {
             </button>
           </div>
         </form>
-      </section>
+      </Card>
 
       {/* Seven columns of reference, read a few times a year at a desk. It
           scrolls sideways on a phone rather than being rebuilt as cards. */}
-      <section className="overflow-x-auto rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
+      <Card flush className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
             <tr>
@@ -203,7 +177,7 @@ export default async function FieldSettingsPage() {
             ))}
           </tbody>
         </table>
-      </section>
+      </Card>
 
       <p className="text-xs text-[var(--color-ink-muted)]">
         Fields are switched off rather than deleted — submissions, the change log

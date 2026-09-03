@@ -487,3 +487,72 @@ Separately: `/students/[id]` had been printing "Student ID: missing" in the
 warning colour, directly beneath a header showing that exact id. `holdValue`
 routed `id` through a helper that refuses the `PROTECTED` set — a rule about what
 may be *written*, applied to a question about what is *held*.
+
+---
+
+# The record that says where it came from (2026-09-03)
+
+The console refresh. Three commits: the student record and the board; data
+health and the marks grid; search, keyboard review, the settings screens and
+the shell. What follows is the part that is decisions rather than features.
+
+## Decisions worth not reversing
+
+- **Sections, not tabs, on the student page.** Tabs would hide four fifths of
+  the record behind chrome on the one screen whose point is that everything is
+  on it. Anchors cost nothing, a link can point at `#marks`, and a phone
+  scrolls rather than taps.
+- **Provenance is a sentence under the box, and the person beats the source.**
+  When the latest changing decision in `change_log` is at least as recent as
+  the `value_sources` stamp, the name is shown; otherwise the import is. A
+  rejection is not a change and never wins.
+- **Notes were offered and declined.** No `student_notes` table. A save may
+  carry a one-line reason, which lands on the change_log rows of that save and
+  shows once beside the group on the timeline — the audit trail is the notebook.
+- **Documents are removed, never deleted, and the app cannot rewrite one.**
+  Column-level UPDATE on `removed_at`/`removed_by` only. A scan of an Aadhaar
+  card is evidence; the row that says who attached it must outlive the bytes.
+- **A document is not downscaled.** A face at 800px is a face; a certificate at
+  800px is a grey rectangle. The cap is eight megabytes, checked on the phone
+  before the upload starts and again on the server after the bytes arrive.
+- **`created` is one change_log row per field.** Both renderers of the log are
+  per-field lists joined to the registry; a single "student created" row would
+  render as nothing. The timeline folds the burst into one event.
+- **The bulk bar is N edits.** Validated, logged and stamped per child, and a
+  refused child does not roll back the others. Only group facts are offered —
+  house, route, section, class, status — because a screen that can set forty
+  phone numbers to the same value is a screen waiting to be misused.
+- **The column picker is a `<style>`, not state.** `DataTable` stamps
+  `data-col` and stays a server component; the island writes a stylesheet.
+- **Sticky headers meant `overflow-clip`.** A sticky `<thead>` inside
+  `overflow: hidden` never sticks. `clip` rounds the corners without making a
+  scroll container. This was caught in the browser.
+- **The completeness snapshot is a table, written daily.** There is no way to
+  reconstruct yesterday's completeness from today's rows — an import
+  overwrites in place. The cron writes it; the dashboard fills a missed day.
+- **Every heatmap cell is a link.** Which meant every tracked field needed a
+  missing-filter on the board. Five did not; now twelve do, and a test says
+  the mapping covers every column. The "Work left" strip keeps its seven.
+- **Averages are over marks entered, never the roll.** A number a teacher can
+  check against her register does not fall when a child is admitted.
+- **The search panel is anchored, not a modal.** The repo has none and a
+  search box does not need one. Ctrl/⌘K on a keyboard, the magnifier in the
+  app bar on a phone; every hit is a real `<Link>`.
+- **Keyboard review ignores anything with a caret.** `j`/`k`/space/`a`/`r` do
+  nothing while an input has focus or a modifier is held, so typing a note
+  containing an *a* does not approve the queue. The cursor is a row id, not an
+  index, because the list re-sorts under a filter.
+- **`not-found` streams at 200, and the smoke test reads the raw response.**
+  With a `loading.tsx` in the segment the shell commits before `notFound()`
+  throws, and the not-found view arrives as a flight chunk — which is not in
+  the visible text. The check reads the raw HTML; the office sees the page.
+
+## Verification
+
+`npm run typecheck`, `npm run lint`, `npm test` (**641 tests across 52 files**),
+`npm run build`, and `npm run smoke:ui` (57/57, now walking `/students/new`,
+`/students/health`, `/marks/grid`, the documents proxy, the search route and
+the cron's refusal) all pass against a local Postgres behind a Neon-compatible
+proxy. Not exercised here: a real blob upload — the store token is
+production-only — so a document round-trip still wants one manual try on the
+deployed app.

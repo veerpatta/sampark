@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
@@ -6,6 +5,8 @@ import { canManageSettings, currentUser } from "@/lib/auth/session";
 import { CLASS_LABELS, compareClassLabels } from "@/lib/classes";
 import { SUBJECTS } from "@/lib/subjects";
 import { saveSubjectClasses } from "./actions";
+import { PageHeader } from "@/components/admin/PageHeader";
+import { SettingsCrumbs } from "@/components/admin/SettingsCrumbs";
 
 export const metadata = { title: "Subjects — Sampark" };
 export const dynamic = "force-dynamic";
@@ -60,24 +61,18 @@ export default async function SubjectsSettingsPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-display font-semibold">Subjects</h1>
-        <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
-          Who teaches what. A marks request sent to subject teachers uses this to
-          work out who gets which link — one per teacher per subject, carrying
-          only her own classes.
-        </p>
-        <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
-          {assignments.length} assignment{assignments.length === 1 ? "" : "s"} on
-          record.{" "}
-          <Link
-            href="/settings/teachers"
-            className="text-[var(--color-brand-600)] hover:underline"
-          >
-            Classes, houses and routes are next door.
-          </Link>
-        </p>
-      </header>
+      <PageHeader
+        title="Subjects"
+        subtitle={
+          <>
+            Who teaches what. A marks request sent to subject teachers uses this
+            to work out who gets which link — one per teacher per subject,
+            carrying only her own classes. {assignments.length} assignment
+            {assignments.length === 1 ? "" : "s"} on record.
+          </>
+        }
+      />
+      <SettingsCrumbs current="/settings/subjects" />
 
       {assignments.length === 0 ? (
         <p className="rounded-[var(--radius-card)] border border-[var(--color-correct-border)] bg-[var(--color-correct-bg)] px-4 py-3 text-sm text-[var(--color-correct-fg)]">

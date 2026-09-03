@@ -80,7 +80,10 @@ export default async function AdminLayout({
           mounts a ThumbBar adds its own room on top. Expressed off the token
           rather than as a round number, so the two cannot drift apart. Nothing
           to clear on a desktop, where the nav is back in the header. */}
-      <main className="mx-auto max-w-6xl px-4 py-6 pb-[calc(var(--admin-nav-h)+env(safe-area-inset-bottom)+1.5rem)] md:px-6 md:py-8 md:pb-8">
+      {/* One notch wider on a large screen: the students board and the
+          data-health grid are the two screens with twelve columns, and a
+          1152px box made both scroll sideways on a 1440px laptop. */}
+      <main className="mx-auto max-w-6xl px-4 py-6 pb-[calc(var(--admin-nav-h)+env(safe-area-inset-bottom)+1.5rem)] md:px-6 md:py-8 md:pb-8 xl:max-w-7xl">
         {children}
       </main>
       <AdminNavBar items={nav} />

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CaretLeft } from "@phosphor-icons/react";
 import { AdminNavLinks, type NavItem } from "./AdminNav";
+import { CommandPalette } from "./CommandPalette";
 
 /**
  * The bar across the top of the console.
@@ -109,6 +110,7 @@ export function AppBar({
           {crumb}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-[var(--color-ink-muted)]">
+          <CommandPalette compact />
           <span className="max-w-24 truncate">{userName}</span>
           <span className="rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 font-mono text-[11px]">
             {role}
@@ -117,12 +119,13 @@ export function AppBar({
       </div>
 
       {/* ---------------------------------------------------- desktop bar */}
-      <div className="mx-auto hidden max-w-6xl items-center gap-6 px-4 py-4 md:flex md:px-6">
+      <div className="mx-auto hidden max-w-6xl items-center gap-6 px-4 py-4 md:flex md:px-6 xl:max-w-7xl">
         <Link href="/" className="font-semibold tracking-tight">
           Sampark
         </Link>
         <AdminNavLinks items={nav} />
         <div className="ml-auto flex items-center gap-3 text-sm">
+          <CommandPalette />
           <span className="text-[var(--color-ink-muted)]">
             {userName}
             <span className="ml-1.5 rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 font-mono text-xs">

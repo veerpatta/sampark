@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Decision, ReviewItem } from "@/lib/submissions";
 import { titleCaseName } from "@/lib/classes";
@@ -192,6 +192,54 @@ export function ReviewQueue({
 
   const groups = groupByRequest(showStale ? [...live, ...stale] : live);
 
+  /*
+   * THE KEYBOARD, for the one screen where a reviewer clears three hundred
+   * rows in a sitting.
+   *
+   *   j / k   move the cursor down / up the live rows
+   *   space   tick or untick the row under the cursor
+   *   a / r   approve / reject what is ticked — the same submit the buttons call
+   *
+   * Nothing fires while an input, textarea or select has focus (the note box
+   * lives in this component) or while a modifier is held, so typing a note
+   * containing the letter a does not approve the queue. The cursor is a row
+   * id, not an index: the list re-sorts when a filter changes, and an index
+   * would land on a different child.
+   */
+  const [cursor, setCursor] = useState<string | null>(null);
+  const order = live.map((item) => item.id);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      const at = cursor ? order.indexOf(cursor) : -1;
+      if (event.key === "j" || event.key === "k") {
+        event.preventDefault();
+        const next = event.key === "j" ? Math.min(order.length - 1, at + 1) : Math.max(0, at - 1);
+        const id = order[next];
+        if (!id) return;
+        setCursor(id);
+        document.getElementById(`review-${id}`)?.scrollIntoView({ block: "nearest" });
+      } else if (event.key === " " && cursor && order.includes(cursor)) {
+        event.preventDefault();
+        toggle(cursor);
+      } else if (event.key === "a" && canApprove && selected.size > 0 && !pending) {
+        submit("approved");
+      } else if (event.key === "r" && canApprove && selected.size > 0 && !pending) {
+        submit("rejected");
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // submit/toggle close over current state; re-binding per render is the
+    // cheap way to keep them current, and this is a screen with no other
+    // per-keystroke work.
+  });
+
   return (
     // pb-44: generous, because this bar wraps to three rows on a narrow phone
     // (count, select-all, note, then the two buttons).
@@ -273,7 +321,15 @@ export function ReviewQueue({
           Your role can view this queue but cannot approve changes into the
           master record. Ask an admin or the owner.
         </p>
-      ) : null}
+      ) : (
+        <p className="hidden text-xs text-[var(--color-ink-muted)] md:block">
+          Keyboard: <kbd className="rounded bg-[var(--color-surface-muted)] px-1 font-mono">j</kbd>/
+          <kbd className="rounded bg-[var(--color-surface-muted)] px-1 font-mono">k</kbd> move,{" "}
+          <kbd className="rounded bg-[var(--color-surface-muted)] px-1 font-mono">space</kbd> tick,{" "}
+          <kbd className="rounded bg-[var(--color-surface-muted)] px-1 font-mono">a</kbd> approve,{" "}
+          <kbd className="rounded bg-[var(--color-surface-muted)] px-1 font-mono">r</kbd> reject the ticked rows.
+        </p>
+      )}
 
       <ReviewFilters
         items={items.filter((item) => !decided.includes(item.id))}
@@ -317,13 +373,16 @@ export function ReviewQueue({
 
           <ul className="divide-y divide-[var(--color-border)]">
             {group.items.map((item) => (
-              <li key={item.id}>
+              <li key={item.id} id={`review-${item.id}`}>
                 {/*
                   The whole row is the tap target, not a 16px checkbox in a
                   corner. On a phone that is the difference between a screen you
                   can work through one-handed and one you have to aim at. The
                   checkbox stays for the pointer and for the keyboard, and its
                   own click is stopped so it does not toggle twice.
+
+                  The keyboard cursor is the same ring focus-visible draws —
+                  never a colour alone (controls.ts).
                 */}
                 <label
                   className={`flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-sm ${
@@ -332,7 +391,7 @@ export function ReviewQueue({
                       : selected.has(item.id)
                         ? "bg-[var(--color-brand-50)]"
                         : ""
-                  }`}
+                  } ${cursor === item.id ? "outline-solid outline-2 -outline-offset-2 outline-[var(--color-brand-600)]" : ""}`}
                 >
                   <input
                     type="checkbox"

@@ -10,6 +10,9 @@ import { saveTeacher, setTeacherActive } from "./actions";
 import { TeacherLinkPanel } from "./TeacherLinkPanel";
 import { RevokeAllLinks } from "./RevokeAllLinks";
 import { btn } from "@/components/ui/controls";
+import { Card } from "@/components/admin/Card";
+import { PageHeader } from "@/components/admin/PageHeader";
+import { SettingsCrumbs } from "@/components/admin/SettingsCrumbs";
 
 export const metadata = { title: "Teachers — Sampark" };
 export const dynamic = "force-dynamic";
@@ -47,20 +50,13 @@ export default async function TeachersPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-display font-semibold">Teachers</h1>
-        <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
-          Phone numbers are 10 digits with no country code — the WhatsApp link
-          builder adds 91. Tick the classes a teacher owns; tick a house or a bus
-          route only for the teacher who should receive a link for that whole
-          group.
-        </p>
-      </header>
+      <PageHeader
+        title="Teachers"
+        subtitle="Phone numbers are 10 digits with no country code — the WhatsApp link builder adds 91. Tick the classes a teacher owns; tick a house or a bus route only for the teacher who should receive a link for that whole group."
+      />
+      <SettingsCrumbs current="/settings/teachers" />
 
-      <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-4 md:p-6">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-muted)]">
-          Add a teacher
-        </h2>
+      <Card title="Add a teacher">
         <form action={saveTeacher} className="mt-4 space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <Field name="id" label="ID" placeholder="T01" required />
@@ -82,7 +78,7 @@ export default async function TeachersPage() {
             Add teacher
           </button>
         </form>
-      </section>
+      </Card>
 
       {teachers.length === 0 ? (
         <p className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 text-sm text-[var(--color-ink-muted)]">

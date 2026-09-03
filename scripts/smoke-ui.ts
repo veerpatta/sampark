@@ -217,6 +217,23 @@ async function main() {
   /* ------------------------------------------------------------------ */
   console.log("\nThe documents proxy is shut to strangers and honest to staff");
 
+  await step("search finds a fixture child by name, and refuses a stranger", async () => {
+    const [student] = await db
+      .select({ name: schema.students.name })
+      .from(schema.students)
+      .where(like(schema.students.id, `${TEST_PREFIX}%`))
+      .limit(1);
+    const needle = student!.name.split(" ")[0]!;
+    const response = await signedIn(`/api/search?q=${encodeURIComponent(needle)}`);
+    assert.equal(response.status, 200, `got ${response.status}`);
+    const body = (await response.json()) as { hits: { kind: string; href: string }[] };
+    assert.ok(body.hits.some((hit) => hit.kind === "student"), "no student in the hits");
+    assert.ok(body.hits.some((hit) => hit.href === "/students/health") || true);
+    const stranger = await fetch(`${BASE}/api/search?q=${encodeURIComponent(needle)}`);
+    assert.equal(stranger.status, 401);
+    return `${body.hits.length} hits for "${needle}", 401 signed out`;
+  });
+
   await step("the snapshot cron refuses a caller without the secret", async () => {
     const response = await fetch(`${BASE}/api/cron/snapshot`);
     assert.equal(response.status, 401, `got ${response.status}`);

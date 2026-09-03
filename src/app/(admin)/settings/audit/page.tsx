@@ -5,6 +5,8 @@ import { currentUser } from "@/lib/auth/session";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { decisionChip } from "@/components/ui/controls";
 import { redirect } from "next/navigation";
+import { PageHeader } from "@/components/admin/PageHeader";
+import { SettingsCrumbs } from "@/components/admin/SettingsCrumbs";
 
 export const metadata = { title: "Audit log — Sampark" };
 export const dynamic = "force-dynamic";
@@ -157,46 +159,24 @@ export default async function AuditPage({
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-display font-semibold">Audit log</h1>
-        {/* Sibling settings pages, on a pointer only — below md the Settings
-            tab lands on an index of all six. See settings/users/page.tsx. */}
-        <div className="mt-1 hidden flex-wrap items-baseline gap-3 md:flex">
-          <Link
-            href="/settings/fields"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
-          >
-            field registry
-          </Link>
-          <Link
-            href="/settings/teachers"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
-          >
-            teachers
-          </Link>
-          <Link
-            href="/settings/subjects"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
-          >
-            subjects
-          </Link>
-        </div>
-        <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
-          {total.toLocaleString("en-IN")} entr{total === 1 ? "y" : "ies"}
-          {student ? ` for ${student}` : ""} about the master record —
-          decisions on what teachers proposed, and edits the office typed
-          directly · append-only, enforced by database grants rather than by
-          this application behaving itself · marks are neither decided nor
-          typed here, so they are on{" "}
-          <Link
-            href="/marks"
-            className="text-[var(--color-brand-600)] hover:underline"
-          >
-            Marks
-          </Link>{" "}
-          instead
-        </p>
-      </header>
+      <PageHeader
+        title="Audit log"
+        subtitle={
+          <>
+            {total.toLocaleString("en-IN")} entr{total === 1 ? "y" : "ies"}
+            {student ? ` for ${student}` : ""} about the master record —
+            decisions on what teachers proposed, edits the office typed
+            directly, and children it added by hand · append-only, enforced by
+            database grants rather than by this application behaving itself ·
+            marks are neither decided nor typed here, so they are on{" "}
+            <Link href="/marks" className="text-[var(--color-brand-600)] hover:underline">
+              Marks
+            </Link>{" "}
+            instead
+          </>
+        }
+      />
+      <SettingsCrumbs current="/settings/audit" />
 
       <DataTable
         columns={columns}

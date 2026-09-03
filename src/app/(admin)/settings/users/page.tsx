@@ -1,9 +1,11 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { asc } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { canManageSettings, currentUser, ROLES } from "@/lib/auth/session";
 import { saveUser, setUserActive } from "./actions";
+import { Card } from "@/components/admin/Card";
+import { PageHeader } from "@/components/admin/PageHeader";
+import { SettingsCrumbs } from "@/components/admin/SettingsCrumbs";
 
 export const metadata = { title: "Admin users — Sampark" };
 export const dynamic = "force-dynamic";
@@ -26,51 +28,21 @@ export default async function UsersPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-display font-semibold">Admin users</h1>
-        {/* Sibling settings pages, on a pointer only. Below md the bottom nav's
-            Settings tab lands on an index of all six, so this row would be the
-            same navigation twice — and it is the row that pushes the actual
-            content off the first screen. */}
-        <div className="mt-1 hidden flex-wrap items-baseline gap-3 md:flex">
-          <Link
-            href="/settings/teachers"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
-          >
-            teachers
-          </Link>
-          <Link
-            href="/settings/subjects"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
-          >
-            subjects
-          </Link>
-          <Link
-            href="/settings/fields"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
-          >
-            field registry
-          </Link>
-          <Link
-            href="/settings/audit"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
-          >
-            audit log
-          </Link>
-        </div>
-        <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
-          <strong>owner</strong> can do everything including this page.{" "}
-          <strong>admin</strong> can create requests, import students and
-          approve changes into the master record. <strong>office</strong> can
-          create requests and view everything, but cannot approve or import.
-          Teachers never have an account.
-        </p>
-      </header>
+      <PageHeader
+        title="Admin users"
+        subtitle={
+          <>
+            <strong>owner</strong> can do everything including this page.{" "}
+            <strong>admin</strong> can create requests, import students and
+            approve changes into the master record. <strong>office</strong> can
+            create requests and view everything, but cannot approve or import.
+            Teachers never have an account.
+          </>
+        }
+      />
+      <SettingsCrumbs current="/settings/users" />
 
-      <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card p-6">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-muted)]">
-          Add a user, or reset a password
-        </h2>
+      <Card title="Add a user, or reset a password">
         <form action={saveUser} className="mt-4 grid gap-3 sm:grid-cols-5">
           <label className="block sm:col-span-2">
             <span className="text-xs font-medium text-[var(--color-ink-muted)]">
@@ -140,12 +112,12 @@ export default async function UsersPage() {
             </span>
           </div>
         </form>
-      </section>
+      </Card>
 
       {/* Not converted to cards, deliberately: four columns, a handful of rows,
           owner-only, and opened at a desk. Letting it scroll sideways on a
           phone is the honest amount of work this screen is worth. */}
-      <section className="overflow-x-auto rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card">
+      <Card flush className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
             <tr>
@@ -207,7 +179,7 @@ export default async function UsersPage() {
             ))}
           </tbody>
         </table>
-      </section>
+      </Card>
 
       <p className="text-xs text-[var(--color-ink-muted)]">
         Users are deactivated, never deleted — the audit log names who approved
