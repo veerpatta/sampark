@@ -7,6 +7,7 @@ import {
   buildRoundReminderMessage,
   buildRoundStatusMessage,
   buildWhatsAppLink,
+  buildParentMessage,
   teacherPageUrl,
   describeAudienceEn,
   describeAudienceHi,
@@ -542,5 +543,22 @@ describe("buildRoundStatusMessage", () => {
   it("keeps Devanagari numerals out, like every other message", () => {
     // Pinned to 0-9 across the app: "११ अगस्त" on a due date is unreadable.
     assert.doesNotMatch(buildRoundStatusMessage(pending), /[०-९]/);
+  });
+});
+
+describe("buildParentMessage", () => {
+  it("names the school and the child, English over Hindi, and nothing else", () => {
+    const message = buildParentMessage({ name: "Aarti Kumari", classLabel: "Class 6" });
+    const [en, hi, ...rest] = message.split("\n");
+    assert.match(en!, /Veer Patta School/);
+    assert.match(en!, /Aarti Kumari \(Class 6\)/);
+    assert.match(hi!, /वीर पत्ता/);
+    assert.match(hi!, /Aarti Kumari \(Class 6\)/);
+    assert.equal(rest.length, 0, "two lines: the office types the rest");
+  });
+
+  it("rides the same link builder as every other message", () => {
+    const link = buildWhatsAppLink("9414000000", buildParentMessage({ name: "A", classLabel: "Class 6" }));
+    assert.ok(link.startsWith("https://wa.me/919414000000?text="));
   });
 });

@@ -29,6 +29,9 @@ export type BulkResult = {
   archived?: number;
   closed?: number;
   restored?: number;
+  /** Bulk edit on the students board: rows that changed, and rows that already held the value. */
+  updated?: number;
+  unchanged?: number;
   skipped?: { id: string; reason: string }[];
 };
 
@@ -43,11 +46,18 @@ export type BulkAction = {
 export function BulkBar({
   name,
   actions,
+  controls,
   children,
 }: {
   /** The checkbox field name. Must match the DataTable's `select.name`. */
   name: string;
   actions: BulkAction[];
+  /**
+   * Inputs the actions read from — the students bar's "which field, which
+   * value". Rendered inside the bar before the buttons, so choosing and doing
+   * sit together under the thumb.
+   */
+  controls?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const form = useRef<HTMLFormElement>(null);
@@ -147,6 +157,8 @@ export function BulkBar({
 
             <span className="flex-1" />
 
+            {controls}
+
             {actions.map((action) => (
               <button
                 key={action.label}
@@ -176,6 +188,8 @@ function describe(result: BulkResult): string {
   if (result.archived) parts.push(`${result.archived} archived`);
   if (result.deleted) parts.push(`${result.deleted} deleted for good`);
   if (result.restored) parts.push(`${result.restored} back on the boards`);
+  if (result.updated) parts.push(`${result.updated} updated`);
+  if (result.unchanged) parts.push(`${result.unchanged} already had it`);
 
   const skipped = result.skipped ?? [];
   if (skipped.length > 0) {

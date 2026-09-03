@@ -142,6 +142,8 @@ async function main() {
     ["/review", "the review queue"],
     ["/marks", "the marks board"],
     ["/students", "the students board"],
+    ["/students?sort=fullest&missing=phone", "the students board, sorted and filtered"],
+    ["/students/new", "the add-a-student form"],
     ["/students/import", "the import wizard"],
     ["/settings", "settings"],
     ["/settings/fields", "the field registry"],
@@ -174,6 +176,67 @@ async function main() {
     const text = visibleText(await response.text());
     assert.ok(text.includes(student.name), "the page does not name the student");
     return student.name;
+  });
+
+  await step("a student nobody has heard of is a not-found page, not a crash", async () => {
+    // The status is 200 here and that is Next, not a bug: the segment has a
+    // loading.tsx, so the shell streams before the page throws notFound(), and
+    // the not-found view arrives inside the stream. What matters is what the
+    // office SEES — the not-found page, never an error boundary.
+    //
+    // And because it streams, the not-found view arrives as a flight chunk
+    // rather than in the document body — so this reads the raw response, which
+    // is the one place visibleText() is the wrong tool.
+    const response = await signedIn("/students/ZZNOPE-NOT-A-CHILD");
+    assert.ok(response.status === 200 || response.status === 404, `got ${response.status}`);
+    const html = await response.text();
+    assert.ok(html.includes("Not on record"), "the not-found page did not render");
+    assert.ok(!/Unhandled Runtime Error|Internal Server Error/.test(html), "an error page rendered instead");
+    return `${response.status}, not-found view`;
+  });
+
+  await step("a student's page carries its five sections and the family's numbers", async () => {
+    const [student] = await db
+      .select()
+      .from(schema.students)
+      .where(like(schema.students.id, `${TEST_PREFIX}%`))
+      .limit(1);
+    assert.ok(student, "no fixture students");
+    const html = await (await signedIn(`/students/${student.id}`)).text();
+    for (const anchor of ["#overview", "#details", "#documents", "#marks", "#timeline"]) {
+      assert.ok(html.includes(`href="${anchor}"`), `${anchor} is not on the page`);
+    }
+    const text = visibleText(html);
+    assert.ok(text.includes("Also on this number"), "the siblings card is missing");
+    assert.ok(text.includes("Timeline"), "the timeline is missing");
+    return "overview · details · documents · marks · timeline";
+  });
+
+  /* ------------------------------------------------------------------ */
+  console.log("\nThe documents proxy is shut to strangers and honest to staff");
+
+  await step("a stranger gets nothing from the documents proxy", async () => {
+    const pathname = "documents/S1/20260903-000000000000000000000000.pdf";
+    const response = await fetch(`${BASE}/api/documents?p=${encodeURIComponent(pathname)}`);
+    assert.equal(response.status, 404);
+    const post = await fetch(`${BASE}/api/documents`, { method: "POST", body: new FormData() });
+    assert.equal(post.status, 401);
+    return "GET 404, POST 401";
+  });
+
+  await step("an HTML page wearing a .pdf name is refused as a document", async () => {
+    const [student] = await db
+      .select({ id: schema.students.id })
+      .from(schema.students)
+      .where(like(schema.students.id, `${TEST_PREFIX}%`))
+      .limit(1);
+    const body = new FormData();
+    body.set("studentId", student!.id);
+    body.set("kind", "tc");
+    body.set("file", new File(["<html>not a pdf</html>"], "tc.pdf", { type: "application/pdf" }));
+    const response = await fetch(`${BASE}/api/documents`, { method: "POST", body, headers: { cookie } });
+    assert.equal(response.status, 415, `got ${response.status}`);
+    return "415";
   });
 
   await step("the students board shows the fixture school", async () => {

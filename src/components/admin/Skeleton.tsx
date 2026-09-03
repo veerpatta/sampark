@@ -105,9 +105,9 @@ export function SkeletonTable({
   rows?: number;
 }) {
   return (
-    <div className="md:overflow-hidden md:rounded-[var(--radius-card)] md:border md:border-[var(--color-border)] md:bg-[var(--color-surface)] md:shadow-card">
+    <div className="md:overflow-clip md:rounded-[var(--radius-card)] md:border md:border-[var(--color-border)] md:bg-[var(--color-surface)] md:shadow-card">
       <table className="hidden w-full text-sm md:table">
-        <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
+        <thead className="sticky top-0 border-b border-[var(--color-border)] bg-[var(--color-surface)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
           <tr>
             {headers.map((header) => (
               <th key={header} className="px-4 py-3 font-medium">

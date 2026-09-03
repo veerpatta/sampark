@@ -4,6 +4,7 @@ import { db, schema } from "./db";
 import { HOUSES } from "./houses";
 import { officeOrigin } from "./precedence";
 import { BUS_ROUTES } from "./routes";
+import { STUDENT_ID_PATTERN } from "./photos";
 import { IMPORT_COLUMNS, type ColumnSpec, type StudentColumn } from "./students-import";
 import type { Student } from "../../drizzle/schema";
 
@@ -45,6 +46,53 @@ import type { Student } from "../../drizzle/schema";
 export const EDITABLE_COLUMNS: ColumnSpec[] = IMPORT_COLUMNS.filter(
   (spec) => spec.column !== "id",
 );
+
+/**
+ * How the form is divided on the page.
+ *
+ * One flat grid of twenty boxes is what the page had, and it read as a data
+ * entry screen rather than a record. Grouped, each card answers one question a
+ * parent's call raises — who is this child, how do we reach the family, where
+ * do they sit, where do they live — and each can be edited on its own without
+ * the other sixteen boxes on screen.
+ *
+ * Every editable column must be in exactly one section, and a test says so;
+ * a column added to IMPORT_COLUMNS and forgotten here would be editable on
+ * no screen at all, silently.
+ */
+export type EditSection = {
+  key: string;
+  title: string;
+  columns: StudentColumn[];
+};
+
+export const EDIT_SECTIONS: EditSection[] = [
+  {
+    key: "identity",
+    title: "Identity",
+    columns: ["name", "gender", "dob", "category", "srNo", "admissionNo", "aadhaar", "aadhaarLast4", "janAadhaar"],
+  },
+  {
+    key: "family",
+    title: "Family and contact",
+    columns: ["fatherName", "motherName", "phone", "altPhone"],
+  },
+  {
+    key: "school",
+    title: "School",
+    columns: ["classLabel", "section", "rollNo", "house", "busRoute"],
+  },
+  { key: "address", title: "Address", columns: ["village", "address"] },
+  { key: "record", title: "Record status", columns: ["status"] },
+];
+
+/** The fields of one section, in the section's order. */
+export function sectionFields(fields: EditField[], section: EditSection): EditField[] {
+  const byColumn = new Map(fields.map((field) => [field.column, field]));
+  return section.columns
+    .map((column) => byColumn.get(column))
+    .filter((field): field is EditField => field !== undefined);
+}
 
 /**
  * The shape of the underlying column, DERIVED FROM THE SCHEMA rather than
@@ -491,12 +539,30 @@ export async function writeOfficeEdit(input: {
   decidedBy: string;
   note?: string | null;
 }): Promise<void> {
+  if (input.changes.length === 0) return;
+  const statements = officeEditStatements(input, new Date());
+  await db.batch(statements as [Statement, ...Statement[]]);
+}
+
+type Statement = Parameters<typeof db.batch>[0][number];
+
+/**
+ * The three statements one office edit is made of: the audit row, the master
+ * record, and the provenance stamp. In that order, for the reason
+ * writeOfficeEdit gives. ONE builder, so a single edit and a bulk edit cannot
+ * disagree about what "recorded with your name and stamped office" means.
+ */
+export function officeEditStatements(
+  input: {
+    studentId: string;
+    changes: FieldChange[];
+    decidedBy: string;
+    note?: string | null;
+  },
+  now: Date,
+): Statement[] {
   const { studentId, changes, decidedBy } = input;
-  if (changes.length === 0) return;
-
-  const now = new Date();
-
-  await db.batch([
+  return [
     db.insert(schema.changeLog).values(
       changes.map((row) => ({
         // No submission: nobody proposed this, an approver typed it. See the
@@ -536,5 +602,191 @@ export async function writeOfficeEdit(input: {
         target: [schema.valueSources.studentId, schema.valueSources.fieldKey],
         set: { sourceKey: sql`excluded."source_key"`, sourceUpdatedAt: now },
       }),
+  ];
+}
+
+/**
+ * The same write, for many children at once — the bulk bar on /students.
+ *
+ * Twenty-five students per batch, seventy-five statements, which is the size
+ * applyPreview already sends the driver. Each chunk is atomic on its own; a
+ * failure in the second chunk leaves the first fully written and fully logged,
+ * which is the honest partial outcome — never a student with a new value and
+ * no audit row.
+ */
+export async function writeOfficeEdits(
+  edits: { studentId: string; changes: FieldChange[] }[],
+  decidedBy: string,
+  note?: string | null,
+): Promise<void> {
+  const now = new Date();
+  const live = edits.filter((edit) => edit.changes.length > 0);
+  for (let i = 0; i < live.length; i += 25) {
+    const statements = live
+      .slice(i, i + 25)
+      .flatMap((edit) => officeEditStatements({ ...edit, decidedBy, note }, now));
+    await db.batch(statements as [Statement, ...Statement[]]);
+  }
+}
+
+/* ------------------------------------------------------------- bulk edit */
+
+/**
+ * The columns the bulk bar may set on a selection.
+ *
+ * Group facts only — the ones that are true of a whole class or a whole bus
+ * at once. A phone number or a name is one child's, and a screen that can set
+ * forty of them to the same value is a screen waiting to be misused.
+ */
+export const BULK_COLUMNS = ["house", "busRoute", "section", "classLabel", "status"] as const;
+export type BulkColumn = (typeof BULK_COLUMNS)[number];
+
+export function isBulkColumn(value: unknown): value is BulkColumn {
+  return (BULK_COLUMNS as readonly string[]).includes(String(value));
+}
+
+/**
+ * The bulk bar's controls, built the same way the single form's are, so it
+ * cannot offer a value that the per-student validation then refuses.
+ */
+export function bulkEditFields(registryOptions: Map<string, string[]>): EditField[] {
+  return editFields(blankStudent(), registryOptions).filter((field) =>
+    isBulkColumn(field.column),
+  );
+}
+
+/* ------------------------------------------------------------ new student */
+
+/** A record with nothing on it yet, for the new-student form and the bulk bar. */
+export function blankStudent(): Student {
+  return {
+    id: "",
+    srNo: null,
+    admissionNo: null,
+    classLabel: "",
+    section: null,
+    rollNo: null,
+    name: "",
+    fatherName: null,
+    motherName: null,
+    phone: null,
+    altPhone: null,
+    dob: null,
+    gender: null,
+    category: null,
+    aadhaar: null,
+    janAadhaar: null,
+    village: null,
+    address: null,
+    busRoute: null,
+    house: null,
+    aadhaarLast4: null,
+    photoPath: null,
+    status: "active",
+    source: "office",
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  };
+}
+
+/** The new-student form's fields: the edit form's, over an empty record. */
+export function newStudentFields(registryOptions: Map<string, string[]>): EditField[] {
+  return editFields(blankStudent(), registryOptions);
+}
+
+export type NewStudentPlan = {
+  /** The id the office typed, or null to mint a TMP- one. */
+  id: string | null;
+  changes: FieldChange[];
+  errors: Record<string, string>;
+};
+
+/**
+ * What a new record would hold, and whether it may be created.
+ *
+ * Runs the ordinary edit rules over a blank record, so every normaliser and
+ * every closed set applies exactly as it does on the student's page. Two
+ * things are added: `name` and `classLabel` are required — a blank-to-blank
+ * "edit" is a no-op to applyEdits, so it has to be said here — and the id is
+ * checked against the one shape an id may have.
+ *
+ * Pure. The existence check needs the database and lives in the action.
+ */
+export function planNewStudent(
+  fields: EditField[],
+  read: (column: string) => string | null,
+): NewStudentPlan {
+  const { changes, errors } = applyEdits(blankStudent(), fields, read);
+  const has = (column: StudentColumn) => changes.some((change) => change.column === column);
+
+  if (!has("name") && !errors.name) errors.name = "Name is required.";
+  if (!has("classLabel") && !errors.classLabel) errors.classLabel = "Class is required.";
+
+  let id: string | null = null;
+  const typed = (read("id") ?? "").trim();
+  if (typed) {
+    if (!STUDENT_ID_PATTERN.test(typed)) {
+      errors.id = "A student ID is letters, digits, - or _, up to 32 characters.";
+    } else if (typed.toUpperCase().startsWith("TMP-")) {
+      errors.id = "Leave the ID blank and a temporary one is made for you.";
+    } else {
+      id = typed;
+    }
+  }
+
+  if (Object.keys(errors).length > 0) return { id: null, changes: [], errors };
+  return { id, changes, errors: {} };
+}
+
+/**
+ * Insert the child: the row, its provenance, and the audit trail — one batch.
+ *
+ * The change_log rows are ONE PER FIELD with `from null`, `decision: 'created'`
+ * and no submission, rather than a single "student created" row: both places
+ * that render the log are per-field lists joined to the registry for a label,
+ * and a row keyed `student` would render as nothing. The timeline collapses
+ * the burst into one "Record created" event; the audit log lists N honest rows.
+ *
+ * `source: 'office'` on the row, and an office stamp on every field, so the
+ * next PSP import cannot overwrite what the office typed today — the same
+ * guarantee an edit gets.
+ */
+export async function createStudent(input: {
+  id: string;
+  changes: FieldChange[];
+  decidedBy: string;
+  note?: string | null;
+}): Promise<void> {
+  const { id, changes, decidedBy } = input;
+  const now = new Date();
+
+  await db.batch([
+    db.insert(schema.students).values({
+      id,
+      name: "",
+      classLabel: "",
+      ...Object.fromEntries(changes.map((row) => [row.column, row.to])),
+      source: "office",
+      createdAt: now,
+      updatedAt: now,
+    } as typeof schema.students.$inferInsert),
+    db.insert(schema.changeLog).values(
+      changes.map((row) => ({
+        submissionId: null,
+        studentId: id,
+        fieldKey: row.logKey,
+        fromValue: null,
+        toValue: row.toValue,
+        decision: "created",
+        decidedBy,
+        note: input.note ?? null,
+      })),
+    ),
+    db.insert(schema.valueSources).values(
+      changes.map((row) => ({
+        ...officeOrigin(id, row.dbName),
+        sourceUpdatedAt: now,
+      })),
+    ),
   ]);
 }

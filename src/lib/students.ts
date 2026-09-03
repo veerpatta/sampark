@@ -6,6 +6,7 @@ import {
   ilike,
   inArray,
   isNotNull,
+  ne,
   or,
   sql,
   type SQL,
@@ -37,7 +38,7 @@ export type MissingField =
   | "route"
   | "father";
 
-export type StudentSort = "name" | "class" | "recent" | "complete";
+export type StudentSort = "name" | "class" | "recent" | "complete" | "fullest" | "id";
 
 export type StudentQuery = {
   search?: string;
@@ -126,16 +127,28 @@ function orderFor(sort: StudentSort = "name"): SQL[] {
     return [desc(schema.students.updatedAt)] as unknown as SQL[];
   }
   if (sort === "complete") {
-    const filled = sql.join(
-      COMPLETENESS_COLUMNS.map(
-        (column) =>
-          sql`(case when nullif(btrim(${sql.identifier(column)}::text), '') is null then 0 else 1 end)`,
-      ),
-      sql` + `,
-    );
-    return [sql`(${filled}) asc`, asc(schema.students.name)] as unknown as SQL[];
+    return [sql`(${completenessExpr()}) asc`, asc(schema.students.name)] as unknown as SQL[];
+  }
+  // The same number the other way up: the children whose records are already
+  // whole, which is who a certificate round or an ID-card print wants first.
+  if (sort === "fullest") {
+    return [sql`(${completenessExpr()}) desc`, asc(schema.students.name)] as unknown as SQL[];
+  }
+  if (sort === "id") {
+    return [asc(schema.students.id)] as unknown as SQL[];
   }
   return byName;
+}
+
+/** How many of the twelve tracked fields this row holds, as SQL. */
+function completenessExpr(): SQL {
+  return sql.join(
+    COMPLETENESS_COLUMNS.map(
+      (column) =>
+        sql`(case when nullif(btrim(${sql.identifier(column)}::text), '') is null then 0 else 1 end)`,
+    ),
+    sql` + `,
+  );
 }
 
 export function buildWhere(query: StudentQuery): SQL | undefined {
@@ -154,6 +167,13 @@ export function buildWhere(query: StudentQuery): SQL | undefined {
         ilike(schema.students.admissionNo, like),
         ilike(schema.students.phone, like),
         ilike(schema.students.fatherName, like),
+        // The office is rung by mothers too, and asks after a child by the
+        // village as often as by the surname. The last four Aadhaar digits are
+        // what a parent reads off the card over the phone.
+        ilike(schema.students.altPhone, like),
+        ilike(schema.students.motherName, like),
+        ilike(schema.students.village, like),
+        ilike(schema.students.aadhaarLast4, like),
       )!,
     );
   }
@@ -424,4 +444,54 @@ export async function countByClass(): Promise<Map<string, number>> {
     .groupBy(schema.students.classLabel);
 
   return new Map(rows.map((row) => [row.classLabel, row.n]));
+}
+
+/**
+ * The other children on this child's numbers.
+ *
+ * A phone number in this school is a household's, not a child's, so two rows
+ * sharing one are usually siblings — and the sibling's record is the fastest
+ * way to fill a hole in this one (same father, same village, same route). The
+ * review queue already says "also on N other students"; this is the same fact
+ * on the page a parent's call opens.
+ *
+ * EVERY STATUS, on purpose: a brother who left last year is still context for
+ * the sister who is here.
+ */
+export async function listSharingPhone(
+  student: Pick<Student, "id" | "phone" | "altPhone">,
+): Promise<
+  Pick<Student, "id" | "name" | "classLabel" | "rollNo" | "phone" | "altPhone" | "status" | "photoPath">[]
+> {
+  const numbers = [student.phone, student.altPhone].filter(
+    (value): value is string => Boolean(value && value.trim()),
+  );
+  if (numbers.length === 0) return [];
+
+  const rows = await db
+    .select({
+      id: schema.students.id,
+      name: schema.students.name,
+      classLabel: schema.students.classLabel,
+      rollNo: schema.students.rollNo,
+      phone: schema.students.phone,
+      altPhone: schema.students.altPhone,
+      status: schema.students.status,
+      photoPath: schema.students.photoPath,
+    })
+    .from(schema.students)
+    .where(
+      and(
+        ne(schema.students.id, student.id),
+        or(
+          inArray(schema.students.phone, numbers),
+          inArray(schema.students.altPhone, numbers),
+        ),
+      ),
+    );
+
+  return rows.sort(
+    (a, b) =>
+      compareClassLabels(a.classLabel, b.classLabel) || compareStudentNames(a.name, b.name),
+  );
 }

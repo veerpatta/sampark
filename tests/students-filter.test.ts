@@ -95,6 +95,15 @@ describe("toSearchParams", () => {
     assert.equal(toSearchParams({}, { page: 2 }).get("page"), "2");
   });
 
+  it("re-sorts the same view from a header link, and drops the page", () => {
+    const search = toSearchParams({ page: "3", classes: "Class 8", sort: "complete" }, { sort: "fullest" });
+    assert.equal(search.get("sort"), "fullest");
+    assert.equal(search.get("classes"), "Class 8");
+    assert.equal(search.get("page"), null);
+    // The default order is no parameter at all, so the plain URL stays plain.
+    assert.equal(toSearchParams({ sort: "complete" }, { sort: "name" }).get("sort"), null);
+  });
+
   it("does not carry the current page into the export link", () => {
     // Exporting page 3 of a filtered board must give the whole filtered set,
     // not the hundred rows that happen to be on screen.

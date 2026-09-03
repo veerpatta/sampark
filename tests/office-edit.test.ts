@@ -5,9 +5,15 @@ import { eq, getTableColumns } from "drizzle-orm";
 import { db, schema } from "../src/lib/db";
 import {
   applyEdits,
+  BULK_COLUMNS,
+  bulkEditFields,
+  EDIT_SECTIONS,
   EDITABLE_COLUMNS,
   editFields,
   logKeyFor,
+  newStudentFields,
+  planNewStudent,
+  sectionFields,
   writeOfficeEdit,
 } from "../src/lib/student-edit";
 import { mayWrite, type Precedence } from "../src/lib/precedence";
@@ -373,5 +379,76 @@ describe("writing an edit", () => {
 
     const log = await changeLogForStudent(studentId);
     assert.equal(log.length, 0, "a save that changed nothing leaves no trail");
+  });
+});
+
+describe("the sections on the student page", () => {
+  test("every editable column is in exactly one section", () => {
+    // A column added to IMPORT_COLUMNS and forgotten here would be editable on
+    // no screen at all, silently — the same drift the export test guards.
+    const seen = new Map<string, number>();
+    for (const section of EDIT_SECTIONS) {
+      for (const column of section.columns) seen.set(column, (seen.get(column) ?? 0) + 1);
+    }
+    for (const spec of EDITABLE_COLUMNS) {
+      assert.equal(seen.get(spec.column), 1, `${spec.column} should be in exactly one section`);
+    }
+    assert.equal(seen.size, EDITABLE_COLUMNS.length, "a section names a column that is not editable");
+  });
+
+  test("sectionFields keeps the section's order and drops what the form was not given", () => {
+    const fields = editFields(fakeStudent(), OPTIONS);
+    const family = EDIT_SECTIONS.find((section) => section.key === "family")!;
+    assert.deepEqual(
+      sectionFields(fields, family).map((field) => field.column),
+      ["fatherName", "motherName", "phone", "altPhone"],
+    );
+    assert.deepEqual(sectionFields(fields.filter((f) => f.column === "phone"), family).map((f) => f.column), ["phone"]);
+  });
+});
+
+describe("the bulk bar's fields", () => {
+  test("offers exactly the group facts, with the same option lists as the form", () => {
+    const fields = bulkEditFields(OPTIONS);
+    for (const column of BULK_COLUMNS) {
+      assert.ok(fields.some((field) => field.column === column), `${column} missing from the bulk bar`);
+    }
+    assert.equal(fields.length, BULK_COLUMNS.length);
+    assert.ok(fields.find((f) => f.column === "house")!.options!.includes("Rana Pratap"));
+    assert.equal(fields.find((f) => f.column === "section")!.control, "text");
+  });
+});
+
+describe("planNewStudent", () => {
+  const fields = newStudentFields(OPTIONS);
+
+  test("requires a name and a class, and says so beside the boxes", () => {
+    const plan = planNewStudent(fields, from({}));
+    assert.equal(plan.changes.length, 0);
+    assert.match(plan.errors.name!, /required/i);
+    assert.match(plan.errors.classLabel!, /required/i);
+  });
+
+  test("runs the ordinary rules over a blank record", () => {
+    const plan = planNewStudent(fields, from({ name: "New Child", classLabel: "Class 6", phone: "12345" }));
+    assert.ok(plan.errors.phone, "a bad phone is refused, as on the edit form");
+    assert.equal(plan.changes.length, 0, "all or nothing");
+  });
+
+  test("leaves the id null when blank, so the caller mints a TMP- one", () => {
+    const plan = planNewStudent(fields, from({ name: "New Child", classLabel: "Class 6" }));
+    assert.deepEqual(plan.errors, {});
+    assert.equal(plan.id, null);
+    assert.deepEqual(plan.changes.map((c) => c.column).sort(), ["classLabel", "name"]);
+    // An untouched "active" status is not a change: the row's default carries it.
+    assert.ok(!plan.changes.some((c) => c.column === "status"));
+  });
+
+  test("accepts a typed PSP id in the one shape an id may have", () => {
+    const ok = planNewStudent(fields, from({ name: "N", classLabel: "Class 6", id: " S1234 " }));
+    assert.equal(ok.id, "S1234");
+    assert.ok(planNewStudent(fields, from({ name: "N", classLabel: "Class 6", id: "S 12" })).errors.id);
+    assert.ok(planNewStudent(fields, from({ name: "N", classLabel: "Class 6", id: "a".repeat(33) })).errors.id);
+    assert.match(planNewStudent(fields, from({ name: "N", classLabel: "Class 6", id: "TMP-1" })).errors.id!, /blank/i);
   });
 });

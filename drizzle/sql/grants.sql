@@ -46,7 +46,8 @@ GRANT SELECT, INSERT ON submissions, change_log TO app_rw;
 --
 -- A row with a NULL submission_id is not a broken row: it is the office editing
 -- a student directly on /students/[id], where there is no submission because
--- nobody proposed anything. Its `decision` reads 'edited'. Still append-only,
+-- nobody proposed anything. Its `decision` reads 'edited' — or 'created', for
+-- the rows written when the office adds a child by hand. Still append-only,
 -- still INSERT and SELECT only, and the grants below are what make that true
 -- rather than the application remembering to behave.
 REVOKE UPDATE, DELETE ON change_log FROM app_rw;
@@ -57,6 +58,15 @@ REVOKE UPDATE, DELETE ON change_log FROM app_rw;
 REVOKE UPDATE ON submissions FROM app_rw;
 GRANT UPDATE (review_status) ON submissions TO app_rw;
 REVOKE DELETE ON submissions FROM app_rw;
+
+-- ----------------------------------------------------------------- documents
+-- A scanned certificate attached to a child. The row is evidence — who attached
+-- what, and when — and the app may only ever mark it REMOVED: the same
+-- column-level shape as submissions.review_status. No DELETE, no rewriting the
+-- pathname to point at different bytes. See student_documents in schema.ts.
+GRANT SELECT, INSERT ON student_documents TO app_rw;
+REVOKE UPDATE, DELETE ON student_documents FROM app_rw;
+GRANT UPDATE (removed_at, removed_by) ON student_documents TO app_rw;
 
 -- ----------------------------------------------------------------- sequences
 -- BIGSERIAL primary keys on change_log and student_records need their sequence.

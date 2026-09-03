@@ -82,6 +82,8 @@ const nextConfig: NextConfig = {
        * caching is decided in the route handler, where the reasoning lives.
        */
       { source: "/api/photos", headers: tokenSafetyHeaders },
+      // The documents proxy: the same argument, for scans of the same children.
+      { source: "/api/documents", headers: tokenSafetyHeaders },
     ];
   },
 };

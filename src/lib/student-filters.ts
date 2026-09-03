@@ -14,7 +14,7 @@ import type { MissingField, StudentQuery, StudentSort } from "./students";
  * on screen, with nothing to say so.
  */
 
-export const SORTS: StudentSort[] = ["name", "class", "recent", "complete"];
+export const SORTS: StudentSort[] = ["name", "class", "recent", "complete", "fullest", "id"];
 
 export const MISSING_FIELDS: MissingField[] = [
   "phone",
@@ -42,6 +42,8 @@ export const SORT_LABELS: Record<StudentSort, string> = {
   class: "Class and roll",
   recent: "Recently updated",
   complete: "Least complete first",
+  fullest: "Most complete first",
+  id: "Student ID",
 };
 
 /** 250 is where a phone starts to struggle; there is no "all". */
@@ -128,11 +130,11 @@ export function parseFilters(params: StudentSearchParams): ParsedFilters {
  *
  * `page` is passed separately because every caller wants a different one, and
  * threading it through the query object would mean recomputing an offset that
- * is already known.
+ * is already known. `sort` likewise, for the column headers.
  */
 export function toSearchParams(
   params: StudentSearchParams,
-  overrides: { page?: number } = {},
+  overrides: { page?: number; sort?: StudentSort } = {},
 ): URLSearchParams {
   const search = new URLSearchParams();
   const carry = [
@@ -153,6 +155,12 @@ export function toSearchParams(
 
   for (const key of carry) {
     for (const value of many(params[key])) search.append(key, value);
+  }
+  // A header link re-sorts the SAME view: the filters carry, the page does
+  // not, because page 3 of one order is nowhere in particular in another.
+  if (overrides.sort) {
+    search.delete("sort");
+    if (overrides.sort !== "name") search.set("sort", overrides.sort);
   }
   if (overrides.page && overrides.page > 1) {
     search.set("page", String(overrides.page));

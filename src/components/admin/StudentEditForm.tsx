@@ -2,14 +2,19 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { btn, field } from "@/components/ui/controls";
 import { useToast } from "@/components/ui/Toast";
 import { saveStudent, type SaveResult } from "@/app/(admin)/students/[id]/actions";
+import { EditInput } from "./EditInput";
 import type { EditField } from "@/lib/student-edit";
 
 /**
- * The form behind "What we hold".
+ * One section of a student's record, editable.
+ *
+ * The page mounts one of these per section (identity, family, school…), each
+ * with only its own fields. That works because the action's rule is that a
+ * field ABSENT from the form is left alone — see applyEdits — so five small
+ * forms and one big one write exactly the same rows.
  *
  * TYPE-ONLY IMPORTS FROM lib/student-edit, and it has to stay that way. That
  * module reaches IMPORT_COLUMNS, which imports `node:crypto`; a value imported
@@ -20,11 +25,17 @@ export function StudentEditForm({
   studentId,
   fields,
   pending,
+  provenance,
+  note = true,
 }: {
   studentId: string;
   fields: EditField[];
   /** Columns a teacher has a correction waiting on, by students column name. */
   pending: Map<string, string>;
+  /** One line per column saying where its current value came from. */
+  provenance?: Map<string, string>;
+  /** Offer a note box. Off for the one-field status section, where it is the whole point — see the page. */
+  note?: boolean;
 }) {
   // Passed straight in: the action's signature IS the useActionState contract,
   // (previous, formData) => result. See login/actions.ts for the same shape and
@@ -37,6 +48,7 @@ export function StudentEditForm({
   const router = useRouter();
   const toast = useToast();
   const announced = useRef<SaveResult | null>(null);
+  const form = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     if (!result || result === announced.current) return;
@@ -60,13 +72,15 @@ export function StudentEditForm({
           : `Saved. ${result.changed} fields changed.`,
       tone: "success",
     });
+    // Close the disclosure the form sits in, so the card reads as a record again.
+    form.current?.closest("details")?.removeAttribute("open");
     router.refresh();
   }, [result, router, toast]);
 
   const errors = result && !result.ok ? result.errors : {};
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form ref={form} action={formAction} className="space-y-4">
       <input type="hidden" name="studentId" value={studentId} />
 
       {errors._ ? (
@@ -77,106 +91,39 @@ export function StudentEditForm({
 
       <div className="grid gap-3 sm:grid-cols-2">
         {fields.map((spec) => (
-          <Input
+          <EditInput
             key={spec.column}
             spec={spec}
             error={errors[spec.column]}
             pending={pending.get(spec.column)}
+            hint={provenance?.get(spec.column) ?? null}
           />
         ))}
       </div>
+
+      {note ? (
+        <label className="block">
+          <span className="text-xs font-medium text-[var(--color-ink-muted)]">
+            Note (optional)
+          </span>
+          <input
+            name="note"
+            maxLength={200}
+            placeholder="Why — e.g. parent rang, number changed"
+            className={`mt-1 ${field()}`}
+          />
+        </label>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3 border-t border-[var(--color-border)] pt-4">
         <button type="submit" disabled={saving} className={btn({ shape: "commit", tone: "primary" })}>
           {saving ? "Saving…" : "Save changes"}
         </button>
         <p className="text-xs text-[var(--color-ink-muted)]">
-          Every change is recorded below with your name, and marked as set by the
+          Every change is recorded with your name, and marked as set by the
           office so no import can undo it.
         </p>
       </div>
     </form>
-  );
-}
-
-function Input({
-  spec,
-  error,
-  pending,
-}: {
-  spec: EditField;
-  error?: string;
-  pending?: string;
-}) {
-  const id = `edit-${spec.column}`;
-
-  return (
-    <label className="block" htmlFor={id}>
-      <span className="text-xs font-medium text-[var(--color-ink-muted)]">
-        {spec.label}
-      </span>
-
-      {spec.control === "select" ? (
-        <select
-          id={id}
-          name={spec.column}
-          defaultValue={spec.value}
-          className={`mt-1 ${field({ invalid: Boolean(error) })}`}
-        >
-          {/* Present even on a NOT NULL column: leaving it out would make the
-              first option a silent default for a field nobody has set. The
-              server refuses an empty value where the column cannot take one. */}
-          <option value="">—</option>
-          {spec.options?.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <input
-          id={id}
-          name={spec.column}
-          type={spec.control === "date" ? "date" : "text"}
-          // `tel` and `number` as inputMode rather than as type: type="number"
-          // brings spinners and silently drops a leading zero, and type="tel"
-          // gives no validation this form is not already doing on the server.
-          inputMode={
-            spec.control === "tel" || spec.control === "number" ? "numeric" : undefined
-          }
-          defaultValue={spec.value}
-          className={`mt-1 ${field({ invalid: Boolean(error) })}`}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? `${id}-error` : undefined}
-        />
-      )}
-
-      {error ? (
-        <span
-          id={`${id}-error`}
-          role="alert"
-          className="mt-1 block text-xs text-[var(--color-danger)]"
-        >
-          {error}
-        </span>
-      ) : null}
-
-      {/*
-        A teacher has already proposed a change to this field and it is still in
-        the queue. Saying so is not optional: approving it later will overwrite
-        whatever is typed here, because the review path writes master
-        unconditionally and stamps `teacher`, which outranks `office`. The
-        sentence has to say that, not merely that something is waiting.
-      */}
-      {pending ? (
-        <span className="mt-1 block text-xs text-[var(--color-warning)]">
-          {pending}{" "}
-          <Link href="/review" className="underline">
-            review it
-          </Link>
-          {" — approving it will replace whatever you type here."}
-        </span>
-      ) : null}
-    </label>
   );
 }

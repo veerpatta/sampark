@@ -33,7 +33,11 @@ const CRUMBS: [prefix: string, label: string][] = [
   ["/requests/batch", "Send queue"],
   ["/requests", "Requests"],
   ["/review", "Review"],
+  ["/marks/grid", "Marks grid"],
+  ["/marks", "Marks"],
   ["/students/import", "Import students"],
+  ["/students/new", "Add student"],
+  ["/students/health", "Data health"],
   ["/students", "Students"],
   ["/settings/teachers", "Teachers"],
   ["/settings/subjects", "Subjects"],
@@ -44,7 +48,7 @@ const CRUMBS: [prefix: string, label: string][] = [
 ];
 
 /** The five screens the bottom bar goes to. Nothing above these to go back to. */
-const ROOTS = new Set(["/", "/requests", "/review", "/students", "/settings"]);
+const ROOTS = new Set(["/", "/requests", "/review", "/marks", "/students", "/settings"]);
 
 function crumbFor(pathname: string): string {
   if (pathname === "/") return "Dashboard";

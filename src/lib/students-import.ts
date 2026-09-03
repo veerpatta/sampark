@@ -817,8 +817,12 @@ async function loadCandidates(
  * is explicit that name + class is a valid row. The TMP- prefix is deliberately
  * ugly so it shows up in the students list and gets replaced with the real PSP
  * ID rather than living forever.
+ *
+ * Exported for /students/new, which mints the same shape when the office adds a
+ * child whose PSP id is not known yet — one generator, so a TMP- id looks the
+ * same whichever door it came through.
  */
-function temporaryStudentId(): string {
+export function temporaryStudentId(): string {
   return `TMP-${randomBytes(4).toString("hex").toUpperCase()}`;
 }
 

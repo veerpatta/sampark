@@ -204,10 +204,11 @@ export function stepBadge(): string {
 /**
  * The badge on one row of the change log.
  *
- * Three values now, not two. `approved` and `rejected` are verdicts on
+ * Four values now, not two. `approved` and `rejected` are verdicts on
  * something a teacher proposed; `edited` is the office typing into
- * /students/[id] directly, which is a fact rather than a verdict — so it gets
- * the brand tint that `chip({ on: true })` uses and not the confirm green.
+ * /students/[id] directly and `created` is the office adding a child from
+ * /students/new — facts rather than verdicts, so both get the brand tint that
+ * `chip({ on: true })` uses and not the confirm green.
  * Colouring an edit green would file it alongside approvals and quietly claim
  * somebody reviewed it.
  *
@@ -220,7 +221,7 @@ export function decisionChip(decision: string): string {
   const tone =
     decision === "approved"
       ? "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
-      : decision === "edited"
+      : decision === "edited" || decision === "created"
         ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
         : "bg-[var(--color-absent-bg)] text-[var(--color-absent-fg)]";
   return `rounded px-2 py-0.5 text-xs font-medium ${tone}`;

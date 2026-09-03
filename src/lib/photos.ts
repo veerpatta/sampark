@@ -27,7 +27,14 @@
  */
 
 /** A student id as it can appear in a pathname. Real ones are 'S1001', 'TMP-7'. */
-const STUDENT_ID = /^[A-Za-z0-9_-]{1,32}$/;
+/**
+ * Exported, because it is the app's one definition of "a student id that can
+ * be a path segment": lib/documents.ts builds its pathnames from the same
+ * segment, and /students/new validates a typed PSP id against it — an id that
+ * could not carry a photograph is an id that should not exist.
+ */
+export const STUDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
+const STUDENT_ID = STUDENT_ID_PATTERN;
 
 /**
  * The whole pathname, anchored.
@@ -77,7 +84,7 @@ export function photoPathname(studentId: string, now = new Date()): string {
 }
 
 /** 12 bytes of Web Crypto randomness, as hex. See the note at the top. */
-function randomHex(bytes: number): string {
+export function randomHex(bytes: number): string {
   const buffer = new Uint8Array(bytes);
   crypto.getRandomValues(buffer);
   return Array.from(buffer, (byte) => byte.toString(16).padStart(2, "0")).join("");

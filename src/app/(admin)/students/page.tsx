@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { canApproveIntoMaster, currentUser } from "@/lib/auth/session";
-import { listFacets, listStudents } from "@/lib/students";
+import { listFacets, listStudents, type StudentSort } from "@/lib/students";
+import { bulkEditFields, registryOptions } from "@/lib/student-edit";
 import { compareClassLabels, titleCaseName } from "@/lib/classes";
 import { completeness } from "@/lib/completeness";
 import {
@@ -17,10 +18,13 @@ import { DataTable, type Column } from "@/components/admin/DataTable";
 import { FilterBar, type ChipGroup } from "@/components/admin/FilterBar";
 import { StudentPhoto } from "@/components/admin/StudentPhoto";
 import { Avatar } from "@/components/admin/Avatar";
+import { ColumnPicker, type PickableColumn } from "@/components/admin/ColumnPicker";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { ProgressBar } from "@/components/admin/ProgressBar";
+import { RecentStudents } from "@/components/admin/RecentStudents";
 import { btn, eyebrow, field } from "@/components/ui/controls";
 import { HouseChip } from "@/components/HouseChip";
+import { StudentBulkBar } from "./StudentBulkBar";
 
 export const metadata = { title: "Students — Sampark" };
 export const dynamic = "force-dynamic";
@@ -46,15 +50,23 @@ export default async function StudentsPage({
   const params = await searchParams;
   const { query, page, size, active } = parseFilters(params);
 
-  const [session, { students, total }, facets] = await Promise.all([
+  const [session, { students, total }, facets, options] = await Promise.all([
     currentUser(),
     listStudents(query),
     listFacets(),
+    registryOptions(),
   ]);
 
   const canImport = session ? canApproveIntoMaster(session.role) : false;
   const lastPage = Math.max(1, Math.ceil(total / size));
   const exportQuery = toSearchParams(params);
+
+  // A header link re-sorts the same view. Clicking the column the board is
+  // already sorted by flips it where a flip means something (completeness);
+  // otherwise it is simply that column's order.
+  const sortHref = (sort: StudentSort) => `/students?${toSearchParams(params, { sort })}`;
+  const sortedAs = (...sorts: StudentSort[]) =>
+    sorts.includes(query.sort ?? "name") ? (query.sort === "fullest" ? "desc" : "asc") : undefined;
 
   const sorted = (map: Map<string, number>) => [...map.entries()].sort();
   const chip = (
@@ -124,12 +136,16 @@ export default async function StudentsPage({
       cell: (student) =>
         `${student.classLabel}${student.section ? ` ${student.section}` : ""}`,
       cellClassName: "whitespace-nowrap",
+      sortHref: sortHref("class"),
+      sorted: sortedAs("class"),
     },
     {
       key: "roll",
       header: "Roll",
       cell: (student) => student.rollNo ?? "—",
       cellClassName: "font-mono text-xs",
+      sortHref: sortHref("class"),
+      sorted: sortedAs("class"),
     },
     {
       key: "name",
@@ -137,6 +153,8 @@ export default async function StudentsPage({
       role: "primary",
       cell: (student) => titleCaseName(student.name),
       cellClassName: "font-medium",
+      sortHref: sortHref("name"),
+      sorted: sortedAs("name"),
     },
     {
       key: "house",
@@ -167,14 +185,86 @@ export default async function StudentsPage({
       key: "complete",
       header: "Record",
       cell: (student) => <CompletenessBar student={student} />,
+      // Least complete first is the work list; the same column again turns it
+      // over to "most complete first", which is who an ID-card print wants.
+      sortHref: sortHref(query.sort === "complete" ? "fullest" : "complete"),
+      sorted: sortedAs("complete", "fullest"),
+    },
+    {
+      key: "updated",
+      header: "Updated",
+      cell: (student) => formatDay(student.updatedAt),
+      cellClassName: "font-mono text-xs text-[var(--color-ink-muted)] whitespace-nowrap",
+      hideOnCard: true,
+      sortHref: sortHref("recent"),
+      sorted: sortedAs("recent"),
     },
     {
       key: "id",
       header: "Student ID",
       cell: (student) => student.id,
       cellClassName: "font-mono text-xs text-[var(--color-ink-muted)]",
+      sortHref: sortHref("id"),
+      sorted: sortedAs("id"),
     },
   ];
+
+  // Which of those the office may switch off. The face and the name are not
+  // negotiable — a board of children with neither is a board of ids.
+  const pickable: PickableColumn[] = [
+    { key: "roll", header: "Roll", defaultOn: true },
+    { key: "house", header: "House", defaultOn: true },
+    { key: "father", header: "Father", defaultOn: true },
+    { key: "phone", header: "Mobile", defaultOn: true },
+    { key: "complete", header: "Record", defaultOn: true },
+    { key: "updated", header: "Updated", defaultOn: false },
+    { key: "id", header: "Student ID", defaultOn: false },
+  ];
+
+  const table = (
+    <DataTable
+      columns={columns}
+      rows={students}
+      rowKey={(student) => student.id}
+      href={(student) => `/students/${encodeURIComponent(student.id)}`}
+      className="students-table"
+      select={canImport ? { name: "student", value: (student) => student.id } : undefined}
+      /* Nine columns is the right shape for a laptop and the wrong one for
+         a thumb. What the office is doing on a phone is finding one child
+         and seeing whether their record is any good, so the card is a face,
+         a name, where they sit, and the two facts that decide whether this
+         child needs chasing: a number, and how full the record is. */
+      card={(student) => (
+        <div className="flex items-center gap-3">
+          <Avatar
+            pathname={student.photoPath}
+            name={titleCaseName(student.name)}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-base font-medium">
+              {titleCaseName(student.name)}
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-[var(--color-ink-muted)]">
+              {student.classLabel}
+              {student.section ? ` ${student.section}` : ""}
+              {student.rollNo ? ` · Roll ${student.rollNo}` : ""}
+              {student.fatherName ? ` · ${student.fatherName}` : ""}
+            </span>
+          </span>
+          <span className="flex shrink-0 flex-col items-end gap-1.5">
+            <span
+              className={`font-mono text-xs ${
+                student.phone ? "" : "text-[var(--color-warning-fg)]"
+              }`}
+            >
+              {student.phone ?? "no number"}
+            </span>
+            <CompletenessBar student={student} />
+          </span>
+        </div>
+      )}
+    />
+  );
 
   return (
     <div className="space-y-6">
@@ -187,6 +277,8 @@ export default async function StudentsPage({
 
       <QuickViews facets={facets} />
 
+      <RecentStudents />
+
       <FilterBar primary={primary} secondary={secondary}>
         <div className="flex flex-wrap items-end gap-3">
           <label className="block w-full sm:w-auto">
@@ -196,7 +288,7 @@ export default async function StudentsPage({
             <input
               name="q"
               defaultValue={query.search}
-              placeholder="Name, ID, SR, admission no., mobile, father"
+              placeholder="Name, ID, SR, mobile, father, mother, village, Aadhaar last 4"
               className={`${field()} mt-1 sm:w-80`}
             />
           </label>
@@ -249,46 +341,17 @@ export default async function StudentsPage({
       {students.length === 0 ? (
         <EmptyState hasFilter={active} canImport={canImport} />
       ) : (
-        <DataTable
-          columns={columns}
-          rows={students}
-          rowKey={(student) => student.id}
-          href={(student) => `/students/${encodeURIComponent(student.id)}`}
-          /* Nine columns is the right shape for a laptop and the wrong one for
-             a thumb. What the office is doing on a phone is finding one child
-             and seeing whether their record is any good, so the card is a face,
-             a name, where they sit, and the two facts that decide whether this
-             child needs chasing: a number, and how full the record is. */
-          card={(student) => (
-            <div className="flex items-center gap-3">
-              <Avatar
-                pathname={student.photoPath}
-                name={titleCaseName(student.name)}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-base font-medium">
-                  {titleCaseName(student.name)}
-                </span>
-                <span className="mt-0.5 block truncate text-xs text-[var(--color-ink-muted)]">
-                  {student.classLabel}
-                  {student.section ? ` ${student.section}` : ""}
-                  {student.rollNo ? ` · Roll ${student.rollNo}` : ""}
-                  {student.fatherName ? ` · ${student.fatherName}` : ""}
-                </span>
-              </span>
-              <span className="flex shrink-0 flex-col items-end gap-1.5">
-                <span
-                  className={`font-mono text-xs ${
-                    student.phone ? "" : "text-[var(--color-warning-fg)]"
-                  }`}
-                >
-                  {student.phone ?? "no number"}
-                </span>
-                <CompletenessBar student={student} />
-              </span>
-            </div>
+        <>
+          <ColumnPicker columns={pickable} storageKey="sampark.students.columns" scope="students-table" />
+          {/* The bulk bar wraps the table exactly as RequestBulkBar does on
+              /requests: the checkboxes are its form, the filter bar above is a
+              different form, and the two never nest. */}
+          {canImport ? (
+            <StudentBulkBar fields={bulkEditFields(options)}>{table}</StudentBulkBar>
+          ) : (
+            table
           )}
-        />
+        </>
       )}
 
       {lastPage > 1 ? (
@@ -335,9 +398,14 @@ export default async function StudentsPage({
             </a>
           ) : null}
           {canImport ? (
-            <Link href="/students/import" className={btn({ tone: "primary" })}>
-              Import
-            </Link>
+            <>
+              <Link href="/students/new" className={btn({ tone: "primary" })}>
+                Add student
+              </Link>
+              <Link href="/students/import" className={btn()}>
+                Import
+              </Link>
+            </>
           ) : null}
         </div>
       ) : null}
@@ -497,4 +565,13 @@ function EmptyState({
       ) : null}
     </div>
   );
+}
+
+function formatDay(value: Date): string {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "2-digit",
+    timeZone: "Asia/Kolkata",
+  }).format(value);
 }

@@ -139,3 +139,15 @@ describe("security headers", () => {
     }
   });
 });
+
+describe("the office's file proxies", () => {
+  it("are never indexed and never leak a pathname via Referer", async () => {
+    // Photographs and scanned certificates of children. Not token-bearing, but
+    // a URL ending in `?p=` is exactly what a crawler follows.
+    const rules = await config.headers!();
+    for (const url of ["/api/photos", "/api/documents"]) {
+      assert.match(headerOn(rules, url, "X-Robots-Tag") ?? "", /noindex/, url);
+      assert.equal(headerOn(rules, url, "Referrer-Policy"), "no-referrer", url);
+    }
+  });
+});

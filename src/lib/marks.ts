@@ -467,3 +467,67 @@ export function groupMarks(
       : a.name.localeCompare(b.name);
   });
 }
+
+/* ------------------------------------------------------- one child's marks */
+
+/** What the student page needs about one stored mark. */
+export type StudentMark = {
+  fieldKey: string;
+  fieldLabel: string;
+  sortOrder: number | null;
+  period: string;
+  value: string | null;
+  /** field_defs.max_value, as text — numeric comes back from Postgres as a string. */
+  maxValue: string | null;
+};
+
+export type StudentMarksGrid = {
+  /** Oldest first, so a row reads left to right through the year. */
+  periods: string[];
+  subjects: {
+    key: string;
+    label: string;
+    outOf: number | null;
+    /** One entry per period, aligned with `periods`. Null where nothing was entered. */
+    values: (number | null)[];
+  }[];
+};
+
+/**
+ * One child's marks pivoted into subject rows and period columns.
+ *
+ * Pure. Subjects keep the registry's sort order — the order the seed generates
+ * from SUBJECTS, which is the order a report card reads — and only subjects
+ * that hold at least one mark appear, so a child who takes four subjects gets
+ * four rows rather than sixteen mostly-empty ones.
+ */
+export function pivotStudentMarks(rows: StudentMark[]): StudentMarksGrid {
+  const periods = [...new Set(rows.map((row) => row.period))].sort((a, b) => a.localeCompare(b));
+  const subjects = new Map<string, StudentMarksGrid["subjects"][number] & { sortOrder: number }>();
+
+  for (const row of rows) {
+    const subject = subjects.get(row.fieldKey) ?? {
+      key: row.fieldKey,
+      label: row.fieldLabel,
+      outOf: row.maxValue === null || row.maxValue === "" || Number.isNaN(Number(row.maxValue)) ? null : Number(row.maxValue),
+      values: periods.map(() => null),
+      sortOrder: row.sortOrder ?? 100,
+    };
+    const index = periods.indexOf(row.period);
+    const numeric = row.value === null || row.value.trim() === "" ? NaN : Number(row.value);
+    subject.values[index] = Number.isFinite(numeric) ? numeric : null;
+    subjects.set(row.fieldKey, subject);
+  }
+
+  return {
+    periods,
+    subjects: [...subjects.values()]
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label))
+      .map((subject) => ({
+        key: subject.key,
+        label: subject.label,
+        outOf: subject.outOf,
+        values: subject.values,
+      })),
+  };
+}

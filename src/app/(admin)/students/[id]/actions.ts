@@ -78,11 +78,17 @@ export async function saveStudent(
   // actually move".
   if (changes.length === 0) return { ok: true, changed: 0 };
 
-  await writeOfficeEdit({ studentId, changes, decidedBy: user.id });
+  // Why the office changed it — "parent rang, number changed". Optional, and
+  // one note for the whole save: it lands on every change_log row this batch
+  // writes, which is how the timeline shows it once beside the group.
+  const note = String(formData.get("note") ?? "").trim().slice(0, 200) || null;
+
+  await writeOfficeEdit({ studentId, changes, decidedBy: user.id, note });
 
   revalidatePath(`/students/${studentId}`);
   revalidatePath("/students");
   revalidatePath("/settings/audit");
+  revalidatePath("/");
 
   return { ok: true, changed: changes.length };
 }

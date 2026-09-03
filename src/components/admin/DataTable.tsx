@@ -38,6 +38,13 @@ export type Column<T> = {
   hideOnCard?: boolean;
   /** Extra classes for the table cell only. */
   cellClassName?: string;
+  /**
+   * When set, the header is a link that re-sorts the board. The page decides
+   * what the link is — the query string owns the filter state, not this
+   * component — and `sorted` says which way the board currently reads.
+   */
+  sortHref?: string;
+  sorted?: "asc" | "desc";
 };
 
 /**
@@ -67,6 +74,7 @@ export function DataTable<T>({
   empty,
   select,
   card: renderCard,
+  className = "",
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -81,6 +89,8 @@ export function DataTable<T>({
    * columns are still the single source of truth for that.
    */
   card?: (row: T) => React.ReactNode;
+  /** A class on the wrapper, for a column picker's <style> to scope to. */
+  className?: string;
 }) {
   if (rows.length === 0 && empty) {
     return (
@@ -103,15 +113,36 @@ export function DataTable<T>({
   );
 
   return (
-    <div className="md:overflow-hidden md:rounded-[var(--radius-card)] md:border md:border-[var(--color-border)] md:bg-[var(--color-surface)] md:shadow-card">
+    <div
+      className={`md:overflow-clip md:rounded-[var(--radius-card)] md:border md:border-[var(--color-border)] md:bg-[var(--color-surface)] md:shadow-card ${className}`}
+    >
       {/* ------------------------------------------------------ md and up */}
       <table className="hidden w-full text-sm md:table">
-        <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
+        {/* Sticky, so a hundred-row board keeps its headings in view. `clip`
+            rather than `hidden` on the wrapper above, because a sticky header
+            inside an overflow:hidden ancestor never sticks — clip rounds the
+            corners without making a scroll container. */}
+        <thead className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-[var(--color-surface)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
           <tr>
             {select ? <th className="w-10 px-4 py-3" /> : null}
             {columns.map((column) => (
-              <th key={column.key} className="px-4 py-3 font-medium">
-                {column.header}
+              <th key={column.key} data-col={column.key} className="px-4 py-3 font-medium">
+                {column.sortHref ? (
+                  <Link
+                    href={column.sortHref}
+                    aria-sort={column.sorted === "asc" ? "ascending" : column.sorted === "desc" ? "descending" : undefined}
+                    className={`inline-flex items-center gap-1 hover:text-[var(--color-ink)] ${
+                      column.sorted ? "text-[var(--color-ink)]" : ""
+                    }`}
+                  >
+                    {column.header}
+                    <span aria-hidden className="font-mono">
+                      {column.sorted === "asc" ? "↑" : column.sorted === "desc" ? "↓" : "↕"}
+                    </span>
+                  </Link>
+                ) : (
+                  column.header
+                )}
               </th>
             ))}
           </tr>
@@ -138,6 +169,7 @@ export function DataTable<T>({
               {columns.map((column) => (
                 <td
                   key={column.key}
+                  data-col={column.key}
                   className={`px-4 py-3 ${column.cellClassName ?? ""}`}
                 >
                   {/* The link lives HERE rather than in the column's cell, so a

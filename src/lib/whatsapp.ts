@@ -520,3 +520,21 @@ export function buildWhatsAppLink(phone: string, message: string): string {
   const withCountry = digits.length === 10 ? `91${digits}` : digits;
   return `https://wa.me/${withCountry}?text=${encodeURIComponent(message)}`;
 }
+
+/**
+ * Opening a chat with a PARENT, from the child's page.
+ *
+ * Not a request and not a reminder: the office rings or messages a family
+ * about one child — a fee, a form, a number that bounced — and the app's part
+ * is only to open the right chat with the school named and the child named, so
+ * the parent knows who is writing before the office types the rest.
+ *
+ * English line over Hindi line, like every other message here.
+ */
+export function buildParentMessage(input: { name: string; classLabel: string }): string {
+  const who = `${input.name} (${input.classLabel})`;
+  return [
+    `Namaste. This is Veer Patta School, Amet, about ${who}.`,
+    `नमस्ते। वीर पत्ता विद्यालय, आमेट से ${who} के बारे में।`,
+  ].join("\n");
+}

@@ -73,3 +73,29 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Printing a child's record.
+ *
+ * The office prints one page to put in a file or hand to a parent. Chrome that
+ * only makes sense on a screen — the app bar, the bottom nav, the edit forms
+ * and the buttons — carries `no-print`; the record itself is left alone, and
+ * the browser's own page setup does the rest. No print stylesheet beyond this:
+ * a second layout to maintain is a second layout to drift.
+ */
+@media print {
+  .no-print,
+  form,
+  details > :not(summary),
+  nav,
+  header.sticky {
+    display: none !important;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  .shadow-card {
+    box-shadow: none !important;
+  }
+}

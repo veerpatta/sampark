@@ -23,7 +23,6 @@ export default function StudentsLoading() {
           "Father",
           "Mobile",
           "Record",
-          "Student ID",
         ]}
         rows={12}
       />

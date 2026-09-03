@@ -570,6 +570,61 @@ export const submissions = pgTable(
   ],
 );
 
+/* ============ DOCUMENTS ============ */
+
+/**
+ * A scanned certificate, kept beside the child's record.
+ *
+ * A transfer certificate, an Aadhaar card, a birth certificate, a mark sheet:
+ * the office holds these on paper and photographs of them on somebody's phone,
+ * and the question "do we have her TC" has been answered by opening a cupboard.
+ * This table answers it from the record instead.
+ *
+ * THE BYTES LIVE IN THE SAME PRIVATE BLOB STORE AS THE PHOTOGRAPHS, and for the
+ * same reason: a document names a child, so it has no public URL, and every
+ * read goes through /api/documents with an admin session. `pathname` is the
+ * blob's pathname, never a URL — see lib/photos.ts for why that distinction is
+ * the whole security property.
+ *
+ * REMOVED, NOT DELETED. A row is evidence that a named person attached a named
+ * document on a date, and that evidence outlives the bytes: removing a scan
+ * stamps `removed_at`/`removed_by` and deletes the blob, and the row stays. The
+ * application role is granted UPDATE on those two columns only
+ * (drizzle/sql/grants.sql), the same shape as submissions.review_status, so a
+ * document cannot be quietly rewritten to point at different bytes.
+ *
+ * Uploaded from the console only. A teacher's link deliberately cannot attach a
+ * document: the photo pipeline exists for the one thing a teacher collects in
+ * bulk, and a certificate is an office matter.
+ */
+export const studentDocuments = pgTable(
+  "student_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    studentId: text("student_id")
+      .notNull()
+      .references(() => students.id, { onDelete: "cascade" }),
+    /** A key from DOCUMENT_KINDS in src/lib/documents.ts. */
+    kind: text("kind").notNull(),
+    /** What the office called it, when the kind alone is not enough. */
+    label: text("label"),
+    /** `documents/<student id>/<YYYYMMDD>-<24 hex>.<jpg|png|pdf>` — see lib/documents.ts. */
+    pathname: text("pathname").notNull().unique(),
+    /** image/jpeg | image/png | application/pdf, decided by the bytes, not the client. */
+    contentType: text("content_type").notNull(),
+    bytes: integer("bytes").notNull(),
+    uploadedBy: text("uploaded_by")
+      .notNull()
+      .references(() => users.id),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    removedAt: timestamp("removed_at", { withTimezone: true }),
+    removedBy: text("removed_by").references(() => users.id),
+  },
+  (t) => [index("student_documents_student_idx").on(t.studentId, t.removedAt)],
+);
+
 /* ============ RATE LIMITING ============ */
 
 /**
@@ -604,14 +659,15 @@ export const changeLog = pgTable("change_log", {
    * admits there wasn't one.
    *
    * So: `submission_id IS NULL` reads as "an admin edited this by hand", and
-   * `decision` says 'edited' for exactly those rows.
+   * `decision` says 'edited' for those rows — or 'created', when the office
+   * added the child from /students/new and every field is a first value.
    */
   submissionId: uuid("submission_id").references(() => submissions.id),
   studentId: text("student_id").notNull(),
   fieldKey: text("field_key").notNull(),
   fromValue: text("from_value"),
   toValue: text("to_value"),
-  decision: text("decision").notNull(), // approved | rejected | edited
+  decision: text("decision").notNull(), // approved | rejected | edited | created
   decidedBy: text("decided_by")
     .notNull()
     .references(() => users.id),
@@ -640,3 +696,5 @@ export type Source = typeof sources.$inferSelect;
 export type NewSource = typeof sources.$inferInsert;
 export type FieldSource = typeof fieldSources.$inferSelect;
 export type ValueSource = typeof valueSources.$inferSelect;
+export type StudentDocument = typeof studentDocuments.$inferSelect;
+export type NewStudentDocument = typeof studentDocuments.$inferInsert;
