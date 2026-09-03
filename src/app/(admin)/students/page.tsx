@@ -101,7 +101,14 @@ export default async function StudentsPage({
       // The work list. Every count here is a number of children somebody still
       // has to chase, which is why this group sits with class and house rather
       // than behind the disclosure.
-      values: MISSING_FIELDS.map((field) => ({
+      //
+      // A hole nobody has is not work: with twelve tracked fields a school that
+      // has every date of birth showed "No date of birth 0", which is a chip
+      // that promises a list and opens an empty one. A chip already ticked
+      // stays, so the filter you are looking at never vanishes under you.
+      values: MISSING_FIELDS.filter(
+        (field) => (facets.missing.get(field) ?? 0) > 0 || query.missing?.includes(field),
+      ).map((field) => ({
         value: field,
         label: MISSING_LABELS[field],
         count: facets.missing.get(field),

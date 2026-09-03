@@ -11,7 +11,7 @@ import {
 import { listClassRoster } from "@/lib/students";
 import { Card } from "@/components/admin/Card";
 import { PageHeader } from "@/components/admin/PageHeader";
-import { btn, chip } from "@/components/ui/controls";
+import { btn, card, chip } from "@/components/ui/controls";
 
 export const metadata = { title: "Marks grid — Sampark" };
 export const dynamic = "force-dynamic";
@@ -108,70 +108,135 @@ export default async function MarksGridPage({
         </nav>
       ) : null}
 
+      {/* Per subject: how far the round has got. On a phone this is the
+          header the table's footer cannot be — the averages have to be
+          readable without reaching the far side of a grid. */}
+      {grid.subjects.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {grid.subjects.map((subject) => (
+            <div key={subject.key} className={`${card()} p-3`}>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-medium">{subject.label.replace(/^FA /, "")}</span>
+                <span className="font-mono text-sm">
+                  {subject.entered}/{grid.rows.length}
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+                {subject.average === null ? "nothing entered yet" : `average ${subject.average}`}
+                {subject.outOf ? ` · out of ${subject.outOf}` : ""}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <Card title="Every child, every subject" flush>
         {grid.subjects.length === 0 ? (
           <p className="p-4 text-sm text-[var(--color-ink-muted)]">Nothing to show.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
-                <tr>
-                  <th className="sticky left-0 bg-[var(--color-surface)] px-4 py-2 font-medium">Roll</th>
-                  <th className="px-4 py-2 font-medium">Name</th>
-                  {grid.subjects.map((subject) => (
-                    <th key={subject.key} className="px-3 py-2 text-right font-medium">
-                      {subject.label.replace(/^FA /, "")}
-                      {subject.outOf ? (
-                        <span className="block font-mono text-[10px] normal-case tracking-normal">
-                          / {subject.outOf}
-                        </span>
-                      ) : null}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {grid.rows.map((row) => (
-                  <tr key={row.studentId} className="border-b border-[var(--color-border)] last:border-0">
-                    <td className="sticky left-0 bg-[var(--color-surface)] px-4 py-1.5 font-mono text-xs text-[var(--color-ink-muted)]">
-                      {row.rollNo ?? "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-1.5">
-                      <Link href={`/students/${encodeURIComponent(row.studentId)}#marks`} className="hover:underline">
-                        {titleCaseName(row.name)}
-                      </Link>
-                    </td>
+          <>
+            {/* ------------------------------------------------ below md */}
+            <ul className="divide-y divide-[var(--color-border)] md:hidden">
+              {grid.rows.map((row) => (
+                <li key={row.studentId} className="px-4 py-2.5">
+                  <Link
+                    href={`/students/${encodeURIComponent(row.studentId)}#marks`}
+                    className="flex min-h-[var(--tap-min)] items-center gap-2"
+                  >
+                    <span className="min-w-0 flex-1 truncate font-medium">{titleCaseName(row.name)}</span>
+                    {row.rollNo ? (
+                      <span className="shrink-0 font-mono text-xs text-[var(--color-ink-muted)]">
+                        Roll {row.rollNo}
+                      </span>
+                    ) : null}
+                  </Link>
+                  {/* Every subject, including the blanks — the blanks are the
+                      reason anyone opens this screen. */}
+                  <div className="flex flex-wrap gap-1.5">
                     {grid.subjects.map((subject) => {
                       const value = row.marks[subject.key];
+                      const blank = value === null || value === undefined;
                       return (
-                        <td key={subject.key} className="px-3 py-1.5 text-right font-mono">
-                          {value === null || value === undefined ? (
-                            <span className="inline-block rounded bg-[var(--color-correct-bg)] px-2 text-[var(--color-correct-fg)]">
-                              —
-                            </span>
-                          ) : (
-                            value
-                          )}
-                        </td>
+                        <span
+                          key={subject.key}
+                          className={`inline-flex items-center gap-1.5 rounded-[var(--radius-chip)] px-2.5 py-1 text-xs ${
+                            blank
+                              ? "bg-[var(--color-correct-bg)] text-[var(--color-correct-fg)]"
+                              : "bg-[var(--color-surface-muted)]"
+                          }`}
+                        >
+                          {subject.label.replace(/^FA /, "")}
+                          <span className="font-mono font-medium">{blank ? "—" : value}</span>
+                        </span>
                       );
                     })}
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {/* ------------------------------------------------- md and up */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
+                  <tr>
+                    <th className="sticky left-0 bg-[var(--color-surface)] px-4 py-2 font-medium">Roll</th>
+                    <th className="px-4 py-2 font-medium">Name</th>
+                    {grid.subjects.map((subject) => (
+                      <th key={subject.key} className="px-3 py-2 text-right font-medium">
+                        {subject.label.replace(/^FA /, "")}
+                        {subject.outOf ? (
+                          <span className="block font-mono text-[10px] normal-case tracking-normal">
+                            / {subject.outOf}
+                          </span>
+                        ) : null}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-              <tfoot className="border-t border-[var(--color-border)] text-xs text-[var(--color-ink-muted)]">
-                <tr>
-                  <td className="sticky left-0 bg-[var(--color-surface)] px-4 py-2" />
-                  <td className="px-4 py-2 font-medium">Entered · average</td>
-                  {grid.subjects.map((subject) => (
-                    <td key={subject.key} className="whitespace-nowrap px-3 py-2 text-right font-mono">
-                      {subject.entered}/{grid.rows.length}
-                      {subject.average !== null ? ` · ${subject.average}` : ""}
-                    </td>
+                </thead>
+                <tbody>
+                  {grid.rows.map((row) => (
+                    <tr key={row.studentId} className="border-b border-[var(--color-border)] last:border-0">
+                      <td className="sticky left-0 bg-[var(--color-surface)] px-4 py-1.5 font-mono text-xs text-[var(--color-ink-muted)]">
+                        {row.rollNo ?? "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-1.5">
+                        <Link href={`/students/${encodeURIComponent(row.studentId)}#marks`} className="hover:underline">
+                          {titleCaseName(row.name)}
+                        </Link>
+                      </td>
+                      {grid.subjects.map((subject) => {
+                        const value = row.marks[subject.key];
+                        return (
+                          <td key={subject.key} className="px-3 py-1.5 text-right font-mono">
+                            {value === null || value === undefined ? (
+                              <span className="inline-block rounded bg-[var(--color-correct-bg)] px-2 text-[var(--color-correct-fg)]">
+                                —
+                              </span>
+                            ) : (
+                              value
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
                   ))}
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+                </tbody>
+                <tfoot className="border-t border-[var(--color-border)] text-xs text-[var(--color-ink-muted)]">
+                  <tr>
+                    <td className="sticky left-0 bg-[var(--color-surface)] px-4 py-2" />
+                    <td className="px-4 py-2 font-medium">Entered · average</td>
+                    {grid.subjects.map((subject) => (
+                      <td key={subject.key} className="whitespace-nowrap px-3 py-2 text-right font-mono">
+                        {subject.entered}/{grid.rows.length}
+                        {subject.average !== null ? ` · ${subject.average}` : ""}
+                      </td>
+                    ))}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </>
         )}
       </Card>
     </div>

@@ -76,6 +76,19 @@ export function BulkBar({
   const ticked = () => boxes().filter((box) => box.checked);
 
   /**
+   * DISTINCT ROWS, NOT CHECKBOX ELEMENTS.
+   *
+   * DataTable renders every row twice — a table at `md` and up, a stack of
+   * cards below it — and only one of the two is ever on screen. Counting
+   * elements therefore counted the school twice: a board of 78 children read
+   * "2 selected of 156", and Select all claimed a number nobody could see.
+   * The value is the row's identity, so counting distinct values is the same
+   * question asked correctly, and it costs nothing on a board that renders
+   * each row once.
+   */
+  const rows = (from: HTMLInputElement[]) => new Set(from.map((box) => box.value)).size;
+
+  /**
    * The ids the actions will actually receive.
    *
    * ONE CHECKBOX CAN STAND FOR SEVERAL RECORDS. The requests board shows a
@@ -95,11 +108,11 @@ export function BulkBar({
   //
   // ROWS, not records. "1 selected of 5" counts what you ticked; how many
   // records that turns out to be is what the confirm and the toast say.
-  const recount = () => setCount(ticked().length);
+  const recount = () => setCount(rows(ticked()));
 
   function toggleAll() {
     const all = boxes();
-    const next = count < all.length;
+    const next = count < rows(all);
     for (const box of all) box.checked = next;
     recount();
   }
@@ -125,7 +138,7 @@ export function BulkBar({
     });
   }
 
-  const total = boxes().length;
+  const total = rows(boxes());
 
   return (
     <form

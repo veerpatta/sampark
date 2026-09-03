@@ -556,3 +556,88 @@ the cron's refusal) all pass against a local Postgres behind a Neon-compatible
 proxy. Not exercised here: a real blob upload — the store token is
 production-only — so a document round-trip still wants one manual try on the
 deployed app.
+
+---
+
+# The console on a phone, measured in one (2026-09-03)
+
+The refresh was built and checked at desktop width. Driven at 390px in a real
+browser, four of its new screens were wrong in ways no typecheck or test could
+see — and one of them was wrong in the way this repo has a written rule about.
+
+## What the browser found that review did not
+
+- **The data-health heatmap showed four of its twelve columns.** Twelve fields
+  is ~900px of grid; a phone rendered Mobile, Father, Mother and DOB, and the
+  other eight — Aadhaar, the photograph, the house, the route — were off the
+  right edge with nothing to say they existed. `DataTable` has said since it
+  was written that a sideways-scrolling table on a 390px screen is a defeat;
+  the heatmap simply had not been held to it.
+- **The marks grid lost its second subject** the same way, with two subjects.
+- **The bulk bar stood 241px tall** — a third of the screen, over the rows it
+  was acting on — because `field()` carries `w-full` and the `w-auto` meant to
+  override it does not win that argument in Tailwind.
+- **`BulkBar` counted the school twice.** `DataTable` renders every row twice,
+  a table at `md` and cards below it, and the bar counted checkbox ELEMENTS: a
+  board of 78 children read "2 selected of 156". Pre-existing, invisible until
+  a board had a bulk bar on it.
+- **The search button pushed every page 32px sideways at exactly 768px** — the
+  one width where the desktop header has least room and the phone layout has
+  already gone. Found by sweeping twelve widths rather than looking at two.
+- **`PageHeader`'s action block was `shrink-0` AND `flex-wrap`**, which
+  contradict: held at max-content it never wrapped, so two ordinary buttons
+  pushed a 320px screen sideways.
+- **The student page told the office a field was called `photoPath`.** The
+  "still missing" list looked its labels up in the edit form's fields, and the
+  photograph is not on that form.
+
+## Decisions worth not reversing
+
+- **A phone gets a different shape, not a smaller one.** The heatmap becomes a
+  card per class listing only the fields with gaps, worst first, each a chip
+  carrying its count and linking where the cell would have. Every one of the
+  twelve is reachable, which the table could not manage. The marks grid becomes
+  a card per child with a chip per subject, blanks tinted — the blanks being
+  the entire reason anyone opens it.
+- **Provenance is split by kind.** Twenty fields all reading "PSP import ·
+  12 Mar" doubled the page and buried the one line that mattered. A person's
+  line sits against its field; the files are named once at the foot of the
+  card. `describeProvenance` returns `{ kind, text, source }` so the screen can
+  be quiet without the rule about who wins being duplicated in a component.
+- **A chip that reads 0 is not a work item.** Twelve missing-field filters meant
+  five read "No date of birth 0" on a school with no such gap — a promise of a
+  list that opens empty. Zero-count chips are dropped, unless already ticked,
+  so the filter you are looking at never vanishes under you.
+- **Count distinct rows, never checkbox elements.** The value is the row's
+  identity; counting elements counts every board twice for ever.
+- **Sweep widths, do not spot-check two.** 768px broke on seven screens and
+  320px on one, and neither is a width anybody thinks to open.
+
+## What was optimized, and what that is worth
+
+Measured against a local Postgres, logging every statement:
+
+- The dashboard's first view of each day: **85 statements and three full scans
+  of `students` → 80 and two.** `ensureSnapshotToday()` was awaited *before* the
+  page's own reads and re-scanned the table the page was already loading. It is
+  now a lookup inside the same parallel wave plus a write afterwards, from the
+  rows already in hand.
+- The student page ran **two dependent waves**; the second existed only because
+  "also on this number" took the student row as an argument. Looked up in SQL
+  it needs the id alone, so the page is one wave.
+- `worstClasses` rebuilt the whole heatmap its caller had just built.
+
+Steady-state statement counts are unchanged, and on a local database the
+wall-clock difference is inside the noise — these remove a duplicated table
+scan and two serial round trips, which is a Singapore hop each in production,
+not a dramatic speedup. Said plainly because the numbers say it plainly.
+
+## Verification
+
+`npm run typecheck`, `npm run lint`, `npm test`, `npm run build` and
+`npm run smoke:ui` all pass. Every screen was then driven in Chromium at
+**320, 360, 390, 414, 540, 640, 767, 768, 820, 1024, 1280 and 1536px**: no page
+scrolls sideways at any of them. The bulk bar, the search palette (typed and
+pasted) and the review queue were exercised with a real selection at 390px.
+Still not exercised here: a real blob upload, because the store token is
+production-only.

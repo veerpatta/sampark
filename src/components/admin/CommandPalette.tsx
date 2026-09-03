@@ -131,14 +131,23 @@ export function CommandPalette({ compact = false }: { compact?: boolean }) {
         className={
           compact
             ? "flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] text-[var(--color-ink-muted)]"
-            : "inline-flex h-9 items-center gap-2 rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-ink-muted)] hover:border-[var(--color-brand-600)]"
+            : "inline-flex h-9 items-center gap-2 rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-ink-muted)] hover:border-[var(--color-brand-600)] lg:px-3"
         }
       >
         <MagnifyingGlass aria-hidden size={compact ? 22 : 16} />
+        {/*
+          THE LABEL IS THE FIRST THING TO GO. At exactly the `md` breakpoint the
+          header row is 720px of content in a 720px box, and "Search ⌘K" was the
+          85px that pushed every page 32px sideways — on the one width where the
+          desktop layout has least room. The icon alone is still a search box,
+          and the shortcut it names works whether or not it is written down.
+        */}
         {compact ? null : (
           <>
-            <span>Search</span>
-            <kbd className="rounded bg-[var(--color-surface-muted)] px-1.5 font-mono text-[11px]">⌘K</kbd>
+            <span className="hidden lg:inline">Search</span>
+            <kbd className="hidden rounded bg-[var(--color-surface-muted)] px-1.5 font-mono text-[11px] lg:inline">
+              ⌘K
+            </kbd>
           </>
         )}
       </button>

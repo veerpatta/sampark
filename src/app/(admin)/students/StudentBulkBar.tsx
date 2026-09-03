@@ -40,8 +40,15 @@ export function StudentBulkBar({
     },
   ];
 
+  /*
+   * TWO CONTROLS ON ONE ROW, NOT TWO ROWS. `field()` carries `w-full`, so each
+   * select took the whole width and the bar stood 241px tall on a 390px phone
+   * — a third of the screen, over the rows it was acting on. `flex-1` wins
+   * that argument in flex layout whatever order the classes land in, which
+   * `w-auto` does not.
+   */
   const controls = (
-    <span className="flex w-full flex-wrap items-center gap-2 md:w-auto">
+    <span className="flex w-full items-center gap-2 md:w-auto">
       <label className="sr-only" htmlFor="bulk-column">
         Field to set
       </label>
@@ -52,7 +59,7 @@ export function StudentBulkBar({
           setColumn(event.target.value);
           setValue("");
         }}
-        className={`${field()} w-auto md:min-h-0 md:py-2`}
+        className={`${field()} min-w-0 flex-1 md:min-h-0 md:flex-none md:py-2`}
       >
         {fields.map((entry) => (
           <option key={entry.column} value={entry.column}>
@@ -68,7 +75,7 @@ export function StudentBulkBar({
           id="bulk-value"
           value={value}
           onChange={(event) => setValue(event.target.value)}
-          className={`${field()} w-auto md:min-h-0 md:py-2`}
+          className={`${field()} min-w-0 flex-1 md:min-h-0 md:flex-none md:py-2`}
         >
           <option value="">— clear —</option>
           {spec.options?.map((option) => (
@@ -83,7 +90,7 @@ export function StudentBulkBar({
           value={value}
           onChange={(event) => setValue(event.target.value)}
           placeholder={spec?.label ?? "Value"}
-          className={`${field()} w-32 md:min-h-0 md:py-2`}
+          className={`${field()} min-w-0 flex-1 md:min-h-0 md:w-32 md:flex-none md:py-2`}
         />
       )}
     </span>

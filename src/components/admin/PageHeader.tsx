@@ -50,7 +50,15 @@ export function PageHeader({
         ) : null}
       </div>
       {actions ? (
-        <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>
+        /*
+         * NO `shrink-0` HERE, and that is the fix rather than the omission it
+         * looks like: `shrink-0` and `flex-wrap` contradict each other. Held at
+         * max-content the block never wrapped, so two ordinary buttons — "Back
+         * to the board" and "Download by class" — pushed a 320px screen 16px
+         * sideways instead of stacking. Letting it shrink is what lets its own
+         * wrapping do the job.
+         */
+        <div className="flex min-w-0 flex-wrap gap-2">{actions}</div>
       ) : null}
     </header>
   );

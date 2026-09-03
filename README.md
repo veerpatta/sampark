@@ -196,7 +196,7 @@ npm test
 ```
 
 Node's built-in test runner (`node --test`) via `tsx`, so there is no test
-framework dependency to keep current. **641 tests across 52 files.**
+framework dependency to keep current. **647 tests across 53 files.**
 
 It started narrow, at the two places the build plan calls expensive to get wrong
 — the token resolver and the import matching rules — and grew to cover the shaping
@@ -330,7 +330,8 @@ src/
     students.ts         master-record reads
     student-edit.ts     the office's direct edit — fields, rules, and the write;
                         also the sections, the bulk edit and the new-student plan
-    student-provenance.ts  where each value came from, said in one line
+    student-provenance.ts  where each value came from — a person's line against
+                        its field, the files named once per card
     student-timeline.ts    everything that happened to one child, merged
     documents.ts        client-safe: kinds, pathname shape, magic-byte sniffers
     document-store.ts   SERVER ONLY: the bytes behind student_documents
@@ -468,6 +469,7 @@ belonging to no phase:
 | Data health: the class × field grid, and a daily completeness snapshot | **done** |
 | The class marks grid, `/marks/grid` | **done** |
 | Global search (⌘K), keyboard review, error and not-found pages | **done** |
+| The console on a phone: no screen scrolls sideways, 320px to 1536px | **done** |
 
 ### Two destinations, and only one of them is reviewed
 

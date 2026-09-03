@@ -1,10 +1,12 @@
 import Link from "next/link";
 import {
-  ensureSnapshotToday,
+  backfillToday,
+  hasSnapshotFor,
   healthByClass,
   toHeatmap,
   trend,
   trendByClass,
+  withToday,
   worstClasses,
 } from "@/lib/data-health";
 import { Card } from "@/components/admin/Card";
@@ -13,6 +15,7 @@ import { PageHeader } from "@/components/admin/PageHeader";
 import { ProgressBar } from "@/components/admin/ProgressBar";
 import { Sparkline } from "@/components/admin/Sparkline";
 import { btn } from "@/components/ui/controls";
+import { todayISO } from "@/lib/today";
 
 export const metadata = { title: "Data health — Sampark" };
 export const dynamic = "force-dynamic";
@@ -27,16 +30,20 @@ const DAYS = 30;
  * goes to. Every cell links back to the board filtered to exactly that hole.
  */
 export default async function DataHealthPage() {
-  // A missed cron costs the trend a point; the first visit of the day puts it back.
-  await ensureSnapshotToday();
+  const today = todayISO();
 
-  const [rows, byClass, school] = await Promise.all([
+  const [rows, byClass, school, snapshotted] = await Promise.all([
     healthByClass(),
     trendByClass(DAYS),
     trend(DAYS),
+    hasSnapshotFor(today),
   ]);
   const grid = toHeatmap(rows);
-  const worst = worstClasses(rows, 3);
+  const worst = worstClasses(rows, 3, grid);
+
+  // A missed cron costs the trend a point; the first visit of the day puts it
+  // back, from the rows just read and after them, so nothing waits on it.
+  await backfillToday(snapshotted, rows);
   const first = school[0];
   const last = school[school.length - 1];
   const moved = first && last && first.day !== last.day ? last.percent - first.percent : null;
@@ -64,7 +71,7 @@ export default async function DataHealthPage() {
           <div className="flex items-end gap-4">
             <span className="text-display font-semibold">{grid.school.percent}%</span>
             <Sparkline
-              points={school.map((point) => point.percent)}
+              points={withToday(school, today, grid.school.percent)}
               width={200}
               height={44}
               label={`School completeness over the last ${DAYS} days`}
@@ -82,21 +89,8 @@ export default async function DataHealthPage() {
               </h3>
               <ul className="mt-2 space-y-2">
                 {worst.map((row) => (
-                  <li key={row.classLabel} className="flex items-center gap-3 text-sm">
-                    <Link
-                      href={`/students?class=${encodeURIComponent(row.classLabel)}&sort=complete`}
-                      className="w-24 shrink-0 font-medium hover:underline"
-                    >
-                      {row.classLabel}
-                    </Link>
-                    <ProgressBar
-                      value={row.filled}
-                      max={row.total}
-                      label={`${row.classLabel}: ${row.percent}% complete`}
-                      tone={row.percent >= 80 ? "bg-[var(--color-success)]" : row.percent >= 50 ? "bg-[var(--color-warning)]" : "bg-[var(--color-danger)]"}
-                      className="h-1.5 flex-1"
-                    />
-                    <span className="w-10 text-right font-mono text-xs">{row.percent}%</span>
+                  <li key={row.classLabel}>
+                    <ClassRow {...row} />
                   </li>
                 ))}
               </ul>
@@ -113,27 +107,11 @@ export default async function DataHealthPage() {
                 const total = grid.classTotal(classLabel);
                 const series = byClass.get(classLabel) ?? [];
                 return (
-                  <li key={classLabel} className="flex items-center gap-3 py-2 text-sm">
-                    <Link
-                      href={`/students?class=${encodeURIComponent(classLabel)}&sort=complete`}
-                      className="w-24 shrink-0 font-medium hover:underline"
-                    >
-                      {classLabel}
-                    </Link>
-                    <ProgressBar
-                      value={total.filled}
-                      max={total.total}
-                      label={`${classLabel}: ${total.percent}% complete`}
-                      tone={total.percent >= 80 ? "bg-[var(--color-success)]" : total.percent >= 50 ? "bg-[var(--color-warning)]" : "bg-[var(--color-danger)]"}
-                      className="h-1.5 flex-1"
-                    />
-                    <span className="w-10 text-right font-mono text-xs">{total.percent}%</span>
-                    <Sparkline
-                      points={series.map((point) => point.percent)}
-                      width={72}
-                      height={20}
-                      label={`${classLabel} over the last ${DAYS} days`}
-                      className="hidden sm:block"
+                  <li key={classLabel}>
+                    <ClassRow
+                      classLabel={classLabel}
+                      {...total}
+                      trend={withToday(series, today, total.percent)}
                     />
                   </li>
                 );
@@ -152,4 +130,61 @@ export default async function DataHealthPage() {
       </Card>
     </div>
   );
+}
+
+/**
+ * One class: how full its records are, and where that is going.
+ *
+ * THE WHOLE ROW IS THE LINK. It was a 24px-wide label beside a bar, which on a
+ * phone is a 20px-tall target sitting in a 48px space — the office was aiming
+ * at the class name. Now the row itself is the target, and the density comes
+ * back at `md` where there is a pointer.
+ */
+function ClassRow({
+  classLabel,
+  filled,
+  total,
+  percent,
+  trend,
+}: {
+  classLabel: string;
+  filled: number;
+  total: number;
+  percent: number;
+  trend?: number[];
+}) {
+  return (
+    <Link
+      href={`/students?class=${encodeURIComponent(classLabel)}&sort=complete`}
+      className="flex min-h-[var(--tap-min)] items-center gap-3 rounded-[var(--radius-control)] px-1 text-sm hover:bg-[var(--color-surface-muted)] md:min-h-0 md:py-1.5"
+    >
+      <span className="w-24 shrink-0 font-medium">{classLabel}</span>
+      <ProgressBar
+        value={filled}
+        max={total}
+        label={`${classLabel}: ${percent}% complete`}
+        tone={barTone(percent)}
+        className="h-1.5 flex-1"
+      />
+      <span className="w-10 text-right font-mono text-xs">{percent}%</span>
+      {trend ? (
+        <Sparkline
+          points={trend}
+          width={72}
+          height={20}
+          label={`${classLabel} over the last ${DAYS} days`}
+          className="hidden sm:block"
+        />
+      ) : null}
+    </Link>
+  );
+}
+
+/** The three cut-offs the students board's own completeness bar uses. */
+export function barTone(percent: number): string {
+  return percent >= 80
+    ? "bg-[var(--color-success)]"
+    : percent >= 50
+      ? "bg-[var(--color-warning)]"
+      : "bg-[var(--color-danger)]";
 }

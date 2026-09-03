@@ -101,22 +101,38 @@ export async function snapshotToday(now = new Date()): Promise<{ day: string; ro
 }
 
 /**
- * Make sure today has a snapshot, without insisting on writing one.
+ * Has a day been snapshotted yet? One indexed lookup on the primary key.
  *
- * The cron writes at 06:30; the dashboard calls this on every render so a day
- * the cron missed — a paused project, a deploy at the wrong minute — still
- * gets its point on the trend from the first person to open the app.
+ * Separate from the write so a page can ask it IN ITS OWN PARALLEL WAVE rather
+ * than before it. This used to be `ensureSnapshotToday()`, awaited ahead of
+ * everything else on the dashboard — the most-opened screen in the app paid a
+ * serial round trip on every render, and on the first view of the day it also
+ * paid a second full scan of `students` for rows the page was already loading.
  */
-export async function ensureSnapshotToday(now = new Date()): Promise<boolean> {
-  const day = todayISO(now);
+export async function hasSnapshotFor(day: string): Promise<boolean> {
   const [existing] = await db
     .select({ day: schema.completenessSnapshots.day })
     .from(schema.completenessSnapshots)
     .where(eq(schema.completenessSnapshots.day, day))
     .limit(1);
-  if (existing) return false;
-  await snapshotToday(now);
-  return true;
+  return Boolean(existing);
+}
+
+/**
+ * Write today's point from rows the caller already has.
+ *
+ * The cron writes at 06:30 (api/cron/snapshot); this is the safety net for a
+ * day it missed — a paused project, a deploy at the wrong minute — and costs
+ * nothing on the other 364 days, because `already` is answered by a lookup
+ * that ran alongside the page's own queries.
+ */
+export async function backfillToday(
+  already: boolean,
+  rows: HealthRow[],
+  now = new Date(),
+): Promise<void> {
+  if (already || rows.length === 0) return;
+  await snapshotDay(todayISO(now), rows);
 }
 
 export type TrendPoint = { day: string; filled: number; total: number; percent: number };
@@ -176,6 +192,20 @@ export function percentOf(filled: number, total: number): number {
   return total === 0 ? 0 : Math.round((filled / total) * 100);
 }
 
+/**
+ * The stored history, with today's live number on the end.
+ *
+ * The snapshot for today may not be written yet — the cron runs at 06:30 and
+ * the backfill happens after the page's reads — so a sparkline drawn from the
+ * table alone would stop yesterday while the headline beside it showed today.
+ * Appending the live percentage makes the two agree by construction, and
+ * replaces today's row when there already is one.
+ */
+export function withToday(points: TrendPoint[], day: string, percent: number): number[] {
+  const history = points.filter((point) => point.day !== day).map((point) => point.percent);
+  return [...history, percent];
+}
+
 export type HeatmapCell = { filled: number; total: number; percent: number };
 
 export type Heatmap = {
@@ -218,8 +248,10 @@ export function toHeatmap(rows: HealthRow[]): Heatmap {
 export function worstClasses(
   rows: HealthRow[],
   n = 3,
+  /** The grid, when the caller has already built one. Building it twice is
+      the same work twice, and both screens that call this draw a heatmap. */
+  grid: Heatmap = toHeatmap(rows),
 ): { classLabel: string; percent: number; filled: number; total: number }[] {
-  const grid = toHeatmap(rows);
   return grid.classes
     .map((classLabel) => ({ classLabel, ...grid.classTotal(classLabel) }))
     .filter((row) => row.total > 0)

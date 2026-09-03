@@ -12,10 +12,16 @@ import {
   sectionFields,
   type EditField,
 } from "@/lib/student-edit";
-import { describeProvenance, provenanceFor } from "@/lib/student-provenance";
+import {
+  describeProvenance,
+  describeSources,
+  loadValueSources,
+  mergeProvenance,
+  type ProvenanceLine,
+} from "@/lib/student-provenance";
 import { loadTimelineParts, mergeTimeline } from "@/lib/student-timeline";
 import { listSharingPhone } from "@/lib/students";
-import { completeness, TRACKED_FIELDS } from "@/lib/completeness";
+import { completeness, TRACKED_FIELDS, TRACKED_LABELS } from "@/lib/completeness";
 import { pivotStudentMarks } from "@/lib/marks";
 import { FA_MARKS_KIND } from "@/lib/subjects";
 import { buildParentMessage, buildWhatsAppLink } from "@/lib/whatsapp";
@@ -71,7 +77,7 @@ export default async function StudentDetailPage({
 
   // Every one of these needs only the id from the URL. If the student does not
   // exist, notFound() below throws the whole page away and their answers with it.
-  const [session, [student], parts, waiting, options] = await Promise.all([
+  const [session, [student], parts, waiting, options, siblings, valueSources] = await Promise.all([
     currentUser(),
     db.select().from(schema.students).where(eq(schema.students.id, studentId)).limit(1),
     loadTimelineParts(studentId),
@@ -98,17 +104,19 @@ export default async function StudentDetailPage({
         ),
       ),
     registryOptions(),
+    // Both of these need only the id from the URL, so they ride the same wave
+    // as everything else. This page used to run a second, dependent wave for
+    // them — a whole extra round trip to Singapore for two queries that never
+    // needed the student row.
+    listSharingPhone(studentId),
+    loadValueSources(studentId),
   ]);
 
   if (!session) redirect("/login");
   if (!student) notFound();
 
-  // Two more that need the student row: who else is on these numbers, and
-  // where each value came from (which wants the change history just loaded).
-  const [siblings, provenance] = await Promise.all([
-    listSharingPhone(student),
-    provenanceFor(studentId, parts.log),
-  ]);
+  // Pure: the value's source, merged with who last decided it.
+  const provenance = mergeProvenance(valueSources, parts.log);
 
   const canEdit = canApproveIntoMaster(session.role);
   const fields = editFields(student as Student, options);
@@ -121,12 +129,26 @@ export default async function StudentDetailPage({
     pendingByColumn.set(property, `${row.teacherName ?? "A teacher"} has proposed a change to ${row.label}.`);
   }
 
-  // One sentence per column: who set it, when. Keyed by Drizzle property, which
-  // is what the form's inputs are named.
-  const hints = new Map<string, string>();
+  /*
+   * Where each value came from, keyed by Drizzle property — which is what the
+   * form's inputs are named.
+   *
+   * SPLIT BY KIND, because saying "PSP import · 12 Mar" under all twenty boxes
+   * is twenty lines of the same sentence: it doubled this page on a phone and
+   * buried the one line that matters, which is that a teacher corrected this
+   * number last week. A person's line sits against its field; the files are
+   * named once at the foot of each card.
+   */
+  const lines = new Map<string, ProvenanceLine>();
   for (const field of fields) {
-    const sentence = describeProvenance(provenance.get(dbNameFor(field.column)), field.value !== "", formatDay);
-    if (sentence) hints.set(field.column, sentence);
+    lines.set(
+      field.column,
+      describeProvenance(provenance.get(dbNameFor(field.column)), field.value !== "", formatDay),
+    );
+  }
+  const hints = new Map<string, string>();
+  for (const [column, line] of lines) {
+    if (line?.kind === "person") hints.set(column, line.text);
   }
 
   const score = completeness(student as Student);
@@ -237,7 +259,9 @@ export default async function StudentDetailPage({
         className="no-print sticky top-[var(--app-bar-h)] z-20 -mx-4 flex gap-2 overflow-x-auto bg-[var(--color-surface-muted)] px-4 py-2 md:top-0 md:mx-0 md:px-0"
       >
         {sections.map(([key, label]) => (
-          <a key={key} href={`#${key}`} className={`${chip({ pill: true })} whitespace-nowrap`}>
+          // A selection chip, not a filter pill: the repo sizes "picking" at
+          // 44px, and on a phone this row IS how you move around the record.
+          <a key={key} href={`#${key}`} className={`${chip()} whitespace-nowrap`}>
             {label}
           </a>
         ))}
@@ -271,7 +295,7 @@ export default async function StudentDetailPage({
                 <span key={key}>
                   {index > 0 ? ", " : ""}
                   <a href="#details" className="text-[var(--color-warning-fg)] hover:underline">
-                    {fields.find((field) => field.column === key)?.label ?? key}
+                    {TRACKED_LABELS[key]}
                   </a>
                 </span>
               ))}
@@ -341,6 +365,7 @@ export default async function StudentDetailPage({
         <div className="grid gap-5 md:gap-6 lg:grid-cols-2">
           {EDIT_SECTIONS.map((section) => {
             const own = sectionFields(fields, section);
+            const fromFiles = describeSources(own.map((field) => lines.get(field.column) ?? null));
             return (
               <Card key={section.key} title={section.title}>
                 <dl className="space-y-2 text-sm">
@@ -348,6 +373,9 @@ export default async function StudentDetailPage({
                     <ReadRow key={field.column} field={field} hint={hints.get(field.column)} pending={pendingByColumn.get(field.column)} />
                   ))}
                 </dl>
+                {fromFiles ? (
+                  <p className="mt-3 text-xs text-[var(--color-ink-faint)]">{fromFiles}</p>
+                ) : null}
                 {canEdit ? (
                   /* CLOSED, the card reads as a record. Open, it is the editor —
                      the same idiom as Settings → Teachers: editing is a deliberate

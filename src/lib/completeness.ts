@@ -35,6 +35,30 @@ export const TRACKED_FIELDS = [
   "photoPath",
 ] as const satisfies readonly (keyof Student)[];
 
+/**
+ * What each tracked field is called on screen.
+ *
+ * Here rather than derived from the field registry, because two of the twelve
+ * are not collectable fields at all: `photoPath` is edited through the photo
+ * button and never appears on the edit form, so a page that looked its label
+ * up in EDITABLE_COLUMNS printed the raw column name — the student page said
+ * "Still missing: photoPath" to the office. One list, one set of names.
+ */
+export const TRACKED_LABELS: Record<(typeof TRACKED_FIELDS)[number], string> = {
+  phone: "Mobile number",
+  fatherName: "Father's name",
+  motherName: "Mother's name",
+  dob: "Date of birth",
+  gender: "Gender",
+  category: "Category",
+  aadhaar: "Aadhaar",
+  janAadhaar: "Jan Aadhaar",
+  village: "Village",
+  busRoute: "Bus route",
+  house: "House",
+  photoPath: "Photo",
+};
+
 export type Completeness = { filled: number; total: number; percent: number };
 
 export function completeness(student: Student): Completeness {

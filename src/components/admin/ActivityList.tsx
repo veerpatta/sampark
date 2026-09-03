@@ -23,15 +23,20 @@ export function ActivityList({ events }: { events: ActivityEvent[] }) {
   return (
     <ul>
       {events.map((event) => (
-        <li key={event.key} className="flex items-start gap-3 border-b border-[var(--color-border)] px-4 py-2.5 text-sm last:border-0">
-          <span className={`mt-0.5 shrink-0 ${decisionChip(event.kind)}`}>{WORD[event.kind]}</span>
-          <span className="min-w-0 flex-1">
-            <Link href={event.href} className="hover:underline">
+        <li key={event.key} className="border-b border-[var(--color-border)] last:border-0">
+          {/* The whole row is the link — a line of text is not a target on a
+              phone, and this is a list the office scans with a thumb. */}
+          <Link
+            href={event.href}
+            className="flex min-h-[var(--tap-min)] items-start gap-3 px-4 py-2.5 text-sm active:bg-[var(--color-surface-muted)] md:min-h-0"
+          >
+            <span className={`mt-0.5 shrink-0 ${decisionChip(event.kind)}`}>{WORD[event.kind]}</span>
+            <span className="min-w-0 flex-1">
               {event.who ? <span className="font-medium">{event.who} </span> : null}
               {event.title}
-            </Link>
-            <span className="block font-mono text-xs text-[var(--color-ink-muted)]">{relative(event.at)}</span>
-          </span>
+              <span className="block font-mono text-xs text-[var(--color-ink-muted)]">{relative(event.at)}</span>
+            </span>
+          </Link>
         </li>
       ))}
     </ul>

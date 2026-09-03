@@ -469,15 +469,20 @@ export async function countByClass(): Promise<Map<string, number>> {
  * the sister who is here.
  */
 export async function listSharingPhone(
-  student: Pick<Student, "id" | "phone" | "altPhone">,
+  studentId: string,
 ): Promise<
   Pick<Student, "id" | "name" | "classLabel" | "rollNo" | "phone" | "altPhone" | "status" | "photoPath">[]
 > {
-  const numbers = [student.phone, student.altPhone].filter(
-    (value): value is string => Boolean(value && value.trim()),
-  );
-  if (numbers.length === 0) return [];
-
+  /*
+   * BY ID, WITH THE CHILD'S OWN NUMBERS LOOKED UP IN SQL, so this can run
+   * alongside the read of the student row instead of after it. Taking the row
+   * as an argument cost the page a second round trip to Singapore for one
+   * query — the whole of its second wave.
+   *
+   * An empty string is not a shared number: imports have produced both null
+   * and '', and matching on '' would put every child with no number on every
+   * other such child's page as a "sibling".
+   */
   const rows = await db
     .select({
       id: schema.students.id,
@@ -492,11 +497,17 @@ export async function listSharingPhone(
     .from(schema.students)
     .where(
       and(
-        ne(schema.students.id, student.id),
-        or(
-          inArray(schema.students.phone, numbers),
-          inArray(schema.students.altPhone, numbers),
-        ),
+        ne(schema.students.id, studentId),
+        sql`exists (
+          select 1 from ${schema.students} as me
+          where me.id = ${studentId}
+            and (
+              (nullif(btrim(me.phone), '') is not null
+                and (${schema.students.phone} = me.phone or ${schema.students.altPhone} = me.phone))
+              or (nullif(btrim(me.alt_phone), '') is not null
+                and (${schema.students.phone} = me.alt_phone or ${schema.students.altPhone} = me.alt_phone))
+            )
+        )`,
       ),
     );
 

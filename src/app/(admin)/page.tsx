@@ -7,7 +7,15 @@ import { marksFieldKeys } from "@/lib/marks";
 import { requestOrigin } from "@/lib/request-origin";
 import { todayISO } from "@/lib/today";
 import { countByClass } from "@/lib/students";
-import { ensureSnapshotToday, healthByClass, toHeatmap, trend, worstClasses } from "@/lib/data-health";
+import {
+  backfillToday,
+  hasSnapshotFor,
+  healthByClass,
+  toHeatmap,
+  trend,
+  withToday,
+  worstClasses,
+} from "@/lib/data-health";
 import { recentActivity } from "@/lib/activity";
 import { ActivityList } from "@/components/admin/ActivityList";
 import { ProgressBar } from "@/components/admin/ProgressBar";
@@ -33,11 +41,17 @@ export default async function DashboardPage() {
 
   const origin = await requestOrigin();
 
-  // The trend's point for today, if the cron has not written it yet. Before
-  // the reads below, so the sparkline includes this morning.
-  await ensureSnapshotToday();
-
-  const [requests, [students], counts, teachers, marksKeys, health, series, activity] = await Promise.all([
+  const [
+    requests,
+    [students],
+    counts,
+    teachers,
+    marksKeys,
+    health,
+    series,
+    activity,
+    snapshotted,
+  ] = await Promise.all([
     listRequests(),
     db
       .select({
@@ -55,10 +69,15 @@ export default async function DashboardPage() {
     healthByClass(),
     trend(30),
     recentActivity(12),
+    hasSnapshotFor(today),
   ]);
 
   const grid = toHeatmap(health);
-  const behind = worstClasses(health, 3);
+  const behind = worstClasses(health, 3, grid);
+
+  // The safety net for a day the cron missed, from the rows just read rather
+  // than a second scan — and after the reads, so it never delays the page.
+  await backfillToday(snapshotted, health);
 
   // Grouped here rather than inside the card, because it is the one thing on
   // that card that needs a query — the registry read that says which fields are
@@ -138,7 +157,10 @@ export default async function DashboardPage() {
           <Card
             title="Data health"
             action={
-              <Link href="/students/health" className="text-sm text-[var(--color-brand-600)] hover:underline">
+              <Link
+                href="/students/health"
+                className="inline-flex min-h-[var(--tap-min)] items-center text-sm text-[var(--color-brand-600)] hover:underline md:min-h-0"
+              >
                 By class and field
               </Link>
             }
@@ -147,7 +169,7 @@ export default async function DashboardPage() {
               <span className="text-display font-semibold">{grid.school.percent}%</span>
               <span className="pb-1 text-xs text-[var(--color-ink-muted)]">of tracked fields filled</span>
               <Sparkline
-                points={series.map((point) => point.percent)}
+                points={withToday(series, today, grid.school.percent)}
                 width={140}
                 height={36}
                 label="School completeness over the last 30 days"
@@ -155,23 +177,31 @@ export default async function DashboardPage() {
               />
             </div>
             {behind.length > 0 ? (
-              <ul className="mt-4 space-y-2">
+              <ul className="mt-4 space-y-1">
                 {behind.map((row) => (
-                  <li key={row.classLabel} className="flex items-center gap-3 text-sm">
+                  <li key={row.classLabel}>
+                    {/* The whole row is the link: a 24px-wide class label is
+                        not a target a thumb can find. */}
                     <Link
                       href={`/students?class=${encodeURIComponent(row.classLabel)}&sort=complete`}
-                      className="w-24 shrink-0 font-medium hover:underline"
+                      className="flex min-h-[var(--tap-min)] items-center gap-3 rounded-[var(--radius-control)] px-1 text-sm hover:bg-[var(--color-surface-muted)] md:min-h-0 md:py-1.5"
                     >
-                      {row.classLabel}
+                      <span className="w-24 shrink-0 font-medium">{row.classLabel}</span>
+                      <ProgressBar
+                        value={row.filled}
+                        max={row.total}
+                        label={`${row.classLabel}: ${row.percent}% complete`}
+                        tone={
+                          row.percent >= 80
+                            ? "bg-[var(--color-success)]"
+                            : row.percent >= 50
+                              ? "bg-[var(--color-warning)]"
+                              : "bg-[var(--color-danger)]"
+                        }
+                        className="h-1.5 flex-1"
+                      />
+                      <span className="w-10 text-right font-mono text-xs">{row.percent}%</span>
                     </Link>
-                    <ProgressBar
-                      value={row.filled}
-                      max={row.total}
-                      label={`${row.classLabel}: ${row.percent}% complete`}
-                      tone={row.percent >= 80 ? "bg-[var(--color-success)]" : row.percent >= 50 ? "bg-[var(--color-warning)]" : "bg-[var(--color-danger)]"}
-                      className="h-1.5 flex-1"
-                    />
-                    <span className="w-10 text-right font-mono text-xs">{row.percent}%</span>
                   </li>
                 ))}
               </ul>
