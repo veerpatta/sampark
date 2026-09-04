@@ -14,6 +14,7 @@ export default function NotFound() {
   return (
     <div className="space-y-5 md:space-y-8">
       <PageHeader
+        mobileTitle="content"
         title="Not on record"
         subtitle="There is nothing at this address. The link may be old, or the record it pointed at has been replaced."
       />

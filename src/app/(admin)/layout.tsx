@@ -45,6 +45,7 @@ export default async function AdminLayout({
           match: "/settings",
           label: "Settings",
           icon: "settings",
+          mobile: false,
         },
       ]
     : NAV;
@@ -69,7 +70,7 @@ export default async function AdminLayout({
           <form action={logoutAction}>
             <button
               type="submit"
-              className="text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
+              className="min-h-[var(--tap-min)] w-full px-4 text-left text-[var(--color-ink-muted)] hover:text-[var(--color-ink)] md:min-h-0 md:w-auto md:px-0"
             >
               Sign out
             </button>

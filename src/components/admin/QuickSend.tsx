@@ -128,6 +128,12 @@ export function QuickSend({
   const usable = classes.filter((option) => option.students > 0);
   if (usable.length === 0 || teachers.length === 0) return null;
 
+  function changeClass() {
+    setClassLabel("");
+    setTemplate(null);
+    setError(null);
+  }
+
   return (
     <section className={`${card()} p-4 md:p-6`}>
       <div className="flex items-baseline justify-between gap-3">
@@ -140,37 +146,78 @@ export function QuickSend({
         </Link>
       </div>
 
-      {/* -------------------------------------------------------- tap one */}
-      <div className="mt-3 flex flex-wrap gap-2">
-        {usable.map((option) => (
-          <button
-            key={option.label}
-            type="button"
-            onClick={() =>
-              setClassLabel(classLabel === option.label ? "" : option.label)
-            }
-            className={chip({ on: classLabel === option.label })}
-          >
-            {option.label}
-          </button>
-        ))}
+      {/* A completed choice becomes one summary row on a phone. Keeping all
+          nineteen class chips above the template and send action made the
+          page grow while the office was moving forward through it. Desktop
+          keeps the full chooser visible for quick pointer changes. */}
+      <div className="mt-3">
+        {classLabel ? (
+          <div className="flex min-h-[44px] items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--color-brand-600)] bg-[var(--color-brand-50)] px-3 md:hidden">
+            <span className="text-sm font-medium text-[var(--color-brand-700)]">
+              {classLabel}
+            </span>
+            <button
+              type="button"
+              onClick={changeClass}
+              className="min-h-[44px] px-1 text-sm font-medium text-[var(--color-brand-700)] underline"
+            >
+              Change class
+            </button>
+          </div>
+        ) : null}
+        <div className={`${classLabel ? "hidden md:flex" : "flex"} flex-wrap gap-2`}>
+          {usable.map((option) => (
+            <button
+              key={option.label}
+              type="button"
+              onClick={() => {
+                setClassLabel(option.label);
+                setTemplate(null);
+                setError(null);
+              }}
+              className={chip({ on: classLabel === option.label })}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* -------------------------------------------------------- tap two */}
       {classLabel ? (
         <div className="mt-3 flex flex-wrap gap-2 border-t border-[var(--color-border)] pt-3">
-          {templates.map((option) => (
-            <button
-              key={option.name}
-              type="button"
-              onClick={() =>
-                setTemplate(template?.name === option.name ? null : option)
-              }
-              className={chip({ on: template?.name === option.name })}
-            >
-              {option.name}
-            </button>
-          ))}
+          {template ? (
+            <div className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--color-brand-600)] bg-[var(--color-brand-50)] px-3 md:hidden">
+              <span className="truncate text-sm font-medium text-[var(--color-brand-700)]">
+                {template.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setTemplate(null);
+                  setError(null);
+                }}
+                className="min-h-[44px] shrink-0 px-1 text-sm font-medium text-[var(--color-brand-700)] underline"
+              >
+                Change request
+              </button>
+            </div>
+          ) : null}
+          <div className={`${template ? "hidden md:flex" : "flex"} flex-wrap gap-2`}>
+            {templates.map((option) => (
+              <button
+                key={option.name}
+                type="button"
+                onClick={() => {
+                  setTemplate(option);
+                  setError(null);
+                }}
+                className={chip({ on: template?.name === option.name })}
+              >
+                {option.name}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
 

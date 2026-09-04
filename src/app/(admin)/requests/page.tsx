@@ -393,6 +393,7 @@ async function ByTeacher({ today }: { today: string }) {
           origin={origin}
           today={today}
           apiEnabled={isApiConfigured()}
+          mobileDetails="collapsed"
           empty="Nothing is open. Create a request and it will show up here as answers arrive."
         />
       </section>

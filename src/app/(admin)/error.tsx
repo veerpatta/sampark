@@ -23,6 +23,7 @@ export default function AdminError({
   return (
     <div className="space-y-5 md:space-y-8">
       <PageHeader
+        mobileTitle="content"
         title="That did not load"
         subtitle="Nothing has been changed. Try again; if it keeps happening, tell whoever looks after Sampark."
       />

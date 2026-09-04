@@ -69,6 +69,8 @@ export type NavItem = {
   href: string;
   label: string;
   icon: NavIcon;
+  /** False when the destination belongs in the phone account menu instead. */
+  mobile?: boolean;
   /**
    * Prefix that counts as "you are here", when it is broader than the href.
    * Settings links to its index but stays lit across all six of its pages.
@@ -111,6 +113,7 @@ export function AdminNavLinks({ items }: { items: NavItem[] }) {
 /** Phone: a bar fixed to the bottom of the viewport. */
 export function AdminNavBar({ items }: { items: NavItem[] }) {
   const isActive = useIsActive();
+  const mobileItems = items.filter((item) => item.mobile !== false);
 
   return (
     <nav
@@ -122,7 +125,7 @@ export function AdminNavBar({ items }: { items: NavItem[] }) {
           two must be the same number by construction rather than by someone
           re-measuring this after a padding change. It is above --tap-min. */}
       <ul className="flex h-[var(--admin-nav-h)]">
-        {items.map((item) => {
+        {mobileItems.map((item) => {
           const active = isActive(item);
           const Glyph = ICONS[item.icon];
           return (

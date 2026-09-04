@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import type { Decision, ReviewItem } from "@/lib/submissions";
 import { titleCaseName } from "@/lib/classes";
 import { useToast } from "@/components/ui/Toast";
-import { ThumbBar } from "@/components/admin/ThumbBar";
+import {
+  ThumbBar,
+  THUMB_BAR_COMPACT_CLEARANCE,
+} from "@/components/admin/ThumbBar";
 import { PhotoDiff } from "@/components/admin/StudentPhoto";
 // `field` is already the name of this screen's field filter, hence the alias.
 import {
@@ -13,6 +16,7 @@ import {
   card,
   chip,
   eyebrow,
+  FOCUS,
   field as fieldClass,
 } from "@/components/ui/controls";
 import { decide } from "./actions";
@@ -241,9 +245,7 @@ export function ReviewQueue({
   });
 
   return (
-    // pb-44: generous, because this bar wraps to three rows on a narrow phone
-    // (count, select-all, note, then the two buttons).
-    <div className="space-y-8 pb-44 md:pb-0">
+    <div className={`space-y-8 ${THUMB_BAR_COMPACT_CLEARANCE}`}>
       {/*
         The bar goes to the BOTTOM on a phone and stays at the top on a desktop.
         Same reasoning as the teacher's progress rail: this is the screen the
@@ -251,7 +253,8 @@ export function ReviewQueue({
         thumb already is. At md and up there is a mouse and a top bar reads as a
         toolbar, which is what it is there.
       */}
-      <ThumbBar desktop="sticky">
+      <ThumbBar desktop="sticky" mobile="compact">
+        <div className="flex w-full items-center gap-2 md:w-auto">
           <span className="text-sm font-medium">
             {selected.size} of {live.length} selected
           </span>
@@ -269,25 +272,40 @@ export function ReviewQueue({
             {selected.size === live.length ? "Clear all" : "Select all"}
           </button>
 
-          {/* Behind a disclosure below md: a text input inside a sticky thumb
-              bar eats the whole bar at 390px, and a note is the rare case. */}
-          <details className="w-full md:ml-auto md:w-auto">
-            <summary className="cursor-pointer list-none py-1 text-label text-[var(--color-ink-muted)] md:hidden">
-              {note ? `Note: ${note}` : "Add a note"}
+          {/* The rare note opens above the rail rather than adding a third row. */}
+          <details className="relative ml-auto md:hidden">
+            <summary className={`flex min-h-[var(--tap-min)] cursor-pointer list-none items-center px-1 text-sm text-[var(--color-ink-muted)] ${FOCUS}`}>
+              {note ? "Note added" : "Add note"}
             </summary>
-            <input
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="Note (optional)"
-              className={`${fieldClass()} mt-1 md:mt-0 md:min-h-0 md:w-48 md:py-2`}
-            />
+            <div className={`${card()} absolute bottom-full right-0 mb-2 w-[min(20rem,calc(100vw-2rem))] p-3 shadow-raised`}>
+              <label className="block">
+                <span className="text-xs font-medium text-[var(--color-ink-muted)]">
+                  Decision note
+                </span>
+                <input
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="Optional"
+                  className={`${fieldClass()} mt-1`}
+                />
+              </label>
+            </div>
           </details>
+        </div>
 
-          {/* Approve gets twice the width of Reject. They are not equal
-              choices: approving is what the office came here to do, rejecting
-              is the exception, and two identical buttons side by side under a
-              thumb is how the wrong one gets pressed. */}
-          <div className="flex w-full gap-2 md:w-auto">
+        <input
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder="Note (optional)"
+          aria-label="Decision note"
+          className={`${fieldClass()} ml-auto hidden md:block md:min-h-0 md:w-48 md:py-2`}
+        />
+
+        {/* Approve gets twice the width of Reject. They are not equal
+            choices: approving is what the office came here to do, rejecting
+            is the exception, and two identical buttons side by side under a
+            thumb is how the wrong one gets pressed. */}
+        <div className="flex w-full gap-2 md:w-auto">
             <button
               type="button"
               onClick={() => submit("rejected")}
@@ -304,7 +322,7 @@ export function ReviewQueue({
             >
               {pending ? "Working…" : `Approve ${selected.size}`}
             </button>
-          </div>
+        </div>
       </ThumbBar>
 
       {error ? (
@@ -531,7 +549,7 @@ function ReviewFilters({
     item.action === "not_present" ? "Not in this class" : "Changed",
   );
 
-  const rows: [string, [string, { label: string; n: number }][], string | null, (v: string | null) => void][] = [
+  const rows: ReviewFilterRow[] = [
     ["Group", audiences, audience, (value) => onNarrow({ audience: value })],
     ["Field", fields, field, (value) => onNarrow({ field: value })],
     ["Answer", actions, action, (value) => onNarrow({ action: value })],
@@ -539,10 +557,43 @@ function ReviewFilters({
 
   const useful = rows.filter(([, values]) => values.length > 1);
   if (useful.length === 0) return null;
+  const activeCount = [audience, field, action].filter(Boolean).length;
 
   return (
-    <div className={`${card()} space-y-3 p-4`}>
-      {useful.map(([label, values, current, set]) => (
+    <>
+      <div className={`${card()} md:hidden`}>
+        <details className="group">
+          <summary className={`flex min-h-[var(--tap-min)] cursor-pointer list-none items-center px-4 text-sm font-semibold text-[var(--color-brand-600)] md:hidden ${FOCUS}`}>
+            Filter changes
+            {activeCount > 0 ? (
+              <span className="ml-2 rounded-[var(--radius-chip)] bg-[var(--color-brand-50)] px-2 py-0.5 font-mono text-xs text-[var(--color-brand-700)]">
+                {activeCount}
+              </span>
+            ) : null}
+          </summary>
+          <div className="p-4 pt-1">
+            <ReviewFilterControls rows={useful} />
+          </div>
+        </details>
+      </div>
+      <div className={`${card()} hidden p-4 md:block`}>
+        <ReviewFilterControls rows={useful} />
+      </div>
+    </>
+  );
+}
+
+type ReviewFilterRow = [
+  label: string,
+  values: [string, { label: string; n: number }][],
+  current: string | null,
+  set: (value: string | null) => void,
+];
+
+function ReviewFilterControls({ rows }: { rows: ReviewFilterRow[] }) {
+  return (
+    <div className="space-y-3">
+      {rows.map(([label, values, current, set]) => (
         <div key={label}>
           <span className={eyebrow()}>{label}</span>
           <div className="mt-2 flex flex-wrap gap-1.5">

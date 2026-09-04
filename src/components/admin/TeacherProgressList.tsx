@@ -3,6 +3,7 @@ import type { Bucket, ProgressForm, TeacherProgress } from "@/lib/progress";
 import { remindedLabel, toReminder } from "@/lib/reminders";
 import { ProgressBar } from "./ProgressBar";
 import { RemindButton } from "./RemindButton";
+import { FOCUS } from "@/components/ui/controls";
 
 /**
  * How far each teacher has got, and one way to chase her.
@@ -90,6 +91,7 @@ export function TeacherProgressList({
   more,
   empty = "Everything open has been answered for.",
   apiEnabled = false,
+  mobileDetails = "expanded",
 }: {
   teachers: TeacherProgress[];
   origin: string;
@@ -109,6 +111,8 @@ export function TeacherProgressList({
   /** Rendered under a truncated list — "see all 14". */
   more?: React.ReactNode;
   empty?: React.ReactNode;
+  /** Collapse a teacher's individual lists behind their aggregate on phones. */
+  mobileDetails?: "collapsed" | "expanded";
 }) {
   if (teachers.length === 0) {
     return (
@@ -166,38 +170,22 @@ export function TeacherProgressList({
               />
             </div>
 
-            <ul className="mt-2 space-y-1.5">
-              {teacher.forms.map((form) => {
-                const tone = TONE[toneOf(form)];
-                return (
-                  <li key={form.requestId}>
-                    <Link
-                      href={`/requests/${form.requestId}`}
-                      className="block py-0.5 hover:text-[var(--color-brand-600)]"
-                    >
-                      <span className="text-sm">{form.audienceLabel}</span>
-                      <span
-                        className={`ml-2 rounded-[var(--radius-chip)] px-2 py-0.5 text-xs font-medium ${tone.pill}`}
-                      >
-                        {tone.label}
-                      </span>
-                      <div className="mt-1 flex items-center gap-2">
-                        <ProgressBar
-                          value={form.answered}
-                          max={form.rosterSize}
-                          tone={tone.bar}
-                          label={`${form.audienceLabel} — ${form.title}`}
-                          className="h-1.5 min-w-16 flex-1 sm:w-24 sm:flex-none"
-                        />
-                        <span className="shrink-0 font-mono text-xs text-[var(--color-ink-muted)]">
-                          {form.answered} of {form.rosterSize}
-                        </span>
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            {mobileDetails === "collapsed" && teacher.forms.length > 1 ? (
+              <details className="mt-1 md:hidden">
+                <summary className={`flex min-h-[var(--tap-min)] cursor-pointer list-none items-center text-sm font-medium text-[var(--color-brand-600)] ${FOCUS}`}>
+                  Show {teacher.forms.length} lists
+                </summary>
+                <ProgressForms forms={teacher.forms} className="pb-1" />
+              </details>
+            ) : (
+              <div className="md:hidden">
+                <ProgressForms forms={teacher.forms} />
+              </div>
+            )}
+
+            <div className="hidden md:block">
+              <ProgressForms forms={teacher.forms} />
+            </div>
           </li>
         ))}
       </ul>
@@ -206,6 +194,49 @@ export function TeacherProgressList({
         <div className="mt-3">{more}</div>
       ) : null}
     </>
+  );
+}
+
+function ProgressForms({
+  forms,
+  className = "",
+}: {
+  forms: ProgressForm[];
+  className?: string;
+}) {
+  return (
+    <ul className={`mt-2 space-y-1.5 ${className}`}>
+      {forms.map((form) => {
+        const tone = TONE[toneOf(form)];
+        return (
+          <li key={form.requestId}>
+            <Link
+              href={`/requests/${form.requestId}`}
+              className="block py-0.5 hover:text-[var(--color-brand-600)]"
+            >
+              <span className="text-sm">{form.audienceLabel}</span>
+              <span
+                className={`ml-2 rounded-[var(--radius-chip)] px-2 py-0.5 text-xs font-medium ${tone.pill}`}
+              >
+                {tone.label}
+              </span>
+              <div className="mt-1 flex items-center gap-2">
+                <ProgressBar
+                  value={form.answered}
+                  max={form.rosterSize}
+                  tone={tone.bar}
+                  label={`${form.audienceLabel} — ${form.title}`}
+                  className="h-1.5 min-w-16 flex-1 sm:w-24 sm:flex-none"
+                />
+                <span className="shrink-0 font-mono text-xs text-[var(--color-ink-muted)]">
+                  {form.answered} of {form.rosterSize}
+                </span>
+              </div>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

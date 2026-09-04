@@ -27,19 +27,27 @@
 export function ThumbBar({
   children,
   desktop = "static",
+  mobile = "wrap",
 }: {
   children: React.ReactNode;
   desktop?: "static" | "sticky";
+  mobile?: "wrap" | "compact";
 }) {
   return (
     <div
-      className={`fixed inset-x-0 bottom-[calc(var(--admin-nav-h)+env(safe-area-inset-bottom))] z-30 border-t border-[var(--color-border)] bg-[var(--color-surface)]/96 px-4 py-3 shadow-[var(--shadow-rail)] backdrop-blur-sm ${
+      className={`fixed inset-x-0 bottom-[calc(var(--admin-nav-h)+env(safe-area-inset-bottom))] z-30 border-t border-[var(--color-border)] bg-[var(--color-surface)]/96 px-4 shadow-[var(--shadow-rail)] backdrop-blur-sm ${
+        mobile === "compact" ? "py-2" : "py-3"
+      } ${
         desktop === "sticky"
           ? "md:sticky md:inset-x-auto md:bottom-auto md:top-0 md:rounded-[var(--radius-card)] md:border md:bg-[var(--color-surface)] md:p-3 md:shadow-card md:backdrop-blur-none"
           : "md:static md:bottom-auto md:border-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none"
       }`}
     >
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3">
+      <div
+        className={`mx-auto flex max-w-5xl flex-wrap items-center ${
+          mobile === "compact" ? "gap-2 md:gap-3" : "gap-3"
+        }`}
+      >
         {children}
       </div>
     </div>
@@ -53,3 +61,6 @@ export function ThumbBar({
  * once so a page cannot leave three-quarters of it and bury its own last row.
  */
 export const THUMB_BAR_CLEARANCE = "pb-24 md:pb-0";
+
+/** Two 48px rows, their gap and the compact bar's vertical padding. */
+export const THUMB_BAR_COMPACT_CLEARANCE = "pb-32 md:pb-0";

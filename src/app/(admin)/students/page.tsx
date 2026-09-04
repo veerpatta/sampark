@@ -23,7 +23,8 @@ import { ColumnPicker, type PickableColumn } from "@/components/admin/ColumnPick
 import { PageHeader } from "@/components/admin/PageHeader";
 import { ProgressBar } from "@/components/admin/ProgressBar";
 import { RecentStudents } from "@/components/admin/RecentStudents";
-import { btn, eyebrow, field } from "@/components/ui/controls";
+import { StudentMobileFilters } from "@/components/admin/StudentMobileFilters";
+import { btn, eyebrow, field, FOCUS } from "@/components/ui/controls";
 import { HouseChip } from "@/components/HouseChip";
 import { StudentBulkBar } from "./StudentBulkBar";
 
@@ -283,25 +284,43 @@ export default async function StudentsPage({
         }${active ? " matching these filters" : ""}`}
       />
 
-      <QuickViews facets={facets} />
+      {/* Shortcuts are useful, but not a wall the office must cross before
+          every search. Closed on a phone; forced visible at desktop widths.
+          Recent children disappear while a deliberate query is active. */}
+      <details className="group md:block">
+        <summary className={`flex min-h-[var(--tap-min)] cursor-pointer list-none items-center text-sm font-medium text-[var(--color-brand-600)] md:hidden ${FOCUS}`}>
+          Student shortcuts
+        </summary>
+        <div className="space-y-4 group-open:block md:!block">
+          <QuickViews facets={facets} />
+          {!active ? <RecentStudents /> : null}
+        </div>
+      </details>
 
-      <RecentStudents />
+      <StudentMobileFilters
+        primary={primary}
+        secondary={secondary}
+        search={query.search ?? ""}
+        sort={query.sort ?? "name"}
+        size={size}
+      />
 
-      <FilterBar primary={primary} secondary={secondary}>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="block w-full sm:w-auto">
-            <span className="text-xs font-medium text-[var(--color-ink-muted)]">
-              Search
-            </span>
-            <input
-              name="q"
-              defaultValue={query.search}
-              placeholder="Name, ID, SR, mobile, father, mother, village, Aadhaar last 4"
-              className={`${field()} mt-1 sm:w-80`}
-            />
-          </label>
+      <div className="hidden md:block">
+        <FilterBar primary={primary} secondary={secondary}>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="block w-full sm:w-auto">
+              <span className="text-xs font-medium text-[var(--color-ink-muted)]">
+                Search
+              </span>
+              <input
+                name="q"
+                defaultValue={query.search}
+                placeholder="Name, ID, SR, mobile, father, mother, village, Aadhaar last 4"
+                className={`${field()} mt-1 sm:w-80`}
+              />
+            </label>
 
-          <label className="block">
+            <label className="block">
             <span className="text-xs font-medium text-[var(--color-ink-muted)]">
               Sort by
             </span>
@@ -316,9 +335,9 @@ export default async function StudentsPage({
                 </option>
               ))}
             </select>
-          </label>
+            </label>
 
-          <label className="block">
+            <label className="block">
             <span className="text-xs font-medium text-[var(--color-ink-muted)]">
               Per page
             </span>
@@ -333,18 +352,19 @@ export default async function StudentsPage({
                 </option>
               ))}
             </select>
-          </label>
+            </label>
 
-          {active ? (
-            <Link
-              href="/students"
-              className="inline-flex min-h-[var(--tap-min)] items-center text-sm text-[var(--color-ink-muted)] hover:underline"
-            >
-              Clear all
-            </Link>
-          ) : null}
-        </div>
-      </FilterBar>
+            {active ? (
+              <Link
+                href="/students"
+                className="inline-flex min-h-[var(--tap-min)] items-center text-sm text-[var(--color-ink-muted)] hover:underline"
+              >
+                Clear all
+              </Link>
+            ) : null}
+          </div>
+        </FilterBar>
+      </div>
 
       {students.length === 0 ? (
         <EmptyState hasFilter={active} canImport={canImport} />

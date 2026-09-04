@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CaretLeft } from "@phosphor-icons/react";
+import { useEffect, useRef, useState } from "react";
+import { CaretLeft, UserCircle } from "@phosphor-icons/react";
 import { AdminNavLinks, type NavItem } from "./AdminNav";
 import { CommandPalette } from "./CommandPalette";
 
@@ -45,6 +46,7 @@ const CRUMBS: [prefix: string, label: string][] = [
   ["/settings/fields", "Field registry"],
   ["/settings/users", "Admin users"],
   ["/settings/audit", "Audit log"],
+  ["/settings/whatsapp", "WhatsApp"],
   ["/settings", "Settings"],
 ];
 
@@ -89,6 +91,35 @@ export function AppBar({
   const pathname = usePathname();
   const parent = parentOf(pathname);
   const crumb = crumbFor(pathname);
+  const settings = nav.find((item) => item.href === "/settings");
+  const [accountOpen, setAccountOpen] = useState(false);
+  const account = useRef<HTMLDivElement>(null);
+  const accountButton = useRef<HTMLButtonElement>(null);
+  const accountPanel = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!accountOpen) return;
+    accountPanel.current?.focus();
+
+    function onPointerDown(event: PointerEvent) {
+      if (!account.current?.contains(event.target as Node)) {
+        setAccountOpen(false);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setAccountOpen(false);
+      accountButton.current?.focus();
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [accountOpen]);
 
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--color-border)] bg-[var(--color-surface)] md:static">
@@ -109,11 +140,50 @@ export function AppBar({
         <span className="truncate text-[17px] font-semibold tracking-[-0.01em]">
           {crumb}
         </span>
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-[var(--color-ink-muted)]">
+        <span className="ml-auto flex shrink-0 items-center text-xs text-[var(--color-ink-muted)]">
           <CommandPalette compact />
-          <span className="max-w-24 truncate">{userName}</span>
-          <span className="rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 font-mono text-[11px]">
-            {role}
+          <span ref={account} className="relative">
+            <button
+              ref={accountButton}
+              type="button"
+              aria-label="Account menu"
+              aria-expanded={accountOpen}
+              aria-haspopup="dialog"
+              onClick={() => setAccountOpen((open) => !open)}
+              className="-mr-3 flex h-12 w-12 items-center justify-center rounded-[var(--radius-control)] text-[var(--color-ink-muted)] active:bg-[var(--color-surface-muted)] focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--color-brand-600)]"
+            >
+              <UserCircle aria-hidden size={24} />
+            </button>
+            {accountOpen ? (
+              <div
+                ref={accountPanel}
+                role="dialog"
+                aria-label="Account"
+                tabIndex={-1}
+                className="absolute right-0 top-[calc(100%+0.25rem)] w-64 overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-raised"
+              >
+                <div className="border-b border-[var(--color-border)] px-4 py-3">
+                  <p className="truncate text-sm font-medium text-[var(--color-ink)]">
+                    {userName}
+                  </p>
+                  <p className="mt-0.5 font-mono text-xs text-[var(--color-ink-muted)]">
+                    {role}
+                  </p>
+                </div>
+                {settings ? (
+                  <Link
+                    href={settings.href}
+                    onClick={() => setAccountOpen(false)}
+                    className="flex min-h-[var(--tap-min)] items-center px-4 text-sm text-[var(--color-ink)] active:bg-[var(--color-surface-muted)]"
+                  >
+                    Settings
+                  </Link>
+                ) : null}
+                <div className="border-t border-[var(--color-border)] text-sm">
+                  {signOut}
+                </div>
+              </div>
+            ) : null}
           </span>
         </span>
       </div>

@@ -150,6 +150,7 @@ export function StatusBoard({
           origin={origin}
           today={today}
           apiEnabled={apiEnabled}
+          mobileDetails="collapsed"
           limit={DASHBOARD_TEACHERS}
           more={
             <Link

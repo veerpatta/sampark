@@ -17,6 +17,7 @@ export function PageHeader({
   title,
   subtitle,
   size = "page",
+  mobileTitle = size === "detail" ? "content" : "appbar",
   actions,
 }: {
   title: React.ReactNode;
@@ -28,6 +29,8 @@ export function PageHeader({
    * record itself off the first screen of a phone.
    */
   size?: "page" | "detail";
+  /** Index pages use the phone app bar; record/detail titles stay in content. */
+  mobileTitle?: "appbar" | "content";
   /** Buttons that belong to the whole screen, not to a section within it. */
   actions?: React.ReactNode;
 }) {
@@ -35,16 +38,20 @@ export function PageHeader({
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
         <h1
-          className={
+          className={`${
             size === "page"
               ? "text-display font-semibold"
               : "text-[1.625rem] font-semibold leading-8 tracking-[-0.02em]"
-          }
+          } ${mobileTitle === "appbar" ? "sr-only md:not-sr-only" : ""}`}
         >
           {title}
         </h1>
         {subtitle ? (
-          <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
+          <p
+            className={`${
+              mobileTitle === "appbar" ? "mt-0 md:mt-1" : "mt-1"
+            } text-[13px] text-[var(--color-ink-muted)]`}
+          >
             {subtitle}
           </p>
         ) : null}

@@ -641,3 +641,37 @@ scrolls sideways at any of them. The bulk bar, the search palette (typed and
 pasted) and the review queue were exercised with a real selection at 390px.
 Still not exercised here: a real blob upload, because the store token is
 production-only.
+
+---
+
+# Less chrome between the office and the work (2026-09-04)
+
+The phone console keeps the same language and the same jobs, but stops making
+the office carry setup controls through every daily screen.
+
+## Mobile decisions
+
+- The bottom bar is the five daily destinations. Settings, identity, role and
+  sign-out live together in the app bar's account menu; desktop navigation is
+  unchanged.
+- An index page's app-bar crumb is its visible phone title. Its `h1` remains in
+  the document outline, while a student, request or other detail keeps its own
+  visible data title.
+- Quick Send replaces completed class and template grids with one editable
+  summary each. The teacher choice, five-day default, WhatsApp handoff and
+  full-builder escape path are unchanged.
+- Teacher progress leads with the aggregate and reminder. Multiple individual
+  lists are one disclosure on a phone and remain expanded on a desktop.
+- Student search and sort stay above the first result; facets, page size and
+  their no-JavaScript Apply button live behind one filter disclosure. Selected
+  facets remain visible as individually removable chips.
+- Review filters are a disclosure on a phone. Its approval rail is two 48px
+  rows, with the optional note opening above the rail, and reserves exactly its
+  own height below the final row.
+
+## Verification available in this checkout
+
+`npm run typecheck`, `npm run lint` and `npm run build` pass. Database-backed
+tests and authenticated browser checks are blocked because this checkout's
+local database value is not a valid URL; no credential or environment repair
+was included in this UI-only pass.
