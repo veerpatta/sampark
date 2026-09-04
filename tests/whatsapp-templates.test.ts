@@ -94,10 +94,10 @@ describe("the template texts", () => {
     }
   });
 
-  it("carry one sample per hole", () => {
+  it("carry one sample per body hole, plus one for the button", () => {
     for (const spec of allTemplates()) {
       const holes = expectedParamCount(spec.name.split("_")[1] as never, spec.language);
-      assert.equal(spec.samples.length, holes, spec.name);
+      assert.equal(spec.samples.length, holes + 1, spec.name);
     }
   });
 
@@ -201,7 +201,9 @@ describe("buildRequestPayloads", () => {
         linkToken: null,
       });
       assert.equal(payload!.params.length, expectedParamCount("request", language));
-      assert.equal(payload!.params.at(-1), TOKEN);
+      // The token is the button's parameter, never a body value — AiSensy
+      // refuses the call otherwise.
+      assert.ok(!payload!.params.includes(TOKEN));
       assert.equal(payload!.suffix, TOKEN);
       payload!.params.forEach(assertCleanParam);
     }
@@ -401,7 +403,8 @@ describe("buildLinkPayload and buildTestPayload", () => {
   it("hand over her page with exactly two values", () => {
     const payload = buildLinkPayload({ teacherName: "Sunita", language: "hi", linkToken: PAGE });
     assert.equal(payload.params.length, expectedParamCount("link", "hi"));
-    assert.deepEqual(payload.params, ["Sunita", PAGE]);
+    assert.deepEqual(payload.params, ["Sunita"]);
+    assert.equal(payload.suffix, PAGE);
     assert.deepEqual(payload.requestIds, []);
   });
 
@@ -410,7 +413,7 @@ describe("buildLinkPayload and buildTestPayload", () => {
       const payload = buildTestPayload(language);
       assert.equal(payload.params.length, expectedParamCount("request", language));
       assert.equal(payload.suffix, TEST_SUFFIX);
-      assert.equal(payload.params.at(-1), TEST_SUFFIX);
+      assert.ok(!payload.params.includes(TEST_SUFFIX));
       assert.deepEqual(payload.requestIds, []);
     }
   });

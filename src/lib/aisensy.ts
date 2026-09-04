@@ -103,8 +103,30 @@ export type SendTemplateInput = {
   destination: string;
   /** Becomes the contact's name in the AiSensy dashboard. */
   userName: string;
+  /** The BODY's values only. */
   templateParams: string[];
+  /**
+   * The value for the template's one dynamic URL button — the token.
+   *
+   * Sent as a `buttons` entry, in the shape Meta's own API uses, and NOT as a
+   * fifth templateParam: AiSensy counts only the body's holes there and
+   * refuses the call otherwise ("Template params does not match the
+   * campaign"). Verified against the live campaign on 2026-09-04.
+   */
+  buttonSuffix?: string;
 };
+
+/** The one button every Sampark template has, filled in. */
+export function buttonParameters(suffix: string): unknown[] {
+  return [
+    {
+      type: "button",
+      sub_type: "url",
+      index: 0,
+      parameters: [{ type: "text", text: suffix }],
+    },
+  ];
+}
 
 /** One message. Never throws: a network failure is a `SendResult` too. */
 export async function sendTemplate(input: SendTemplateInput): Promise<SendResult> {
@@ -125,6 +147,7 @@ export async function sendTemplate(input: SendTemplateInput): Promise<SendResult
         userName: input.userName,
         source: "sampark",
         templateParams: input.templateParams,
+        ...(input.buttonSuffix ? { buttons: buttonParameters(input.buttonSuffix) } : {}),
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
       cache: "no-store",

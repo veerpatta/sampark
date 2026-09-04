@@ -32,6 +32,14 @@
  * characters of the token, and src/app/w/[token] works out whether it names a
  * request or a teacher's page. See suffixFor for which token goes in.
  *
+ * THE TOKEN IS NOT ONE OF THE PARAMS. AiSensy numbers a URL button's variable
+ * on its own (the dashboard shows it as {{1}} whatever the body holds), and its
+ * campaign API refuses a call that puts the button value at the end of
+ * `templateParams` — "Template params does not match the campaign". The body
+ * values go in `params`; the token goes in `suffix`, which lib/aisensy.ts
+ * sends as a `buttons` entry. Verified against the live campaign on
+ * 2026-09-04, which is why this comment is here.
+ *
  * PURE, AND WITH NO DATABASE IMPORT, like lib/whatsapp.ts and lib/pending.ts —
  * the settings screen and the send buttons are client components and reach
  * this module. The API key and the HTTP call live in lib/aisensy.ts, which
@@ -247,14 +255,14 @@ export function allTemplates(): TemplateSpec[] {
 }
 
 /**
- * How many values the campaign expects: every {{n}} in the body, plus one for
- * the button. Derived from the text rather than written down, so the two
- * cannot disagree.
+ * How many values `templateParams` carries: every {{n}} in the BODY. The
+ * button's token is sent separately (see the header). Derived from the text
+ * rather than written down, so the two cannot disagree.
  */
 export function expectedParamCount(kind: TemplateKind, language: Language = "en"): number {
   const spec = TEMPLATE_TEXT[kind][language];
   const holes = new Set(spec.body.match(/\{\{\d+\}\}/g) ?? []);
-  return holes.size + 1;
+  return holes.size;
 }
 
 /* ============ PARAMS ============ */
@@ -286,9 +294,9 @@ export function sanitiseParam(value: string, max = PARAM_MAX): string {
 export type TemplatePayload = {
   kind: TemplateKind;
   language: Language;
-  /** Body values first, the button token last. */
+  /** The body's values, in hole order. Never the token — see the header. */
   params: string[];
-  /** The token the button carries — the last param, kept separately for the log. */
+  /** The token the button carries. Sent as the button's own parameter. */
   suffix: string;
   /** Every request this one message covers, for the tick. */
   requestIds: string[];
@@ -422,7 +430,6 @@ export function buildRequestPayloads(input: RequestPayloadInput): TemplatePayloa
       sanitiseParam(input.title),
       sanitiseParam(whatToCheck(links, input.language), SUMMARY_MAX),
       sanitiseParam(due),
-      suffix,
     ],
     suffix,
     requestIds,
@@ -550,7 +557,6 @@ export function buildReminderPayloads(input: ReminderPayloadInput): TemplatePayl
       params: [
         sanitiseParam(input.teacherName),
         sanitiseParam(summary, SUMMARY_MAX),
-        suffix,
       ],
       suffix,
       requestIds,
@@ -576,7 +582,7 @@ export function buildLinkPayload(input: {
   return {
     kind: "link",
     language: input.language,
-    params: [sanitiseParam(input.teacherName), input.linkToken],
+    params: [sanitiseParam(input.teacherName)],
     suffix: input.linkToken,
     requestIds: [],
   };
@@ -591,11 +597,12 @@ export function buildLinkPayload(input: {
  */
 export function buildTestPayload(language: Language): TemplatePayload {
   const spec = TEMPLATE_TEXT.request[language];
+  // The last sample is the button's; it is not a param.
   const samples = spec.samples.slice(0, -1);
   return {
     kind: "request",
     language,
-    params: [...samples, TEST_SUFFIX],
+    params: samples,
     suffix: TEST_SUFFIX,
     requestIds: [],
   };

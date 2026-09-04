@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  buttonParameters,
   campaignFor,
   destinationFor,
   interpretResponse,
@@ -77,6 +78,21 @@ describe("interpretResponse", () => {
   it("uses `message` when that is all a failure says", () => {
     const result = interpretResponse(401, { message: "Invalid API key" });
     assert.equal(result.ok === false && result.error, "Invalid API key");
+  });
+});
+
+describe("buttonParameters", () => {
+  it("fills the one URL button in Meta's own shape", () => {
+    // What the live campaign accepted on 2026-09-04; a fifth templateParam
+    // was refused with "Template params does not match the campaign".
+    assert.deepEqual(buttonParameters("AbCdEfGhIjKlMnOp"), [
+      {
+        type: "button",
+        sub_type: "url",
+        index: 0,
+        parameters: [{ type: "text", text: "AbCdEfGhIjKlMnOp" }],
+      },
+    ]);
   });
 });
 

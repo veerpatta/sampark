@@ -121,6 +121,7 @@ async function deliver(input: Deliver): Promise<SendOutcome> {
       destination,
       userName: input.teacherName,
       templateParams: payload.params,
+      buttonSuffix: payload.suffix,
     });
 
     await logMessage({

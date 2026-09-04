@@ -102,7 +102,7 @@ export default async function WhatsappSettingsPage() {
                 <span className="font-mono text-sm font-medium">{spec.name}</span>
                 <span className="text-xs text-[var(--color-ink-muted)]">
                   {LANGUAGE_LABEL[spec.language]} · {spec.category} ·{" "}
-                  {expectedParamCount(kindOf(spec.name), spec.language) - 1} body
+                  {expectedParamCount(kindOf(spec.name), spec.language)} body
                   variables + 1 button variable
                 </span>
               </div>
