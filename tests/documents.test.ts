@@ -24,13 +24,23 @@ describe("document pathnames", () => {
     assert.ok(documentBelongsTo(pathname, "S1001"));
   });
 
+  it("stores an RTE admission number in one segment", () => {
+    for (const id of ["228/12RTE", "RTE 03"]) {
+      const p = documentPathname(id, "pdf");
+      assert.ok(isDocumentPathname(p), `not mintable: ${id}`);
+      assert.ok(documentBelongsTo(p, id), `not owned: ${id}`);
+      assert.equal(p.split("/").length, 3, `extra segment: ${id}`);
+    }
+  });
+
   it("never mints twice the same", () => {
     assert.notEqual(documentPathname("S1", "jpg"), documentPathname("S1", "jpg"));
   });
 
   it("refuses an id that could not be a path segment", () => {
     assert.throws(() => documentPathname("../S1", "pdf"));
-    assert.throws(() => documentPathname("S1/S2", "pdf"));
+    assert.throws(() => documentPathname("S1.S2", "pdf"));
+    assert.throws(() => documentPathname("S1%2FS2", "pdf"));
   });
 
   it("compares the segment, not the prefix", () => {
@@ -39,6 +49,11 @@ describe("document pathnames", () => {
     const other = documentPathname("S1001x", "jpg");
     assert.equal(documentBelongsTo(other, "S1001"), false);
     assert.equal(documentBelongsTo(other, "S1001x"), true);
+
+    // The same trap once the id carries a slash — the RTE admission numbers.
+    const rte = documentPathname("228/12RTEx", "pdf");
+    assert.equal(documentBelongsTo(rte, "228/12RTE"), false);
+    assert.equal(documentBelongsTo(rte, "228/12RTEx"), true);
   });
 
   it("accepts only the three extensions, lower case", () => {

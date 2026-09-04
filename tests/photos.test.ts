@@ -32,9 +32,40 @@ describe("photoPathname", () => {
   });
 
   it("refuses a student id that would escape its own folder", () => {
-    for (const id of ["../etc", "a/b", "", "x".repeat(64)]) {
+    // 'a/b' has MOVED OUT of this list on purpose — see the RTE case below.
+    // A dot is what makes '..' expressible, so it stays refused.
+    for (const id of ["../etc", "a.b", "", "x".repeat(64), "a%2Fb"]) {
       assert.throws(() => photoPathname(id), /Unusable student id/);
     }
+  });
+
+  /**
+   * NINE REAL CHILDREN. This school's RTE admission numbers are '228/12RTE'
+   * and 'RTE 03', and until this was fixed every teacher asked for one of
+   * their photographs got a 500 she could not get past.
+   *
+   * The slash must not become a folder, so it is encoded into the segment.
+   */
+  it("stores an id with a slash or a space, in one segment", () => {
+    for (const id of ["228/12RTE", "24RTE/359", "RTE 03"]) {
+      const pathname = photoPathname(id);
+      assert.ok(isPhotoPathname(pathname), `not mintable: ${id}`);
+      assert.ok(photoBelongsTo(pathname, id), `not owned: ${id}`);
+      // One segment between 'students/' and the filename — no invented folder.
+      assert.equal(pathname.split("/").length, 3, `extra segment: ${id}`);
+      assert.ok(isPhotoPathname(thumbPathname(pathname)));
+    }
+  });
+
+  /**
+   * The identity that lets this change be safe at all: `submissions` is
+   * append-only by database grant, so a pathname stored last month can never
+   * be rewritten. An ordinary id has to encode to itself, or every photograph
+   * already collected would stop validating.
+   */
+  it("leaves an ordinary id byte-identical", () => {
+    assert.ok(photoPathname("S1001").startsWith("students/S1001/"));
+    assert.ok(photoPathname("TMP-7").startsWith("students/TMP-7/"));
   });
 });
 
@@ -90,6 +121,30 @@ describe("photoBelongsTo", () => {
   it("says no to a string that is not a pathname at all", () => {
     assert.equal(photoBelongsTo("students/S1001/hello.jpg", "S1001"), false);
     assert.equal(photoBelongsTo(null, "S1001"), false);
+  });
+
+  it("is still a segment comparison once the id is encoded", () => {
+    const other = photoPathname("228/12RTEx");
+    assert.equal(photoBelongsTo(other, "228/12RTE"), false);
+    assert.ok(photoBelongsTo(other, "228/12RTEx"));
+  });
+
+  /**
+   * A malformed escape must be REFUSED, not thrown on. recordSubmissions calls
+   * this on a value that arrived from a phone, so a URIError here would be a
+   * 500 where a `false` was wanted.
+   */
+  it("returns false rather than throwing on a broken escape", () => {
+    const day = "20260904";
+    const hex = "a".repeat(24);
+    for (const seg of ["%ZZ", "%", "%2", "228%2f12RTE"]) {
+      assert.doesNotThrow(() =>
+        assert.equal(
+          photoBelongsTo(`students/${seg}/${day}-${hex}.jpg`, "228/12RTE"),
+          false,
+        ),
+      );
+    }
   });
 });
 

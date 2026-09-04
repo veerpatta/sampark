@@ -1,4 +1,4 @@
-import { randomHex, STUDENT_ID_PATTERN } from "./photos";
+import { encodeSegment, randomHex, STORABLE_STUDENT_ID_PATTERN } from "./photos";
 
 /**
  * Everything that knows the shape of a document's blob pathname, and what a
@@ -53,7 +53,7 @@ export type DocumentExt = "jpg" | "png" | "pdf";
  * A different top-level segment from the photographs, so neither proxy can be
  * talked into serving the other's files.
  */
-const PATHNAME = /^documents\/([A-Za-z0-9_-]{1,32})\/\d{8}-[0-9a-f]{24}\.(jpg|png|pdf)$/;
+const PATHNAME = /^documents\/([A-Za-z0-9_%-]{1,96})\/\d{8}-[0-9a-f]{24}\.(jpg|png|pdf)$/;
 
 export function isDocumentPathname(value: unknown): value is string {
   return typeof value === "string" && PATHNAME.test(value);
@@ -61,7 +61,9 @@ export function isDocumentPathname(value: unknown): value is string {
 
 export function documentBelongsTo(value: unknown, studentId: string): boolean {
   const match = typeof value === "string" ? PATHNAME.exec(value) : null;
-  return match !== null && match[1] === studentId;
+  // Encoded-segment comparison, for the reason photoBelongsTo gives: decoding
+  // a string somebody else wrote can throw, and encoding ours cannot.
+  return match !== null && match[1] === encodeSegment(studentId);
 }
 
 /** A fresh, unguessable pathname for one upload. Never reused, never overwritten. */
@@ -70,13 +72,13 @@ export function documentPathname(
   ext: DocumentExt,
   now = new Date(),
 ): string {
-  if (!STUDENT_ID_PATTERN.test(studentId)) {
+  if (!STORABLE_STUDENT_ID_PATTERN.test(studentId)) {
     throw new Error("Unusable student id for a document pathname.");
   }
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" })
     .format(now)
     .replace(/-/g, "");
-  return `documents/${studentId}/${day}-${randomHex(12)}.${ext}`;
+  return `documents/${encodeSegment(studentId)}/${day}-${randomHex(12)}.${ext}`;
 }
 
 /**

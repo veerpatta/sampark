@@ -26,15 +26,51 @@
  * child's photograph to a row must not be a value in a table.
  */
 
-/** A student id as it can appear in a pathname. Real ones are 'S1001', 'TMP-7'. */
 /**
- * Exported, because it is the app's one definition of "a student id that can
- * be a path segment": lib/documents.ts builds its pathnames from the same
- * segment, and /students/new validates a typed PSP id against it — an id that
- * could not carry a photograph is an id that should not exist.
+ * A student id the office may TYPE. Real ones are 'S1001', 'TMP-7'.
+ *
+ * THIS IS THE NARROW ONE, AND IT IS NOT WHAT GATES A PATHNAME. Its only caller
+ * is /students/new (see planNewStudent), where it decides what a new id may
+ * look like — and the answer should stay "letters, digits, - or _", because
+ * every awkward id in this database is one somebody inherited, not one anybody
+ * chose. What an EXISTING id may look like is STORABLE_STUDENT_ID_PATTERN
+ * below, which is deliberately wider.
  */
 export const STUDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
-const STUDENT_ID = STUDENT_ID_PATTERN;
+
+/**
+ * An id that ALREADY EXISTS and therefore has to be storable.
+ *
+ * A SEPARATE PREDICATE FROM STUDENT_ID_PATTERN, DELIBERATELY. That one gates
+ * what the office may TYPE on /students/new, and it should stay narrow — this
+ * school's RTE admission numbers look like '228/12RTE' and 'RTE 03', and the
+ * answer to that is to keep storing the children who already have those
+ * numbers, not to start minting new ids with slashes in them.
+ *
+ * So: letters, digits, `_`, `-`, `/` and space, up to 32 characters.
+ *
+ * `.` IS EXCLUDED, which is what makes '..' unrepresentable, and `%` is
+ * excluded so that a per-cent sign inside a path segment is unambiguously one
+ * this file put there. Both exclusions are load-bearing — see encodeSegment.
+ */
+export const STORABLE_STUDENT_ID_PATTERN = /^[A-Za-z0-9_ /-]{1,32}$/;
+
+/**
+ * The id as ONE path segment.
+ *
+ * `encodeURIComponent` turns '/' into '%2F' and ' ' into '%20', so an id that
+ * contains a slash still occupies exactly one segment and cannot invent a
+ * folder. It is injective over the charset above, which is what lets ownership
+ * stay a comparison of encoded segments rather than a decode of a string
+ * somebody else wrote.
+ *
+ * FOR EVERY ORDINARY ID THIS IS THE IDENTITY FUNCTION. 'S1001' encodes to
+ * 'S1001', so every pathname already stored in `submissions` — an append-only
+ * table this app cannot rewrite — stays byte-identical and keeps validating.
+ */
+export function encodeSegment(studentId: string): string {
+  return encodeURIComponent(studentId);
+}
 
 /**
  * The whole pathname, anchored.
@@ -46,7 +82,7 @@ const STUDENT_ID = STUDENT_ID_PATTERN;
  * tool is ever wanted. The date is there for a human reading the store; the 12
  * random bytes are what make the pathname unguessable.
  */
-const PATHNAME = /^students\/([A-Za-z0-9_-]{1,32})\/\d{8}-[0-9a-f]{24}(-thumb)?\.jpg$/;
+const PATHNAME = /^students\/([A-Za-z0-9_%-]{1,96})\/\d{8}-[0-9a-f]{24}(-thumb)?\.jpg$/;
 
 /** The 96px variant, derived by convention rather than by a second column. */
 export const THUMB_SUFFIX = "-thumb";
@@ -65,22 +101,32 @@ export function isPhotoPathname(value: unknown): value is string {
  */
 export function photoBelongsTo(value: unknown, studentId: string): boolean {
   const match = typeof value === "string" ? PATHNAME.exec(value) : null;
-  return match !== null && match[1] === studentId;
+  // ENCODE OURS RATHER THAN DECODE THEIRS. `decodeURIComponent` throws a
+  // URIError on a malformed escape ('%ZZ', a trailing '%'), and this function
+  // is reached from a teacher's phone through recordSubmissions — a throw here
+  // would turn a value we want to reject into a 500. Encoding is total, and
+  // encodeSegment is injective, so comparing encoded forms gives the same
+  // answer with nothing to catch.
+  return match !== null && match[1] === encodeSegment(studentId);
 }
 
 /** A fresh, unguessable pathname for one upload. Never reused, never overwritten. */
 export function photoPathname(studentId: string, now = new Date()): string {
-  if (!STUDENT_ID.test(studentId)) {
-    // The id comes from the frozen roster, so this cannot fire in practice —
-    // which is the reason to check. A '/' or a '..' arriving here by some route
-    // nobody predicted would be path traversal inside the blob store, and a
-    // throw is the only outcome that is not a silent write to the wrong place.
+  if (!STORABLE_STUDENT_ID_PATTERN.test(studentId)) {
+    // A '..' or a stray character arriving here by some route nobody predicted
+    // would be path traversal inside the blob store, and a throw is the only
+    // outcome that is not a silent write to the wrong place.
+    //
+    // This used to test STUDENT_ID_PATTERN, and it DID fire: nine RTE children
+    // carry admission numbers like '228/12RTE', so every teacher asked for
+    // their photograph got a 500 and no way past it. The slash is legitimate;
+    // the pathname is what has to accommodate it.
     throw new Error("Unusable student id for a photo pathname.");
   }
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" })
     .format(now)
     .replace(/-/g, "");
-  return `students/${studentId}/${day}-${randomHex(12)}.jpg`;
+  return `students/${encodeSegment(studentId)}/${day}-${randomHex(12)}.jpg`;
 }
 
 /** 12 bytes of Web Crypto randomness, as hex. See the note at the top. */
