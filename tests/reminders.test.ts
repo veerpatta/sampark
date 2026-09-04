@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { groupRemindersByTeacher } from "../src/lib/reminders";
+import { groupRemindersByTeacher, remindedLabel } from "../src/lib/reminders";
 import type { RequestBoardRow } from "../src/lib/requests";
 
 /**
@@ -152,5 +152,51 @@ describe("groupRemindersByTeacher", () => {
       TODAY,
     );
     assert.equal(groups[0]!.linkToken, "abcdefghijklmnop");
+  });
+});
+
+/**
+ * The wording of the chase, now that it lives in this file.
+ *
+ * IT LIVES HERE BECAUSE IT HAS TO. It was exported from RemindButton.tsx,
+ * which carries "use client", and TeacherProgressList renders on the SERVER and
+ * calls it — so what crossed that boundary was a client reference rather than a
+ * function, and calling it threw "Attempted to call remindedLabel() from the
+ * server" on / and /requests for everyone logged in. Neither tsc nor eslint
+ * sees that. A test in this file at least pins the function somewhere a server
+ * component may import it from.
+ */
+describe("remindedLabel", () => {
+  const base = { remindedToday: false, reminderCount: 1, today: "2026-08-13" };
+
+  it("says nothing about a teacher nobody has chased", () => {
+    assert.equal(remindedLabel({ ...base, lastRemindedAt: null }), null);
+  });
+
+  it("says today when she was chased today", () => {
+    assert.equal(
+      remindedLabel({ ...base, remindedToday: true, lastRemindedAt: new Date("2026-08-13T04:00:00Z") }),
+      "reminded today",
+    );
+  });
+
+  it("counts in whole days on the register, not elapsed hours", () => {
+    // 1am IST on the 13th is 19:30 UTC on the 12th. Reduced through isoDay it
+    // is still yesterday to the school, which is the bug lib/today.ts exists for.
+    assert.equal(
+      remindedLabel({ ...base, lastRemindedAt: new Date("2026-08-11T19:30:00Z") }),
+      "reminded 1 day ago",
+    );
+    assert.equal(
+      remindedLabel({ ...base, lastRemindedAt: new Date("2026-08-10T06:00:00Z") }),
+      "reminded 3 days ago",
+    );
+  });
+
+  it("adds the tally only once she has been chased more than once", () => {
+    assert.equal(
+      remindedLabel({ ...base, reminderCount: 3, remindedToday: true, lastRemindedAt: new Date("2026-08-13T04:00:00Z") }),
+      "reminded today · nudged 3×",
+    );
   });
 });

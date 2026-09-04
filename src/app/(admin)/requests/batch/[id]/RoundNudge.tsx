@@ -1,8 +1,8 @@
 "use client";
 
-import type { TeacherReminder } from "@/lib/reminders";
+import { remindedLabel, type TeacherReminder } from "@/lib/reminders";
 import { ProgressBar } from "@/components/admin/ProgressBar";
-import { RemindButton, remindedLabel } from "@/components/admin/RemindButton";
+import { RemindButton } from "@/components/admin/RemindButton";
 import { card } from "@/components/ui/controls";
 
 /**

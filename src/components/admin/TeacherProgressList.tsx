@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { Bucket, ProgressForm, TeacherProgress } from "@/lib/progress";
-import { toReminder } from "@/lib/reminders";
+import { remindedLabel, toReminder } from "@/lib/reminders";
 import { ProgressBar } from "./ProgressBar";
-import { RemindButton, remindedLabel } from "./RemindButton";
+import { RemindButton } from "./RemindButton";
 
 /**
  * How far each teacher has got, and one way to chase her.

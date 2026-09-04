@@ -1,4 +1,5 @@
 import type { PendingStudent } from "./pending";
+import { isoDay } from "./today";
 import { groupProgressByTeacher, type TeacherProgress } from "./progress";
 import type { RequestBoardRow } from "./requests";
 
@@ -157,3 +158,66 @@ export function toReminder(entry: TeacherProgress): TeacherReminder | null {
  * looks at.
  */
 const NO_MARKS_KEYS: ReadonlySet<string> = new Set();
+
+/**
+ * MOVED OUT OF RemindButton.tsx, WHICH IS A CLIENT COMPONENT.
+ *
+ * TeacherProgressList renders on the server and calls this, and importing a
+ * plain function across that boundary does not give you the function — it gives
+ * you a client reference, and calling it throws "Attempted to call
+ * remindedLabel() from the server". That took down / and /requests for every
+ * logged-in user the moment the reminder columns existed to render.
+ *
+ * It lives here because it is pure and both sides need it: this file already
+ * has a server caller and a client one. Nothing below touches the DOM, React,
+ * or the database — isoDay hardcodes the school's zone precisely so it is safe
+ * in a browser too.
+ */
+/**
+ * When she was last chased, in words.
+ *
+ * ON ITS OWN LINE wherever this is used, never beside her name.
+ * TeacherProgressList's header records that two counts sharing that line cost
+ * more than the 4px rail design-qa.md removed for truncating names at 360px.
+ *
+ * Says the word as well as any colour, per the same rule the tone pills follow:
+ * this gets read on a phone in a corridor, and somebody who cannot separate the
+ * amber from the red still has to know who has already been chased today.
+ */
+export function remindedLabel(teacher: {
+  remindedToday: boolean;
+  lastRemindedAt: Date | null;
+  reminderCount: number;
+  /** The school's today, from the server — never computed in the browser. */
+  today: string;
+}): string | null {
+  if (teacher.lastRemindedAt === null) return null;
+
+  const times =
+    teacher.reminderCount > 1 ? ` · nudged ${teacher.reminderCount}×` : "";
+  if (teacher.remindedToday) return `reminded today${times}`;
+
+  const days = daysBetween(teacher.lastRemindedAt, teacher.today);
+  if (days <= 0) return `reminded today${times}`;
+  return `reminded ${days} ${days === 1 ? "day" : "days"} ago${times}`;
+}
+
+/**
+ * Whole days between a timestamp and the school's today.
+ *
+ * Both sides are reduced to a calendar date first, so "yesterday evening" reads
+ * as 1 day rather than 0 — the office thinks in days on the register, not in
+ * elapsed hours.
+ *
+ * THE INSTANT IS REDUCED THROUGH isoDay, NOT toISOString. `toISOString` gives the
+ * UTC date, and lib/today.ts exists because that is a different day from the
+ * school's for five and a half hours out of every twenty-four — a chase recorded
+ * at 1am IST would have read as "1 day ago" the moment it was made. isoDay is
+ * pure and safe on the client, which is the whole reason that file hardcodes the
+ * zone instead of reading an env var.
+ */
+function daysBetween(at: Date, today: string): number {
+  const then = Date.parse(`${isoDay(at)}T00:00:00Z`);
+  const now = Date.parse(`${today}T00:00:00Z`);
+  return Math.round((now - then) / 86_400_000);
+}
