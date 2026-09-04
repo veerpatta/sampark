@@ -115,3 +115,32 @@ describe("groupLinksByRecipient", () => {
     assert.deepEqual(groupLinksByRecipient([]), []);
   });
 });
+
+describe("toQueueLinks", () => {
+  it("is the one mapping the page and the API send both use", async () => {
+    // A link is `sent` exactly when the office ticked it; everything else is
+    // carried across unchanged, so a card rebuilt on the server for an API
+    // send lists exactly the links the page drew.
+    const { toQueueLinks } = await import("../src/lib/send-queue");
+    const [mapped] = toQueueLinks([
+      {
+        requestId: "r1",
+        token: "aaaaaaaaaaaaaaaa",
+        audienceKind: "class",
+        audienceLabel: "Class 8",
+        fieldKeys: ["phone"],
+        classLabels: ["Class 8"],
+        teacherId: "T1",
+        teacherName: "Sunita",
+        teacherPhone: "9000000001",
+        contactPhone: null,
+        teacherLinkToken: "pppppppppppppppp",
+        rosterSize: 40,
+        sentAt: new Date("2026-09-01T04:00:00Z"),
+      },
+    ]);
+    assert.equal(mapped!.sent, true);
+    assert.equal(mapped!.teacherLinkToken, "pppppppppppppppp");
+    assert.deepEqual(mapped!.classLabels, ["Class 8"]);
+  });
+});

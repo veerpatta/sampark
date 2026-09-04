@@ -6,6 +6,13 @@ import { canManageSettings, currentUser } from "@/lib/auth/session";
 import { CLASS_LABELS } from "@/lib/classes";
 import { HOUSES } from "@/lib/houses";
 import { BUS_ROUTES } from "@/lib/routes";
+import { isApiConfigured } from "@/lib/aisensy";
+import {
+  DEFAULT_LANGUAGE,
+  LANGUAGES,
+  LANGUAGE_LABEL,
+  isLanguage,
+} from "@/lib/whatsapp-templates";
 import { saveTeacher, setTeacherActive } from "./actions";
 import { TeacherLinkPanel } from "./TeacherLinkPanel";
 import { RevokeAllLinks } from "./RevokeAllLinks";
@@ -47,12 +54,13 @@ export default async function TeachersPage() {
   // works.
   const origin = await requestOrigin();
   const withLinks = teachers.filter((teacher) => teacher.linkToken).length;
+  const apiEnabled = isApiConfigured();
 
   return (
     <div className="space-y-8">
       <PageHeader
         title="Teachers"
-        subtitle="Phone numbers are 10 digits with no country code — the WhatsApp link builder adds 91. Tick the classes a teacher owns; tick a house or a bus route only for the teacher who should receive a link for that whole group."
+        subtitle="Phone numbers are 10 digits with no country code — the WhatsApp link builder adds 91. Language picks which template message she gets through the API. Tick the classes a teacher owns; tick a house or a bus route only for the teacher who should receive a link for that whole group."
       />
       <SettingsCrumbs current="/settings/teachers" />
 
@@ -69,6 +77,7 @@ export default async function TeachersPage() {
               required
             />
           </div>
+          <LanguageChoice />
           <Assignments />
           <input type="hidden" name="active" value="on" />
           <button
@@ -147,6 +156,10 @@ export default async function TeachersPage() {
                       />
                     </div>
 
+                    <LanguageChoice
+                      selected={isLanguage(teacher.language) ? teacher.language : DEFAULT_LANGUAGE}
+                    />
+
                     <Assignments
                       classes={teacher.classes}
                       houses={teacher.houses}
@@ -168,6 +181,7 @@ export default async function TeachersPage() {
                     origin={origin}
                     token={teacher.linkToken}
                     issuedAt={teacher.linkIssuedAt}
+                    apiEnabled={apiEnabled}
                   />
 
                   {/* Deactivate rather than delete: requests reference
@@ -199,6 +213,39 @@ export default async function TeachersPage() {
 
       <RevokeAllLinks count={withLinks} />
     </div>
+  );
+}
+
+/**
+ * Which of the two template languages her API messages come in.
+ *
+ * Radios styled as the same chips as the assignments below, for the same
+ * reason: a chip cannot be misspelt, and "hinglish" typed into a box would
+ * pick no template at all.
+ */
+function LanguageChoice({ selected = DEFAULT_LANGUAGE }: { selected?: string }) {
+  return (
+    <fieldset>
+      <legend className="text-xs font-medium text-[var(--color-ink-muted)]">
+        WhatsApp message language
+      </legend>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {LANGUAGES.map((option) => (
+          <label key={option} className="cursor-pointer">
+            <input
+              type="radio"
+              name="language"
+              value={option}
+              defaultChecked={selected === option}
+              className="peer sr-only"
+            />
+            <span className="flex min-h-[var(--tap-min)] items-center rounded-[var(--radius-chip)] border border-[var(--color-border)] px-4 text-sm transition-transform active:scale-[0.98] peer-checked:border-[var(--color-brand-600)] peer-checked:bg-[var(--color-brand-50)] peer-checked:font-medium peer-checked:text-[var(--color-brand-700)] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--color-brand-600)]">
+              {LANGUAGE_LABEL[option]}
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 

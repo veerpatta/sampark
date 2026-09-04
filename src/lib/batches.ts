@@ -719,7 +719,8 @@ export async function markSent(
  */
 export async function markGroupSent(
   requestIds: string[],
-  userId: string,
+  /** Null when the app sent it itself, with nobody signed in — a cron. */
+  userId: string | null,
   sent: boolean,
 ): Promise<void> {
   if (requestIds.length === 0) return;
@@ -757,7 +758,8 @@ export async function markGroupSent(
  */
 export async function markGroupReminded(
   requestIds: string[],
-  userId: string,
+  /** Null when the app sent it itself, with nobody signed in — a cron. */
+  userId: string | null,
   reminded: boolean,
   /** Today at the school, YYYY-MM-DD. Passed in so the guard is testable. */
   today: string,

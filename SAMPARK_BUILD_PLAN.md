@@ -760,7 +760,7 @@ Do not launch to all teachers at once. Adoption failure is very hard to recover 
 | **PSP** | Remains the official record. Sampark imports from it and produces corrected exports to push back. One-way in, one-way out — no live sync. |
 | **LEAD Nucleus ERP** | Untouched. Sampark exports in whatever shape LEAD asks for. |
 | **VPPS Fee Management App** | Separate app, separate database. Sampark is where a corrected parent mobile number *originates*; export from Sampark and import into the fee app, or later connect them. Do not merge them now. |
-| **AiSensy WhatsApp** | Phase 7 candidate: send the request link as a template message instead of a manual copy-paste. Only after the manual flow is proven. |
+| **AiSensy WhatsApp** | **Done.** The Send and Remind buttons send Meta-approved template messages through the AiSensy campaign API when `AISENSY_API_KEY` is set (`src/lib/aisensy.ts`, `src/lib/whatsapp-send.ts`, `src/lib/whatsapp-templates.ts`); the manual wa.me path stays beside them as the fallback. |
 
 ---
 

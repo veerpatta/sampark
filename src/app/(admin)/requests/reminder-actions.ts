@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { canCreateRequests, requireUser } from "@/lib/auth/session";
 import { markGroupReminded } from "@/lib/batches";
 import { todayISO } from "@/lib/today";
+import { sendTeacherReminder, type SendOutcome } from "@/lib/whatsapp-send";
 
 /**
  * Record that the office chased one teacher — or take the tick back.
@@ -37,4 +38,35 @@ export async function setTeacherReminded(
   revalidatePath("/");
   revalidatePath("/requests");
   if (batchId) revalidatePath(`/requests/batch/${batchId}`);
+}
+
+/**
+ * Chase one teacher through the WhatsApp API.
+ *
+ * `teacherKey` is the card's `teacherId|phone`; with a batch id the nudge
+ * covers that round, without one it covers everything she owes — the same
+ * two shapes the two Remind buttons already describe. The core records the
+ * chase itself on success (markGroupReminded, today's date read there), so
+ * this action only checks the role and revalidates the three screens.
+ */
+export async function remindTeacherViaApi(
+  teacherKey: string,
+  batchId?: string,
+  force = false,
+): Promise<SendOutcome> {
+  const user = await requireUser();
+  if (!canCreateRequests(user.role)) {
+    return { ok: false, error: "Your role cannot send requests." };
+  }
+
+  const outcome = await sendTeacherReminder({
+    teacherKey,
+    batchId: batchId ?? null,
+    actor: user.id,
+    force,
+  });
+  revalidatePath("/");
+  revalidatePath("/requests");
+  if (batchId) revalidatePath(`/requests/batch/${batchId}`);
+  return outcome;
 }

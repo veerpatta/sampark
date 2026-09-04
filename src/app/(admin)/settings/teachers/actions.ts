@@ -12,6 +12,8 @@ import {
 } from "@/lib/classes";
 import { normaliseHouse } from "@/lib/houses";
 import { isBusRoute, unknownRouteMessage } from "@/lib/routes";
+import { sendTeacherLink, type SendOutcome } from "@/lib/whatsapp-send";
+import { DEFAULT_LANGUAGE, isLanguage } from "@/lib/whatsapp-templates";
 
 /**
  * Read a repeated form field as a list.
@@ -53,6 +55,14 @@ export async function saveTeacher(formData: FormData) {
   const houses = readList(formData, "houses");
   const routes = readList(formData, "routes");
   const active = formData.get("active") === "on";
+  // Which template language she gets. Absent on the older form, so the
+  // default rather than an error; anything else typed is refused.
+  const languageInput = formData.get("language");
+  const language =
+    languageInput === null || languageInput === "" ? DEFAULT_LANGUAGE : languageInput;
+  if (!isLanguage(language)) {
+    throw new Error("Language must be Hindi or English.");
+  }
 
   if (!id) throw new Error("Teacher ID is required.");
   if (!name) throw new Error("Name is required.");
@@ -87,6 +97,7 @@ export async function saveTeacher(formData: FormData) {
     houses: canonicalHouses,
     routes,
     active,
+    language,
   };
 
   await db
@@ -192,4 +203,18 @@ export async function revokeAllTeacherLinks() {
     .where(isNotNull(schema.teachers.linkToken));
 
   revalidatePath("/settings/teachers");
+}
+
+/**
+ * Hand her personal link over through the WhatsApp API.
+ *
+ * Owner-only like everything else on this screen. Nothing is ticked — a page
+ * is not a request — but the send is logged like any other, so "did she ever
+ * get her link" has an answer.
+ */
+export async function sendTeacherLinkViaApi(teacherId: string): Promise<SendOutcome> {
+  const user = await requireOwner();
+  const outcome = await sendTeacherLink({ teacherId, actor: user.id });
+  revalidatePath("/settings/teachers");
+  return outcome;
 }

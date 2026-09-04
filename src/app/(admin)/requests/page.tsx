@@ -9,6 +9,7 @@ import { isAnsweredFully } from "@/lib/answered";
 import { groupProgressByTeacher } from "@/lib/progress";
 import { marksFieldKeys } from "@/lib/marks";
 import { requestOrigin } from "@/lib/request-origin";
+import { isApiConfigured } from "@/lib/aisensy";
 import { todayISO } from "@/lib/today";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { PageHeader } from "@/components/admin/PageHeader";
@@ -391,6 +392,7 @@ async function ByTeacher({ today }: { today: string }) {
           teachers={teachers}
           origin={origin}
           today={today}
+          apiEnabled={isApiConfigured()}
           empty="Nothing is open. Create a request and it will show up here as answers arrive."
         />
       </section>

@@ -5,6 +5,7 @@ import { listRequests, pendingForBoard } from "@/lib/requests";
 import { groupProgressByTeacher } from "@/lib/progress";
 import { marksFieldKeys } from "@/lib/marks";
 import { requestOrigin } from "@/lib/request-origin";
+import { isApiConfigured } from "@/lib/aisensy";
 import { todayISO } from "@/lib/today";
 import { countByClass } from "@/lib/students";
 import {
@@ -125,6 +126,7 @@ export default async function DashboardPage() {
         teachers={progress}
         origin={origin}
         today={today}
+        apiEnabled={isApiConfigured()}
       />
 
       {/* Two across on a phone, not one. Four counts stacked vertically is a

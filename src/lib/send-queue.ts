@@ -33,6 +33,52 @@ export type QueueLink = {
   sent: boolean;
 };
 
+/**
+ * A batch's links, in the shape the queue groups.
+ *
+ * This mapping used to live inline in the batch page. It moved here the day a
+ * second caller needed it — the API send rebuilds the same card on the server
+ * from the batch id, and the message it sends must be built from exactly the
+ * links the card shows. Two copies of one mapping is how a card and its
+ * message come to disagree about which links she holds.
+ *
+ * Typed structurally rather than against BatchLink, so this file keeps its
+ * "no database import" promise.
+ */
+export function toQueueLinks(
+  links: {
+    requestId: string;
+    token: string;
+    audienceKind: string;
+    audienceLabel: string;
+    fieldKeys: string[];
+    classLabels: string[];
+    teacherId: string;
+    teacherName: string;
+    teacherPhone: string;
+    contactPhone: string | null;
+    teacherLinkToken: string | null;
+    rosterSize: number;
+    sentAt: Date | null;
+  }[],
+): QueueLink[] {
+  return links.map((link) => ({
+    requestId: link.requestId,
+    token: link.token,
+    audienceKind: link.audienceKind,
+    audienceLabel: link.audienceLabel,
+    fieldKeys: link.fieldKeys,
+    classLabels: link.classLabels,
+    teacherId: link.teacherId,
+    teacherName: link.teacherName,
+    teacherPhone: link.teacherPhone,
+    contactPhone: link.contactPhone,
+    teacherLinkToken: link.teacherLinkToken,
+    rosterSize: link.rosterSize,
+    sent: link.sentAt !== null,
+  }));
+}
+
 export type QueueGroup = {
   /** `${teacherId}|${phone}`. Stable across a render and safe as a React key. */
   key: string;

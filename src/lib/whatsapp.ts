@@ -1,9 +1,12 @@
 /**
  * WhatsApp message template builder.
  *
- * v1 is copy-paste only: the admin copies the message and sends it from their
- * own WhatsApp. Automated sending via AiSensy is a later phase and only after
- * the manual flow is proven (SAMPARK_BUILD_PLAN.md section 11).
+ * These are the messages the office copies and sends from its own WhatsApp.
+ * The API path — lib/whatsapp-templates.ts, lib/aisensy.ts — sends Meta-
+ * approved templates instead, and can only fill numbered holes; it reuses the
+ * audience wording and the date formatting from here so the two read alike.
+ * The manual path is never removed: it is the fallback when the API is off,
+ * refuses a number, or a template is paused.
  *
  * MESSAGES ARE BILINGUAL, ENGLISH LINE OVER HINDI LINE, matching the screen
  * the link opens. They used to be Hindi-only, and a Hindi message that opens an
@@ -93,7 +96,12 @@ export type RequestMessageInput = {
   url: string;
 };
 
-function formatDue(due: Date | string): string {
+/**
+ * "5 Sep", in the school's zone. Exported because lib/whatsapp-templates.ts
+ * fills the same hole in the API templates, and two formatters for one date
+ * is how a reminder and its template disagree about which day is due.
+ */
+export function formatDue(due: Date | string): string {
   return DATE_FMT.format(typeof due === "string" ? new Date(due) : due);
 }
 

@@ -368,6 +368,12 @@ src/
                         and 60/min + 500/hr for photos, which is why a class of
                         forty-six does not starve her own answer flushes
     whatsapp.ts         bilingual templates, English line over Hindi line
+    whatsapp-templates.ts  the six AiSensy templates verbatim, and the values
+                        that fill them — pure, and client-safe
+    aisensy.ts          SERVER ONLY: the one HTTP call, the key, the campaign name
+    whatsapp-send.ts    SERVER ONLY: rebuild the card -> refuse a double -> send
+                        -> log -> tick; takes a nullable actor so a cron can call it
+    whatsapp-log.ts     SERVER ONLY: whatsapp_messages, append-only
   styles/tokens.css
 ```
 
@@ -392,6 +398,8 @@ Vercel environment variables (Production / Preview / Development):
 | `ACADEMIC_YEAR` | ✅ | ✅ | ✅ |
 | `BLOB_READ_WRITE_TOKEN` | ✅ | ✅ | ✅ |
 | `CRON_SECRET` | ✅ | — | — |
+| `AISENSY_API_KEY` | ✅ | — | local, for the test send |
+| `AISENSY_CAMPAIGN_PREFIX` | optional | — | — |
 
 `BLOB_READ_WRITE_TOKEN` is read by the `@vercel/blob` SDK rather than by our code,
 so it does not appear in a `process.env` grep — but **without it a photo round
@@ -402,6 +410,14 @@ else in the app needs it.
 each morning (`vercel.json`). The route refuses everything else, and refuses
 everything when the variable is unset. It is production-only: a preview has no
 cron, and the dashboard writes a missed day's snapshot itself on first view.
+
+`AISENSY_API_KEY` switches the WhatsApp API path on — see [Sending through
+the WhatsApp API](#sending-through-the-whatsapp-api). It is **production-only
+on purpose**: a template's button opens the production domain, and a preview
+deployment runs against a branch database whose tokens production does not
+hold, so a message sent from a preview would carry a link that 404s on the
+teacher's phone. Unset, every Send and Remind button is the `wa.me` link it
+always was.
 
 Three more are local or script-only and belong in `.env.local`, never in Vercel:
 `APP_RW_PASSWORD` (created and appended by `npm run db:grants`),
@@ -647,6 +663,44 @@ It is the one place a token reaches more than one group, so:
   and nothing to tick.
 - **The service worker deliberately does not cache `/t/`.** A cached copy would
   survive revocation and keep handing out working request links from disk.
+
+### Sending through the WhatsApp API
+
+Every Send and Remind button has two ways out. With `AISENSY_API_KEY` set, the
+button sends a Meta-approved template through the AiSensy campaign API, logs
+the call in `whatsapp_messages`, and ticks `sent_at` / `reminded_at` itself.
+Under it, "Open in WhatsApp instead" is the `wa.me` link the app was built on,
+and it is never removed — it is the path for a number the API refuses, a day a
+template is paused, or a deployment with no key.
+
+**The message is rebuilt on the server from an id, never sent from the
+browser.** A button hands over the round and the card (`teacherId|phone`), and
+`src/lib/whatsapp-send.ts` re-runs the same three calls the page used to draw
+that card. So the message that goes out is the one the card described, and a
+stale tab cannot send last week's list. The same file refuses a card already
+sent today unless the office chose "Send again" — two people chasing one
+teacher from two corridors is what `reminder_count` was built for, and a guard
+in the button is a guard one of them does not have.
+
+**A template is approved once and cannot be edited.** The six — `request`,
+`reminder`, `link`, each in Hindi and English — are written verbatim in
+`src/lib/whatsapp-templates.ts`, printed on Settings → WhatsApp for pasting into
+AiSensy, and the API campaign for each is named exactly as the template is
+(`sampark_request_hi` …). Meta rejects a Hindi body with English lines in it,
+so the bilingual manual message could not be carried across; `teachers.language`
+picks which of the two she gets, and defaults to Hindi.
+
+**The button carries a bare token, never a path.** A template's URL button is
+approved with its base baked in, and whether a `/` survives inside the variable
+is a question that costs six re-approvals to get wrong. So the button is
+`…/w/<token>` and `src/app/w/[token]` redirects to `/r/` or `/t/` — it does no
+authorization of its own; the two pages it sends her to resolve their own
+token exactly as they always have. A card whose links cannot all sit on her
+durable page (a photo or Aadhaar round — `NEVER_ON_TEACHER_PAGE`) becomes one
+message per link, and the card says how many before it is pressed.
+
+The button base is the production domain, `sampark-theta-eight.vercel.app`.
+Moving the app to another domain means re-creating the six templates.
 
 ### Backups
 

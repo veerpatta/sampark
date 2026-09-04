@@ -39,8 +39,11 @@ export function RoundNudge({
   origin,
   batchId,
   today,
+  apiEnabled = false,
 }: {
   teachers: TeacherReminder[];
+  /** Whether AISENSY_API_KEY is set on this deployment. From the server. */
+  apiEnabled?: boolean;
   /** From the server. See lib/request-origin.ts for why never `window`. */
   origin: string;
   batchId: string;
@@ -87,8 +90,10 @@ export function RoundNudge({
         {children === 1 ? "child" : "children"} to go
       </p>
       <p className="mt-2 text-label text-[var(--color-ink-muted)]">
-        One message each, naming the children she still has to fill in. Tap to
-        open WhatsApp with it ready — come back and the next one is waiting.
+        One message each, naming the children she still has to fill in.
+        {apiEnabled
+          ? " Remind sends it through WhatsApp and ticks itself."
+          : " Tap to open WhatsApp with it ready — come back and the next one is waiting."}
       </p>
 
       <ul className="mt-3 space-y-2">
@@ -136,6 +141,7 @@ export function RoundNudge({
                   teacher={teacher}
                   origin={origin}
                   batchId={batchId}
+                  apiEnabled={apiEnabled}
                 />
               </div>
             </li>

@@ -89,9 +89,12 @@ export function TeacherProgressList({
   limit,
   more,
   empty = "Everything open has been answered for.",
+  apiEnabled = false,
 }: {
   teachers: TeacherProgress[];
   origin: string;
+  /** Whether AISENSY_API_KEY is set on this deployment. From the server. */
+  apiEnabled?: boolean;
   /**
    * The school's today, for "reminded 2 days ago".
    *
@@ -155,7 +158,12 @@ export function TeacherProgressList({
                 </div>
               </div>
 
-              <Remind teacher={teacher} origin={origin} today={today} />
+              <Remind
+                teacher={teacher}
+                origin={origin}
+                today={today}
+                apiEnabled={apiEnabled}
+              />
             </div>
 
             <ul className="mt-2 space-y-1.5">
@@ -240,10 +248,12 @@ function Remind({
   teacher,
   origin,
   today,
+  apiEnabled,
 }: {
   teacher: TeacherProgress;
   origin: string;
   today: string;
+  apiEnabled: boolean;
 }) {
   const reminder = toReminder(teacher);
   if (!reminder) return null;
@@ -252,7 +262,7 @@ function Remind({
 
   return (
     <div className="flex shrink-0 flex-col items-end gap-1">
-      <RemindButton teacher={reminder} origin={origin} />
+      <RemindButton teacher={reminder} origin={origin} apiEnabled={apiEnabled} />
       {/* On its own line under the button, never beside her name — see the note
           on the two counts above. */}
       {label ? (

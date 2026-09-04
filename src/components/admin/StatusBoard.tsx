@@ -58,8 +58,11 @@ export function StatusBoard({
   teachers,
   origin,
   today,
+  apiEnabled = false,
 }: {
   requests: RequestBoardRow[];
+  /** Whether AISENSY_API_KEY is set on this deployment. From the server. */
+  apiEnabled?: boolean;
   /** Already grouped by the page — it is the one thing here needing a query. */
   teachers: TeacherProgress[];
   /**
@@ -146,6 +149,7 @@ export function StatusBoard({
           teachers={teachers}
           origin={origin}
           today={today}
+          apiEnabled={apiEnabled}
           limit={DASHBOARD_TEACHERS}
           more={
             <Link

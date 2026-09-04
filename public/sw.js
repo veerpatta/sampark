@@ -53,6 +53,9 @@ self.addEventListener("fetch", (event) => {
   }
 
   // /r/ ONLY, and /t/ is excluded on purpose — do not "improve" this.
+  // /w/ (where a template message's button lands) is a redirect and is never
+  // cached either: it exists to find /r/ or /t/, and caching the answer would
+  // outlive a revoked page exactly as caching /t/ would.
   //
   // networkFirst writes the page HTML into Cache Storage despite its no-store
   // header, which is right for a roster she needs on a dead signal. A durable

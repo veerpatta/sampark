@@ -274,6 +274,16 @@ export const teachers = pgTable(
      * predates the last time everything was revoked.
      */
     linkIssuedAt: timestamp("link_issued_at", { withTimezone: true }),
+    /**
+     * Which of the two WhatsApp template languages she receives: hi | en.
+     *
+     * A template message is approved in ONE language — Meta rejects a Hindi
+     * body with English lines in it — so the bilingual manual message cannot
+     * be carried across, and each template exists twice. Hindi is the default
+     * because it is what most of the staff read WhatsApp in. Validated on
+     * write against LANGUAGES in src/lib/whatsapp-templates.ts; never inferred.
+     */
+    language: text("language").notNull().default("hi"),
   },
   (t) => [uniqueIndex("teachers_link_token_idx").on(t.linkToken)],
 );
@@ -768,3 +778,66 @@ export type ValueSource = typeof valueSources.$inferSelect;
 export type StudentDocument = typeof studentDocuments.$inferSelect;
 export type CompletenessSnapshot = typeof completenessSnapshots.$inferSelect;
 export type NewStudentDocument = typeof studentDocuments.$inferInsert;
+
+/* ============ WHATSAPP API ============ */
+
+/**
+ * Every message the app itself sent through the WhatsApp Business API, via
+ * AiSensy — and every one it tried to.
+ *
+ * The manual path leaves no record beyond the tick on the request
+ * (`sent_at`, `reminded_at`): wa.me opens another app and never says what
+ * happened there. The API path knows, and this is where it says so. One row
+ * per API call, written whether the call succeeded or not, so "she never got
+ * it" can be answered from the office rather than from her phone.
+ *
+ * APPEND-ONLY for the application role (drizzle/sql/grants.sql). A delivery
+ * webhook, when one exists, gets a column grant on `status`, `error` and
+ * `provider_response` — the same shape as submissions.review_status — and
+ * nothing else.
+ *
+ * THE TICK STAYS ON `requests`. A successful send calls the same
+ * markGroupSent / markGroupReminded the manual tick does, so the boards read
+ * one column and not two; this table answers "how", never "whether".
+ *
+ * `teacher_id` and `sent_by` are nullable on purpose: a test send has no
+ * teacher, and a scheduled send has no user.
+ */
+export const whatsappMessages = pgTable(
+  "whatsapp_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** request | reminder | link | test — see TemplateKind. */
+    kind: text("kind").notNull(),
+    /** The AiSensy campaign the call named, e.g. sampark_request_hi. */
+    campaignName: text("campaign_name").notNull(),
+    /** hi | en */
+    language: text("language").notNull(),
+    teacherId: text("teacher_id").references(() => teachers.id),
+    /** The ten digits it went to. Kept because contact_phone can differ. */
+    phone: text("phone").notNull(),
+    /** Every request the one message covered. Empty for a link or a test. */
+    requestIds: text("request_ids").array().notNull().default(sql`'{}'`),
+    batchId: uuid("batch_id").references(() => requestBatches.id, {
+      onDelete: "set null",
+    }),
+    /** The values sent for the template's holes, in order. */
+    templateParams: jsonb("template_params").notNull(),
+    /** The token the button carried — the last param, kept for the boards. */
+    buttonSuffix: text("button_suffix").notNull(),
+    /** sent | failed. What AiSensy said, not what the teacher's phone did. */
+    status: text("status").notNull(),
+    error: text("error"),
+    providerResponse: jsonb("provider_response"),
+    sentBy: text("sent_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("whatsapp_messages_batch_idx").on(t.batchId),
+    index("whatsapp_messages_teacher_idx").on(t.teacherId, t.createdAt),
+  ],
+);
+
+export type WhatsappMessage = typeof whatsappMessages.$inferSelect;

@@ -75,6 +75,15 @@ GRANT UPDATE (removed_at, removed_by) ON student_documents TO app_rw;
 GRANT SELECT, INSERT, UPDATE ON completeness_snapshots TO app_rw;
 REVOKE DELETE ON completeness_snapshots FROM app_rw;
 
+-- ------------------------------------------------------------ whatsapp api
+-- One row per message the app sent (or failed to send) through AiSensy. The
+-- record of what went out is the whole point, so the app may add rows and
+-- never change or remove them. A delivery webhook, when one exists, gets a
+-- column grant on status/error/provider_response here — the same shape as
+-- submissions.review_status — and nothing wider.
+GRANT SELECT, INSERT ON whatsapp_messages TO app_rw;
+REVOKE UPDATE, DELETE ON whatsapp_messages FROM app_rw;
+
 -- ----------------------------------------------------------------- sequences
 -- BIGSERIAL primary keys on change_log and student_records need their sequence.
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_rw;

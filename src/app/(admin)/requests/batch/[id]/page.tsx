@@ -5,7 +5,9 @@ import { requestOrigin } from "@/lib/request-origin";
 import { getBatch } from "@/lib/batches";
 import { listRequests, pendingForBoard } from "@/lib/requests";
 import { groupRemindersByTeacher } from "@/lib/reminders";
-import { groupLinksByRecipient } from "@/lib/send-queue";
+import { groupLinksByRecipient, toQueueLinks } from "@/lib/send-queue";
+import { isApiConfigured } from "@/lib/aisensy";
+import { latestApiSends } from "@/lib/whatsapp-log";
 import { todayISO } from "@/lib/today";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { RequestBulkBar } from "../../RequestBulkBar";
@@ -52,23 +54,18 @@ export default async function BatchPage({
 
   // Grouped HERE, on the server. groupLinksByRecipient is db-free so it could
   // run in the browser, but there is no reason to ship the whole link list to
-  // do work the server already has the data for.
-  const groups = groupLinksByRecipient(
-    links.map((link) => ({
-      requestId: link.requestId,
-      token: link.token,
-      audienceKind: link.audienceKind,
-      audienceLabel: link.audienceLabel,
-      fieldKeys: link.fieldKeys,
-      classLabels: link.classLabels,
-      teacherId: link.teacherId,
-      teacherName: link.teacherName,
-      teacherPhone: link.teacherPhone,
-      contactPhone: link.contactPhone,
-      teacherLinkToken: link.teacherLinkToken,
-      rosterSize: link.rosterSize,
-      sent: link.sentAt !== null,
-    })),
+  // do work the server already has the data for. toQueueLinks is the same
+  // mapping the API send uses to rebuild a card — see lib/send-queue.ts.
+  const groups = groupLinksByRecipient(toQueueLinks(links));
+
+  // When each link last went out through the API, for the card's "sent via
+  // WhatsApp · 10:42" line. ISO strings, because this crosses to a client
+  // component.
+  const apiEnabled = isApiConfigured();
+  const apiSentAt = Object.fromEntries(
+    [...(await latestApiSends(links.map((link) => link.requestId)))].map(
+      ([requestId, send]) => [requestId, send.at.toISOString()],
+    ),
   );
 
   return (
@@ -110,6 +107,8 @@ export default async function BatchPage({
         dueDate={batch.dueDate}
         origin={origin}
         groups={groups}
+        apiEnabled={apiEnabled}
+        apiSentAt={apiSentAt}
       />
 
       <RoundNudge
@@ -117,6 +116,7 @@ export default async function BatchPage({
         origin={origin}
         batchId={batch.id}
         today={today}
+        apiEnabled={apiEnabled}
       />
 
       {/* The other half of a round's life. Sending it happens above; clearing

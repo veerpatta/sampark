@@ -7,7 +7,7 @@ export const metadata = { title: "Settings — Sampark" };
 export const dynamic = "force-dynamic";
 
 /**
- * Where the six configuration screens live.
+ * Where the seven configuration screens live.
  *
  * The Settings tab used to go straight to /settings/teachers, which meant the
  * other five were reachable only from links inside pages that happened to
@@ -42,6 +42,11 @@ const ITEMS = [
     href: "/students/import",
     label: "Import students",
     note: "From a PSP or fee-app export — matched on ID, never on name",
+  },
+  {
+    href: "/settings/whatsapp",
+    label: "WhatsApp API",
+    note: "Whether sending is on, the templates to create in AiSensy, a test send, and what went out",
   },
   {
     href: "/settings/users",
