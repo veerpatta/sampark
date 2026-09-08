@@ -643,6 +643,17 @@ export type RoundStatusInput = {
    * how far along it is.
    */
   outstanding: { label: string; answered: number; rosterSize: number }[];
+  /**
+   * The round this is about, when it is about exactly one.
+   *
+   * OPTIONAL, AND ABSENT IS THE OLD OUTPUT BYTE FOR BYTE. The dashboard's Share
+   * covers everything currently open — several rounds at once — and has no
+   * single title or deadline it could honestly name. A round's own page does,
+   * and a status posted in the staff group with nothing to say what it is about
+   * makes the room guess. There is a test on that equality.
+   */
+  title?: string;
+  dueDate?: Date | string;
 };
 
 /**
@@ -670,10 +681,14 @@ export type RoundStatusInput = {
 export function buildRoundStatusMessage(input: RoundStatusInput): string {
   const { submitted, total, outstanding } = input;
 
-  const lines = [
+  const lines: string[] = [];
+  // A blank line under it, so the count still reads as the headline rather than
+  // as a subtitle of the title.
+  if (input.title) lines.push(input.title, ``);
+  lines.push(
     `${submitted} of ${total} ${total === 1 ? "group has" : "groups have"} submitted.`,
     `${total} में से ${submitted} पूरी हो चुकी हैं।`,
-  ];
+  );
 
   if (outstanding.length === 0) {
     lines.push(``, `Everything is in. Thank you.`, `सब आ गया है। धन्यवाद।`);
@@ -689,6 +704,14 @@ export function buildRoundStatusMessage(input: RoundStatusInput): string {
           : `${group.answered} of ${group.rosterSize} · ${group.rosterSize} में से ${group.answered}`
       }`,
     );
+  }
+
+  // Only where something is still outstanding — the "Everything is in" branch
+  // returns above, so reaching here is the proof. A deadline announced beside
+  // "nothing left to do" is a date nobody has to act on.
+  if (input.dueDate) {
+    const due = formatDue(input.dueDate);
+    lines.push(``, `Due: ${due} · अंतिम तिथि: ${due}`);
   }
 
   lines.push(``, SIGN_OFF);
@@ -718,4 +741,91 @@ export function buildParentMessage(input: { name: string; classLabel: string }):
     `Namaste. This is Veer Patta School, Amet, about ${who}.`,
     `नमस्ते। वीर पत्ता विद्यालय, आमेट से ${who} के बारे में।`,
   ].join("\n");
+}
+
+/* --------------------------------------- the round, with the children named */
+
+export type RoundPendingGroup = {
+  /** How the group reads. A class label already says "Class 8". */
+  label: string;
+  answered: number;
+  rosterSize: number;
+  /** Register order. null means "too many to be worth naming" — see namesFor. */
+  pending: PendingStudent[] | null;
+};
+
+export type RoundPendingInput = {
+  title: string;
+  dueDate: Date | string;
+  /** In the order the board shows them. This builder does NOT sort. */
+  groups: RoundPendingGroup[];
+};
+
+/**
+ * Every child a round is still waiting on, under group headings.
+ *
+ * WHY THIS IS NOT buildRoundReminderMessage. That one is addressed to ONE
+ * teacher, names only what she owes, and carries her link. This is addressed to
+ * a room — the staff group, or a class group — so it spans every group in the
+ * round, names nobody's phone, and CARRIES NO LINK AT ALL. A request token
+ * opens that group's whole roster to whoever holds it, and this message exists
+ * to be forwarded. There is a test asserting no /r/ ever appears in it.
+ *
+ * COPIED, NEVER OPENED. wa.me addresses a person; WhatsApp exposes no
+ * click-to-chat URL for a group at all. For this destination the clipboard is
+ * not a fallback, it is the only mechanism there is — which is why the round
+ * page offers this as Copy and not as a Send button.
+ *
+ * THE NAME BUDGET IS lib/pending.ts's, NOT A SECOND ONE. namesFor spends it
+ * whole groups at a time, so a nineteen-class round names the groups it can
+ * name in full and gives the rest their count — never an arbitrary slice of a
+ * longer list, which is the failure that module's header sets out at length.
+ */
+export function buildRoundPendingMessage(input: RoundPendingInput): string {
+  const due = formatDue(input.dueDate);
+  const left = (group: RoundPendingGroup) =>
+    Math.max(0, group.rosterSize - group.answered);
+  const outstanding = input.groups.reduce((sum, g) => sum + left(g), 0);
+  const children = input.groups.reduce((sum, g) => sum + g.rosterSize, 0);
+
+  const lines = [
+    input.title,
+    ``,
+    `${outstanding} of ${children} still to come, across ${input.groups.length} ${
+      input.groups.length === 1 ? "group" : "groups"
+    }.`,
+    `${children} में से ${outstanding} अभी बाकी हैं — ${input.groups.length} ${
+      input.groups.length === 1 ? "समूह" : "समूहों"
+    } में।`,
+    ``,
+  ];
+
+  let budget = MAX_NAMED_TOTAL;
+  for (const group of input.groups) {
+    const short = left(group);
+    lines.push(
+      `${group.label} — ${
+        group.answered === 0
+          ? `not started, all ${short} · अभी शुरू नहीं, सभी ${short}`
+          : `${short} left of ${group.rosterSize} · ${group.rosterSize} में से ${short} बाकी`
+      }`,
+    );
+
+    const named = namesFor(short, group.pending, budget);
+    if (named) {
+      budget -= named.length;
+      // namePart, not a second renderer: the roll-number-leads shape is the
+      // one every other pending list already uses, and a group heading has
+      // already said which register these came from.
+      for (const child of named) lines.push(`• ${namePart(child, false)}`);
+      if (short > named.length) {
+        const rest = short - named.length;
+        lines.push(`  …and ${rest} more · और ${rest}`);
+      }
+    }
+    lines.push(``);
+  }
+
+  lines.push(`Due: ${due} · अंतिम तिथि: ${due}`, ``, SIGN_OFF);
+  return lines.join("\n");
 }

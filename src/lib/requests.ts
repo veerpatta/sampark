@@ -8,6 +8,7 @@ import {
   compareStudentNames,
   isClassLabel,
   normaliseClassLabel,
+  titleCaseName,
   unknownClassLabelMessage,
 } from "./classes";
 import { listClassRoster } from "./students";
@@ -895,7 +896,24 @@ export async function listPendingByRequest(
     bucket.push({
       studentId: row.studentId,
       rollNo: row.rollNo,
-      name: row.name ?? row.studentId,
+      /*
+       * TITLE-CASED HERE, ONCE, AND NOT AT EACH OF THE THREE RENDERERS.
+       *
+       * 483 of the school's 504 names are stored in capitals because that is
+       * how the fee app took them, and titleCaseName exists so a screen never
+       * shouts ANSHUL KUMAWAT at anybody. Every other surface calls it — the
+       * students board, a child's page, the review queue, search, the teacher's
+       * own roster — and the three that render this list did not: the reminder
+       * message, the waiting list and the round's nudge card. So the names went
+       * out to teachers in block capitals.
+       *
+       * PendingStudent is a read model built for display and nothing else, so
+       * doing it where the model is built is still "at render" in the sense
+       * titleCaseName's header means: the stored value is untouched, and no
+       * import can be affected. The alternative is three renderers each
+       * remembering, which is how all three came to be wrong at once.
+       */
+      name: titleCaseName(row.name ?? row.studentId),
       classLabel: row.classLabel,
     });
   }

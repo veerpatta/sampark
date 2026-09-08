@@ -3,7 +3,20 @@ import { notFound, redirect } from "next/navigation";
 import { canCreateRequests, currentUser } from "@/lib/auth/session";
 import { requestOrigin } from "@/lib/request-origin";
 import { getBatch } from "@/lib/batches";
-import { listRequests, pendingForBoard } from "@/lib/requests";
+import {
+  groupBoardRows,
+  listRequests,
+  pendingForBoard,
+  type BoardBatch,
+} from "@/lib/requests";
+import { isAnsweredFully } from "@/lib/answered";
+import { compareClassLabels } from "@/lib/classes";
+import {
+  buildRoundPendingMessage,
+  buildRoundStatusMessage,
+} from "@/lib/whatsapp";
+import { RoundProgress } from "@/components/admin/RoundProgress";
+import { RoundShare } from "./RoundShare";
 import { groupRemindersByTeacher } from "@/lib/reminders";
 import { groupLinksByRecipient, toQueueLinks } from "@/lib/send-queue";
 import { isApiConfigured } from "@/lib/aisensy";
@@ -46,11 +59,55 @@ export default async function BatchPage({
    */
   const today = todayISO();
   const boardRows = await listRequests({ batchId: batch.id });
-  const outstanding = groupRemindersByTeacher(
-    boardRows,
-    today,
-    await pendingForBoard(boardRows),
+  // ONE pending read, two uses: the chase list below names what each teacher
+  // owes, and the round's copy block names the same children to a room. A
+  // second query would be a second chance to disagree about who is missing.
+  const pending = await pendingForBoard(boardRows);
+  const outstanding = groupRemindersByTeacher(boardRows, today, pending);
+
+  /*
+   * The round, as one line — the board's own arithmetic, not a second sum.
+   *
+   * `round` is absent only for a fan-out that failed before creating a single
+   * link, which is a real state: runGroups keeps what it made, and the "Finish
+   * the batch" control inside SendQueue is what repairs it.
+   */
+  const round = groupBoardRows(boardRows, new Map([[batch.id, batch]])).find(
+    (entry): entry is BoardBatch => entry.kind === "batch",
   );
+
+  const short = boardRows
+    .slice()
+    .filter((row) => !isAnsweredFully(row))
+    .sort((a, b) => compareClassLabels(a.audienceLabel, b.audienceLabel));
+
+  const statusMessage = round
+    ? buildRoundStatusMessage({
+        submitted: round.groupsAnswered,
+        total: round.groups,
+        outstanding: short.map((row) => ({
+          label: row.audienceLabel,
+          answered: row.studentsAnswered,
+          rosterSize: row.rosterSize,
+        })),
+        title: batch.title,
+        dueDate: batch.dueDate,
+      })
+    : null;
+
+  const pendingMessage =
+    short.length > 0
+      ? buildRoundPendingMessage({
+          title: batch.title,
+          dueDate: batch.dueDate,
+          groups: short.map((row) => ({
+            label: row.audienceLabel,
+            answered: row.studentsAnswered,
+            rosterSize: row.rosterSize,
+            pending: pending.get(row.id) ?? null,
+          })),
+        })
+      : null;
 
   // Grouped HERE, on the server. groupLinksByRecipient is db-free so it could
   // run in the browser, but there is no reason to ship the whole link list to
@@ -100,6 +157,20 @@ export default async function BatchPage({
           Download this round (.xlsx)
         </a>
       </header>
+
+      {round ? (
+        <RoundProgress
+          round={round}
+          title={batch.title}
+          rows={boardRows}
+          today={today}
+          share={
+            statusMessage ? (
+              <RoundShare status={statusMessage} pending={pendingMessage} />
+            ) : null
+          }
+        />
+      ) : null}
 
       <SendQueue
         batchId={batch.id}
