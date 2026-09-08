@@ -33,7 +33,13 @@ import { FOCUS } from "@/components/ui/controls";
  * the same bug, larger.
  */
 
-type Tone = "unsent" | "waiting" | "progress" | "overdue" | "done";
+type Tone =
+  | "unsent"
+  | "unopened"
+  | "waiting"
+  | "progress"
+  | "overdue"
+  | "done";
 
 /**
  * Every state carries a WORD. Colour is never the sole carrier — the office
@@ -44,6 +50,15 @@ const TONE: Record<Tone, { label: string; pill: string; bar: string }> = {
   unsent: {
     label: "not sent",
     pill: "bg-[var(--color-surface-muted)] text-[var(--color-ink-muted)]",
+    bar: "bg-[var(--color-border)]",
+  },
+  unopened: {
+    label: "not opened",
+    // Amber TEXT on the muted surface, not an amber fill: "in progress" already
+    // owns the amber background and these two must not read as one state at a
+    // glance. There is no --color-warning-bg token, and inventing one is a
+    // decision for tokens.css rather than for this file.
+    pill: "bg-[var(--color-surface-muted)] text-[var(--color-warning-fg)]",
     bar: "bg-[var(--color-border)]",
   },
   waiting: {
@@ -80,6 +95,12 @@ function toneOf(form: ProgressForm): Tone {
   if (form.done) return "done";
   if (!form.sent) return "unsent";
   if (form.overdue) return "overdue";
+  // BETWEEN "not sent" AND "not started", and it is a different problem from
+  // either. The office never handed the first one over; the third is a teacher
+  // who has the list and has not started it. This one she was sent and never
+  // opened — a wrong number, or a message that scrolled away — and the fix is
+  // a phone call, not another message she will not see either.
+  if (!form.opened) return "unopened";
   return form.answered > 0 ? "progress" : "waiting";
 }
 

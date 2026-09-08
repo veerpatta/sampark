@@ -8,7 +8,7 @@ import { groupRemindersByTeacher } from "@/lib/reminders";
 import { groupLinksByRecipient, toQueueLinks } from "@/lib/send-queue";
 import { isApiConfigured } from "@/lib/aisensy";
 import { latestApiSends } from "@/lib/whatsapp-log";
-import { todayISO } from "@/lib/today";
+import { daysUntil, todayISO } from "@/lib/today";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { RequestBulkBar } from "../../RequestBulkBar";
 import { btn } from "@/components/ui/controls";
@@ -86,7 +86,7 @@ export default async function BatchPage({
           <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
             {groups.length} {groups.length === 1 ? "message" : "messages"} ·{" "}
             {links.length} {links.length === 1 ? "link" : "links"} · due{" "}
-            {batch.dueDate}
+            {batch.dueDate} — <DueIn dueDate={batch.dueDate} today={today} />
           </p>
         </div>
 
@@ -195,3 +195,36 @@ const cleanupColumns: Column<BatchLink>[] = [
     ),
   },
 ];
+
+/**
+ * How long is left, in words rather than in a date.
+ *
+ * "due 2026-08-21" asks the office to work out what that means today, on a
+ * phone, in a corridor. The date stays — it is the thing the teacher was told —
+ * and this says what it costs.
+ *
+ * The COLOUR IS NEVER THE ONLY CARRIER, the same rule the tone chips follow:
+ * "18 days overdue" reads the same to somebody who cannot separate the red.
+ */
+function DueIn({ dueDate, today }: { dueDate: string; today: string }) {
+  const days = daysUntil(dueDate, today);
+  if (days < 0) {
+    return (
+      <span className="font-medium text-[var(--color-danger)]">
+        {Math.abs(days)} {Math.abs(days) === 1 ? "day" : "days"} overdue
+      </span>
+    );
+  }
+  if (days === 0) {
+    return (
+      <span className="font-medium text-[var(--color-warning-fg)]">
+        due today
+      </span>
+    );
+  }
+  return (
+    <span>
+      {days} {days === 1 ? "day" : "days"} left
+    </span>
+  );
+}

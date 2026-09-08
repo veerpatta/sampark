@@ -50,6 +50,16 @@ export type ProgressForm = {
    * between a chase and an apology.
    */
   sent: boolean;
+  /**
+   * Did she ever open it?
+   *
+   * Carried, never judged here — the same way `sent` is. A link that was sent
+   * and never opened is a wrong number or a message buried under forty others,
+   * which is a phone call rather than a fourth reminder; a link she opened and
+   * did not fill in is the ordinary case. Without this column the boards say
+   * "not started" about both, and only one of the two is hers.
+   */
+  opened: boolean;
   overdue: boolean;
   done: boolean;
   /**
@@ -226,6 +236,7 @@ export function groupProgressByTeacher(
       rosterSize: row.rosterSize,
       changesPending: row.changesPending,
       sent: row.sentAt !== null,
+      opened: row.openedAt !== null,
       // Past due only counts against her while there is still work in it. A
       // link she FINISHED last week is not something anybody is late on, and
       // letting it set the flag would sort her to the top of a chase list she

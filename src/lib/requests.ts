@@ -490,6 +490,16 @@ export type RequestBoardRow = {
    */
   sentAt: Date | null;
   /**
+   * When the teacher first opened the link.
+   *
+   * The one column that separates two states the boards render identically. A
+   * link that was sent and never opened is a wrong number, or a message that
+   * scrolled away under forty others — a phone call, not a fourth reminder. A
+   * link she opened and did not fill in is the ordinary case reminders are for.
+   * Calling both "not started" blames her for the office's delivery problem.
+   */
+  openedAt: Date | null;
+  /**
    * The LAST time somebody chased her about this one, and how many times.
    *
    * Different from sentAt, which happens once: a chase happens again every week
@@ -552,6 +562,7 @@ export async function listRequests(
       createdAt: schema.requests.createdAt,
       batchId: schema.requests.batchId,
       sentAt: schema.requests.sentAt,
+      openedAt: schema.requests.openedAt,
       remindedAt: schema.requests.remindedAt,
       reminderCount: schema.requests.reminderCount,
     })
@@ -632,6 +643,7 @@ export async function listRequests(
     batchId: row.batchId,
     createdAt: row.createdAt,
     sentAt: row.sentAt,
+    openedAt: row.openedAt,
     remindedAt: row.remindedAt,
     reminderCount: row.reminderCount,
   }));

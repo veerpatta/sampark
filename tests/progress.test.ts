@@ -40,6 +40,7 @@ function row(over: Partial<RequestBoardRow> = {}): RequestBoardRow {
     batchId: null,
     createdAt: new Date("2026-08-10T04:00:00Z"),
     sentAt: new Date("2026-08-10T05:00:00Z"),
+    openedAt: null,
     remindedAt: null,
     reminderCount: 0,
     ...over,
@@ -244,6 +245,41 @@ describe("groupProgressByTeacher", () => {
    * The rule is `every`, over the forms she has NOT finished, and both halves
    * have a failure behind them.
    */
+  describe("opened", () => {
+    it("carries whether she ever opened the link, unjudged", () => {
+      // The board decides what to CALL it (see toneOf in
+      // TeacherProgressList); this file only has to carry the fact, the same
+      // way it carries `sent`.
+      const [teacher] = groupProgressByTeacher(
+        [row({ openedAt: new Date("2026-08-12T04:00:00Z") })],
+        MARKS,
+        TODAY,
+      );
+      assert.equal(teacher!.forms[0]!.opened, true);
+    });
+
+    it("separates a link never opened from one opened and not filled in", () => {
+      // THE DISTINCTION THIS COLUMN EXISTS FOR. Both are "0 of 24 answered",
+      // and only one of them is the teacher's doing: a link she never opened
+      // is a wrong number or a message buried under forty others, which is a
+      // phone call rather than a fourth reminder.
+      const [never] = groupProgressByTeacher(
+        [row({ id: "R1", openedAt: null })],
+        MARKS,
+        TODAY,
+      );
+      const [opened] = groupProgressByTeacher(
+        [row({ id: "R2", openedAt: new Date("2026-08-12T04:00:00Z") })],
+        MARKS,
+        TODAY,
+      );
+      assert.equal(never!.forms[0]!.opened, false);
+      assert.equal(opened!.forms[0]!.opened, true);
+      // Both are still unanswered — the difference is WHY, not how far.
+      assert.equal(never!.forms[0]!.answered, opened!.forms[0]!.answered);
+    });
+  });
+
   describe("remindedToday", () => {
     // 2026-08-13 in Asia/Kolkata. Late enough in UTC that the IST date is
     // already the 13th, which is the window lib/today.ts exists for.
