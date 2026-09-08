@@ -675,3 +675,59 @@ the office carry setup controls through every daily screen.
 tests and authenticated browser checks are blocked because this checkout's
 local database value is not a valid URL; no credential or environment repair
 was included in this UI-only pass.
+
+---
+
+# The round's own screens, at 360px (2026-09-08)
+
+The progress card, the two shareable messages and the bulk chase were built and
+checked at desktop width. Driven at 360 and 390 in a real browser — headless
+Chrome over CDP, because the in-app pane cannot paint while the window is
+hidden and `getBoundingClientRect` then returns zeros for everything — four
+things were wrong, and one of them was measurable rather than a matter of taste.
+
+## Found by measuring
+
+- **The action column took 48% of a chase card.** 142px of 294 at 360px,
+  because "Open in WhatsApp instead" sits under the Remind button in a
+  `shrink-0` column and would not wrap. The teacher's name, her classes and the
+  children she owes shared what was left, so "Sunita Sharma" broke across two
+  lines on every row. Capped at 7.5rem below `sm`: the column is now 120px
+  (41%), the fallback wraps to two lines instead, and every name fits on one.
+  The half of the row that can afford to wrap is the half that now does.
+
+## Found by looking
+
+- **A wrapped button against a card edge.** Both copy controls sat in a
+  `flex-wrap justify-between` row; at 360px they dropped onto their own line,
+  where `justify-between` had nothing left to push against and left them
+  stranded — one of them clipped by the card. They are full width on a phone
+  and return beside the text at `sm`, which is what the rest of the console
+  does.
+- **A card inside a card.** RemindAll drew its own bordered box at the head of
+  a list that already has edges — the second border this file has ruled against
+  since DataTable was written. It is a divider and a heading now.
+- **A heading that repeated its own button.** "Remind all 6" above a full-width
+  button reading "Remind all 6" is two thirds of a block saying one thing. The
+  heading says what the state is ("6 still to chase"); the button says what
+  pressing it does.
+
+## Decisions worth not reversing
+
+- **Neither copy button is `go`.** That tone is for sends that leave the app,
+  and a copy leaves nothing. Spending it there would dilute the one signal the
+  office has for "this is about to reach a teacher".
+- **The armed bulk send uses `commit`.** The vocabulary reserves the 52px shape
+  for the button that does the irreversible thing, and sixteen WhatsApp
+  messages that cannot be recalled is exactly that. It is the only confirmation
+  in the console that is not an undo, because there is no undo to offer.
+- **The safety note is not inside the disclosure.** One of the two messages
+  names children and one does not, and that decides which group it may be
+  pasted into — so it is readable before the copy, not one tap behind it.
+
+## Verification
+
+360 and 390: no horizontal overflow, `scrollWidth` equals the viewport on both
+screens, and no tap target under 44px that was not already there. The round page
+lost 126px of height and reads in the same order. Lint, type-check, build and
+the full suite pass.

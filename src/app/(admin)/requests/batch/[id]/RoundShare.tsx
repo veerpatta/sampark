@@ -12,17 +12,20 @@ import { btn } from "@/components/ui/controls";
  * click-to-chat URL for a group at all. The moment the destination is the staff
  * group or a class group — which is exactly what the build plan means by "share
  * '8 of 11 classes submitted' in the staff group. Nobody wants to be in the 3."
- * — the clipboard is not a workaround, it is the only mechanism there is. Until
- * now that sentence existed on the dashboard as a wa.me link with no number,
- * which opens the contact picker and cannot reach a group either.
+ * — the clipboard is not a workaround, it is the only mechanism there is.
  *
- * The messages are built on the SERVER and arrive as strings. Unlike a reminder,
- * whose text is also its href and would otherwise ship twice, these have no URL
- * — so there is nothing here but the two buttons and the preview.
+ * NEITHER BUTTON IS `go`. That tone is reserved for sends that leave the app,
+ * and a copy does not leave anything; spending it here would dilute the one
+ * signal the office has for "this is about to reach a teacher". They are
+ * siblings of equal weight, so they get the same shape and the block titles do
+ * the distinguishing.
  *
- * A native <details> for the preview, because this codebase has no modal
- * anywhere on purpose, and because the office should be able to read what it is
- * about to paste.
+ * BUILT FOR 360px FIRST. Driven at that width the earlier shape put a wrapped
+ * button against the card's right edge, where it read as an accident rather
+ * than a control — flex-wrap had dropped it onto its own line and
+ * justify-between then had nothing to push against. The button is now full
+ * width on a phone and returns beside the text at `sm`, which is the same rule
+ * the rest of the console follows.
  */
 export function RoundShare({
   status,
@@ -36,89 +39,89 @@ export function RoundShare({
   const { copy, copiedKey } = useCopy();
 
   return (
-    <div className="mt-4 space-y-2">
+    <section className="mt-4 border-t border-[var(--color-border)] pt-4">
       <h3 className="text-label font-medium">Post it where everyone sees it</h3>
+      <p className="mt-0.5 text-meta text-[var(--color-ink-muted)]">
+        WhatsApp cannot open a group from a link, so these are copied and
+        pasted.
+      </p>
 
-      <Block
-        title="The round, in numbers"
-        hint="Which groups are still short, and how far each has got."
-        note="Names groups, never teachers, and carries no link — safe for the staff group."
-        message={status}
-        which="status"
-        label="Copy the summary"
-        copiedKey={copiedKey}
-        onCopy={copy}
-        tone="go"
-      />
-
-      {pending ? (
+      <div className="mt-3 space-y-3">
         <Block
-          title="Every child still to come"
-          hint="The same round, with the children named in register order."
-          note="This names children. Send it to the class teachers, not to a school-wide group. Names and roll numbers only — no link, no phone number."
-          message={pending}
-          which="pending"
-          label="Copy every name"
+          title="The round, in numbers"
+          note="Groups only — no names, no link. Safe for the staff group."
+          message={status}
+          which="status"
+          label="Copy the summary"
           copiedKey={copiedKey}
           onCopy={copy}
         />
-      ) : null}
-    </div>
+
+        {pending ? (
+          <Block
+            title="Every child still to come"
+            note="Names children. Send it to the class teachers, not to a school-wide group."
+            message={pending}
+            which="pending"
+            label="Copy every name"
+            copiedKey={copiedKey}
+            onCopy={copy}
+          />
+        ) : null}
+      </div>
+    </section>
   );
 }
 
+/**
+ * One message: what it is, who it may go to, one control, and the text itself.
+ *
+ * The note is NOT inside the disclosure. One of these two names children and
+ * one does not, and that difference decides which WhatsApp group it may be
+ * pasted into — so it has to be readable before the copy, not one tap behind
+ * it.
+ */
 function Block({
   title,
-  hint,
   note,
   message,
   which,
   label,
   copiedKey,
   onCopy,
-  tone,
 }: {
   title: string;
-  hint: string;
   note: string;
   message: string;
   which: string;
   label: string;
   copiedKey: string | null;
   onCopy: (text: string, which: string) => void;
-  tone?: "go";
 }) {
+  const copied = copiedKey === which;
   return (
     <div className="rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-name font-medium">{title}</p>
-          <p className="mt-0.5 text-label text-[var(--color-ink-muted)]">
-            {hint}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => onCopy(message, which)}
-          className={`${btn({ tone })} shrink-0 px-3`}
-        >
-          <span aria-live="polite">
-            {copiedKey === which ? "Copied" : label}
-          </span>
-        </button>
-      </div>
+      <p className="text-name font-medium">{title}</p>
+      <p className="mt-0.5 text-label text-[var(--color-ink-muted)]">{note}</p>
 
-      {/* Who it may go to, said out loud. One of these two names children and
-          one does not, and that difference decides the destination. */}
-      <p className="mt-2 text-meta text-[var(--color-ink-muted)]">{note}</p>
+      <button
+        type="button"
+        onClick={() => onCopy(message, which)}
+        className={`${btn()} mt-2 w-full px-4 sm:w-auto`}
+      >
+        <span aria-live="polite">{copied ? "Copied" : label}</span>
+      </button>
 
-      <details className="mt-2">
+      {/* Its own block, not a flex sibling of the button: opened inside a row
+          the preview inherits whatever width is left over, which on a phone is
+          none. */}
+      <details className="mt-1">
         <summary className="inline-flex min-h-[var(--tap-min)] cursor-pointer items-center text-label text-[var(--color-brand-600)]">
           Read it first
         </summary>
         <pre
           lang="hi"
-          className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+          className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
         >
           {message}
         </pre>

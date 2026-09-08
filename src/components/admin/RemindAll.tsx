@@ -32,16 +32,21 @@ import {
  *                       names who is next, opens her chat, ticks her, and
  *                       advances. The taps stay; the decisions go.
  *
- * The per-teacher buttons underneath are untouched in both modes. This is for
- * the ordinary case — chase the lot — and they are for the exception, which is
- * usually one teacher who needs a different number or a second nudge.
+ * NO CARD OF ITS OWN. It sits at the head of a list that already has edges, and
+ * design-qa.md's rule for exactly this — "a frame around rows that already have
+ * edges is a second border" — is why it is a divider and a heading rather than
+ * a nested box. Driven at 360px the boxed version read as a card inside a card.
+ *
+ * THE PRIMARY CONTROL IS FULL WIDTH ON A PHONE and returns to its natural size
+ * at `sm`. Wrapping a button out of a justify-between row leaves it stranded
+ * against an edge, which is what the first pass did.
  *
  * A DELIBERATE SECOND TAP BEFORE THE BULK SEND. Every other confirmation in this
  * codebase was replaced by an undo, because undo is honest and a dialog asking
  * "are you sure" is not. A sent WhatsApp message has no undo — it is out, it is
- * billed, and sixteen of them at once is the one action here big enough to be
- * worth a moment. So the button says what it is about to do and asks to be
- * pressed again, which is a confirmation that costs no modal.
+ * billed, and sixteen at once is the one action here big enough to be worth a
+ * moment. The armed state uses the `commit` shape, which the control vocabulary
+ * reserves for the button that does the irreversible thing.
  *
  * TAPPING IT TWICE IS SAFE BY CONSTRUCTION. The action never forces, and
  * sendTeacherReminder refuses anyone already reminded today — so a second run
@@ -67,12 +72,10 @@ export function RemindAll({
   const [result, setResult] = useState<BulkReminderOutcome | null>(null);
 
   // Whoever has not been chased today, in the order the list shows them —
-  // which is already overdue-first, then whoever is holding up the most
-  // children (groupProgressByTeacher).
+  // already overdue-first, then whoever is holding up the most children.
   const queue = teachers.filter((teacher) => !teacher.remindedToday);
-  // Nothing to collapse below two. One teacher already has her own button
-  // directly underneath, and "Remind all 1" beside it is a second control for
-  // the same tap.
+  // Nothing to collapse below two: one teacher already has her own button
+  // directly underneath, and a second control for the same tap is clutter.
   if (queue.length < 2) return null;
 
   function sendAll() {
@@ -88,7 +91,7 @@ export function RemindAll({
   }
 
   return (
-    <div className="mt-3 rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
+    <div className="mb-3 border-b border-[var(--color-border)] pb-3">
       {apiEnabled ? (
         <SendAll
           count={queue.length}
@@ -128,45 +131,60 @@ function SendAll({
   onSend: () => void;
   onCancel: () => void;
 }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="min-w-0">
+  if (armed) {
+    return (
+      <div>
         <p className="text-name font-medium">
-          {armed
-            ? `Send ${count} ${count === 1 ? "reminder" : "reminders"} now?`
-            : `Remind all ${count}`}
+          Send {count} {count === 1 ? "reminder" : "reminders"} now?
         </p>
         <p className="mt-0.5 text-label text-[var(--color-ink-muted)]">
-          {armed
-            ? "One WhatsApp message each. This cannot be taken back."
-            : "One message each, through WhatsApp. Anyone already reminded today is left alone."}
+          One WhatsApp message each. This cannot be taken back.
         </p>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-2">
-        {armed ? (
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onSend}
+            disabled={pending}
+            className={`${btn({ shape: "commit", tone: "go" })} flex-1 disabled:opacity-60`}
+          >
+            {pending ? "Sending…" : `Yes, send ${count}`}
+          </button>
           <button
             type="button"
             onClick={onCancel}
             disabled={pending}
-            className="min-h-[var(--tap-min)] px-2 text-[13px] text-[var(--color-ink-muted)] hover:underline"
+            className={`${btn({ shape: "commit" })} px-4`}
           >
             Cancel
           </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={armed ? onSend : onArm}
-          disabled={pending}
-          className={`${btn({ tone: "go" })} px-4 text-[13px] disabled:opacity-60`}
-        >
-          {pending
-            ? "Sending…"
-            : armed
-              ? `Yes, send ${count}`
-              : `Remind all ${count}`}
-        </button>
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <div className="min-w-0">
+        {/* Not "Remind all N" a second time. On a phone the button drops to
+            full width directly beneath this line, and a heading that repeats
+            the control it sits on top of is two thirds of the block saying one
+            thing. The heading says what the state IS; the button says what
+            pressing it does. */}
+        <p className="text-name font-medium">
+          {count} still to chase
+        </p>
+        <p className="mt-0.5 text-label text-[var(--color-ink-muted)]">
+          One message each. Anyone reminded today is left alone.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onArm}
+        disabled={pending}
+        className={`${btn({ tone: "go" })} w-full px-4 sm:w-auto`}
+      >
+        Remind all {count}
+      </button>
     </div>
   );
 }
@@ -217,7 +235,7 @@ function NextInQueue({
   );
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
       <div className="min-w-0">
         <p className="text-name font-medium">
           Next: {next.teacherName}{" "}
@@ -225,12 +243,14 @@ function NextInQueue({
             {position} of {total}
           </span>
         </p>
+        {/* One line, and only the part the card above has not already said.
+            Both surfaces that render this already explain that a tap opens
+            WhatsApp and the next one waits; what neither says is WHY it is one
+            at a time, and that is the fact this control needs to carry — a
+            button claiming otherwise would quietly do nothing for teachers two
+            onwards. */}
         <p className="mt-0.5 text-label text-[var(--color-ink-muted)]">
-          {/* Said plainly rather than dressed up as a bulk send: WhatsApp opens
-              one chat at a time, and a button claiming otherwise would be a
-              button that quietly does nothing for teachers two onwards. */}
-          Opens her chat with the message ready, ticks her, and moves to the
-          next. WhatsApp can only open one conversation at a time.
+          One at a time — that is all WhatsApp allows.
         </p>
       </div>
       <a
@@ -242,7 +262,7 @@ function NextInQueue({
             await setTeacherReminded(next.requestIds, true, batchId);
           })
         }
-        className={`${btn({ tone: "go" })} shrink-0 px-4 text-[13px]`}
+        className={`${btn({ tone: "go" })} w-full px-4 sm:w-auto`}
       >
         Open {next.teacherName.split(" ")[0]}
       </a>
@@ -255,13 +275,13 @@ function Outcome({ result }: { result: BulkReminderOutcome }) {
   const { sent, skipped, failed, stopped } = result;
   return (
     <div className="mt-3 border-t border-[var(--color-border)] pt-3">
-      <p className="flex items-center gap-1.5 text-sm">
+      <p className="flex flex-wrap items-center gap-x-1.5 text-sm">
         {sent > 0 ? (
           <CheckCircle
             aria-hidden
             size={16}
             weight="fill"
-            className="text-[var(--color-success)]"
+            className="shrink-0 text-[var(--color-success)]"
           />
         ) : null}
         <span className="font-medium">

@@ -46,6 +46,13 @@ import {
  * an optimistic flip. So the boundary is drawn here, around the one piece that
  * genuinely needs it, rather than turning the whole list client-side.
  *
+ * THE ACTION COLUMN IS CAPPED ON A PHONE. Driven at 360px it took 142px of a
+ * 294px card — 48% of the row — because "Open in WhatsApp instead" sits under
+ * the button and would not wrap. The teacher's name, her classes and the
+ * children she owes were sharing what was left, so the name broke across two
+ * lines. The cap lets the fallback wrap instead, which is the half of the row
+ * that can afford it.
+ *
  * The manual message is built at render for the same reason RoundNudge builds
  * its own: it is long enough — longer now that it names children — that handing
  * it down from the server would ship it twice, once as the href and once as the
@@ -136,7 +143,7 @@ export function RemindButton({
 
   if (reminded) {
     return (
-      <div className={`flex shrink-0 flex-col items-end gap-1 ${className}`}>
+      <div className={`flex max-w-[7.5rem] shrink-0 flex-col items-end gap-1 sm:max-w-none ${className}`}>
         <button
           type="button"
           onClick={() => tick(false)}
@@ -178,7 +185,7 @@ export function RemindButton({
   }
 
   return (
-    <div className={`flex shrink-0 flex-col items-end gap-1 ${className}`}>
+    <div className={`flex max-w-[7.5rem] shrink-0 flex-col items-end gap-1 sm:max-w-none ${className}`}>
       <button
         type="button"
         onClick={() => sendViaApi()}
