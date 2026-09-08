@@ -3,6 +3,7 @@ import type { Bucket, ProgressForm, TeacherProgress } from "@/lib/progress";
 import { remindedLabel, toReminder } from "@/lib/reminders";
 import { ProgressBar } from "./ProgressBar";
 import { TONE, toneOf } from "./progress-tone";
+import { RemindAll } from "./RemindAll";
 import { RemindButton } from "./RemindButton";
 import { FOCUS } from "@/components/ui/controls";
 
@@ -73,8 +74,24 @@ export function TeacherProgressList({
 
   const shown = limit === undefined ? teachers : teachers.slice(0, limit);
 
+  /*
+   * The chase list, collapsed to one entry per person.
+   *
+   * Built from `teachers` and NOT from `shown`: the dashboard renders the worst
+   * five, and a button reading "Remind all 5" on a screen where fourteen are
+   * behind would be quietly wrong about the thing it is counting. toReminder
+   * drops anyone with nothing outstanding, which is the same filter the
+   * per-row button already applies.
+   */
+  const chase = teachers
+    .map(toReminder)
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
   return (
     <>
+      {/* Stands itself down below two outstanding teachers. */}
+      <RemindAll teachers={chase} origin={origin} apiEnabled={apiEnabled} />
+
       <ul className="divide-y divide-[var(--color-border)]">
         {shown.map((teacher) => (
           <li key={teacher.key} className="py-3 first:pt-0">

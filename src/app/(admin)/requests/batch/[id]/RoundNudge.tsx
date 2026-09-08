@@ -2,6 +2,7 @@
 
 import { remindedLabel, type TeacherReminder } from "@/lib/reminders";
 import { ProgressBar } from "@/components/admin/ProgressBar";
+import { RemindAll } from "@/components/admin/RemindAll";
 import { RemindButton } from "@/components/admin/RemindButton";
 import { card } from "@/components/ui/controls";
 
@@ -95,6 +96,16 @@ export function RoundNudge({
           ? " Remind sends it through WhatsApp and ticks itself."
           : " Tap to open WhatsApp with it ready — come back and the next one is waiting."}
       </p>
+
+      {/* The ordinary case — chase the lot — above the per-teacher buttons,
+          which stay for the exception: one teacher on a different number, or
+          one who needs a second nudge today. */}
+      <RemindAll
+        teachers={teachers}
+        origin={origin}
+        batchId={batchId}
+        apiEnabled={apiEnabled}
+      />
 
       <ul className="mt-3 space-y-2">
         {teachers.map((teacher) => {

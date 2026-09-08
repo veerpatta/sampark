@@ -342,3 +342,27 @@ export async function sendTest(input: {
     tick: async () => {},
   });
 }
+
+/**
+ * What one send in a bulk chase actually counts as.
+ *
+ * PURE, EXPORTED AND TESTED, because it is the one piece of the "remind
+ * everyone" loop that can be wrong without failing loudly. A refusal reading
+ * "Already reminded today" is not a failure — it is the double-send guard doing
+ * its job, and it is what makes a second tap of that button a no-op rather than
+ * a second message to sixteen people. Counting it as an error would put a red
+ * line under a run that went perfectly, and an office taught to ignore the red
+ * line is an office that misses the real one.
+ *
+ * Matched on the provider-independent sentences THIS codebase writes in
+ * sendTeacherReminder, never on anything AiSensy returns: those are the two
+ * strings above it, and a test pins them.
+ */
+export function reminderVerdict(
+  outcome: SendOutcome,
+): "sent" | "skipped" | "failed" {
+  if (outcome.ok) return "sent";
+  return /already reminded|nothing outstanding/i.test(outcome.error)
+    ? "skipped"
+    : "failed";
+}
