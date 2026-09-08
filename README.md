@@ -196,7 +196,7 @@ npm test
 ```
 
 Node's built-in test runner (`node --test`) via `tsx`, so there is no test
-framework dependency to keep current. **647 tests across 53 files.**
+framework dependency to keep current. **759 tests across 60 files.**
 
 It started narrow, at the two places the build plan calls expensive to get wrong
 — the token resolver and the import matching rules — and grew to cover the shaping

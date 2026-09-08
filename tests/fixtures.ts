@@ -74,13 +74,46 @@ const FILE_TAG = (process.argv[1] ?? "x")
 const PREFIX = `ZZTEST${FILE_TAG}`;
 
 /**
+ * A class of its own, for the files that resolve a roster BY CLASS.
+ *
+ * THE RACE THIS FIXES, and it is worth writing down because it looked for a
+ * long time like a flaky test rather than a real one. `node --test` runs files
+ * in parallel; PREFIX is per-file, so each file's cleanup deletes only its own
+ * rows. What was NOT per-file was the class. Every fixture student in the suite
+ * lived in one label, so when a file called the real createRequest, the roster
+ * it froze was every fixture child in the suite — including the ones another
+ * file was deleting at that instant. The insert then hit a foreign key to a
+ * student that had just gone, and the failure surfaced in whichever file
+ * happened to be resolving at the time.
+ *
+ * Two kinds of fixture never had the problem. createScenario inserts its own
+ * roster straight from its own ids, and createFanOutScenario invents synthetic
+ * class labels per scenario — which is why the fan-out tests, the ones that
+ * look most likely to collide, never did.
+ *
+ * So the fix is per-file classes for the files that resolve one, and the guard
+ * in fixture-isolation.test.ts is what stops a sixth such file being written
+ * without one. Any label off the canonical nineteen works: no other file
+ * creates a student outside TEST_CLASS, so a file with its own label sees
+ * nobody else's children by construction.
+ */
+const EXCLUSIVE_CLASSES: Record<string, string> = {
+  // tests/review.test.ts — calls createRequest, which freezes whatever
+  // listClassRoster returns for the label it is given.
+  REVIEWXXXX: "12 Science",
+};
+
+/**
  * Fixture students need a class the request builder will accept, because
  * createRequest validates against the canonical nineteen. The smallest real
  * class keeps the roster a request freezes small — the fixtures' own students
  * are always found by id, so any real students sharing the class are simply
  * along for the ride.
  */
-export const TEST_CLASS = "12 Commerce";
+export const TEST_CLASS = EXCLUSIVE_CLASSES[FILE_TAG] ?? "12 Commerce";
+
+/** Read by the isolation guard. Not for use inside a test. */
+export const EXCLUSIVE_CLASS_TAGS = Object.keys(EXCLUSIVE_CLASSES);
 
 export type Scenario = {
   requestId: string;
