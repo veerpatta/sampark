@@ -460,6 +460,24 @@ export const requests = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }),
     sentBy: text("sent_by").references(() => users.id),
     /**
+     * When the office last chased this link, and how many times it has.
+     *
+     * INCREMENT-ONLY, AND THAT IS THE DIFFERENCE FROM sent_at. "Sent" means
+     * "WhatsApp opened", which is the closest thing to proof available, and the
+     * tick is tappable to take back — being able to untick it is exactly what
+     * makes treating it as sent honest. A reminder is not like that. It has
+     * either gone or it has not, there is nothing to reconsider, and the useful
+     * fact afterwards is not "was she chased" but HOW OFTEN: a teacher on her
+     * third reminder needs a phone call, not a fourth message. So the count is
+     * the column that earns its place, and there is no un-remind.
+     *
+     * Written for every link on a teacher's card at once, because the message
+     * she received carried all of them — same reasoning as markGroupSent.
+     */
+    remindedAt: timestamp("reminded_at", { withTimezone: true }),
+    remindedBy: text("reminded_by").references(() => users.id),
+    remindCount: integer("remind_count").notNull().default(0),
+    /**
      * Hidden from the boards, kept in the database.
      *
      * The office asked to be able to delete a closed request. A request that

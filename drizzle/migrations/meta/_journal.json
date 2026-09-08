@@ -78,6 +78,13 @@
       "when": 1787380373309,
       "tag": "0010_huge_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788842547924,
+      "tag": "0011_reflective_shadowcat",
+      "breakpoints": true
     }
   ]
 }

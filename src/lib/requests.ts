@@ -468,6 +468,27 @@ export type RequestBoardRow = {
   /** Set once the office has taken it off the boards. Null for a live row. */
   archivedAt: Date | null;
   /**
+   * When the teacher first opened the link.
+   *
+   * The one column that separates two states the boards used to render
+   * identically. A link that was sent and never opened is a wrong number or a
+   * message buried under forty others — a phone call, not a fourth reminder.
+   * A link she opened and did not fill is the ordinary case reminders are for.
+   * Calling both "not started" blames her for the office's delivery problem.
+   */
+  openedAt: Date | null;
+  /**
+   * When the office last chased this link, and how many times.
+   *
+   * INCREMENT-ONLY, deliberately unlike sentAt. "Sent" means "WhatsApp opened"
+   * and is tappable to take back, which is what makes treating it as sent
+   * honest. A reminder that has gone cannot be un-sent, and a teacher chased
+   * three times needs a phone call rather than a fourth message — so the count
+   * is the fact worth keeping, not a tick.
+   */
+  remindedAt: Date | null;
+  remindCount: number;
+  /**
    * The round this link belongs to, or null for a one-off.
    *
    * The board reads it to show a nineteen-class fan-out as ONE row instead of
@@ -538,6 +559,9 @@ export async function listRequests(
       createdAt: schema.requests.createdAt,
       batchId: schema.requests.batchId,
       sentAt: schema.requests.sentAt,
+      openedAt: schema.requests.openedAt,
+      remindedAt: schema.requests.remindedAt,
+      remindCount: schema.requests.remindCount,
     })
     .from(schema.requests)
     .innerJoin(schema.teachers, eq(schema.teachers.id, schema.requests.teacherId))
@@ -616,6 +640,9 @@ export async function listRequests(
     batchId: row.batchId,
     createdAt: row.createdAt,
     sentAt: row.sentAt,
+    openedAt: row.openedAt,
+    remindedAt: row.remindedAt,
+    remindCount: row.remindCount,
   }));
 }
 
@@ -797,9 +824,9 @@ export async function listRequestBoard(
  * does not. Getting that wrong drops a child off the very list the office uses
  * to chase her. See coveredStudentsQuery.
  */
-export async function listNonResponders(requestId: string): Promise<
-  { studentId: string; rollNo: number | null; name: string }[]
-> {
+export async function listNonResponders(
+  requestId: string,
+): Promise<MissingStudent[]> {
   const [roster, answered] = await Promise.all([
     db
       .select()
@@ -808,18 +835,161 @@ export async function listNonResponders(requestId: string): Promise<
     coveredStudentsQuery([requestId]),
   ]);
 
-  const done = new Set(answered.map((row) => row.studentId));
+  return missingFromRoster(
+    roster,
+    new Set(answered.map((row) => row.studentId)),
+    "name",
+  );
+}
 
-  return roster
-    .filter((row) => !done.has(row.studentId))
+/** A child on a frozen roster who has not been answered for. */
+export type MissingStudent = {
+  studentId: string;
+  rollNo: number | null;
+  name: string;
+};
+
+/** One row of a frozen roster, as much of it as the fold below needs. */
+type RosterRow = {
+  studentId: string;
+  rollNo: number | null;
+  snapshot: unknown;
+};
+
+/**
+ * Roster minus the children already answered for.
+ *
+ * PURE, and extracted so the two callers cannot drift. There is one definition
+ * of "answered" (lib/answered.ts) and there should be exactly one subtraction
+ * from it too — the alternative is a second loop that has to be kept in step by
+ * hand, which is the shape of bug this codebase has already paid for five times
+ * over in coveredStudentsQuery's own header.
+ *
+ * `covered` is a set of student ids for ONE request, or of `requestId|studentId`
+ * keys for several. The caller decides which and builds the ids to match, so
+ * this function never has to know how many requests it is looking at.
+ *
+ * THE NAME COMES OFF THE SNAPSHOT, never off the live master record. This list
+ * is about what the teacher was actually sent; a child renamed in master since
+ * the link went out must still read here as the name on her screen.
+ */
+export function missingFromRoster<T extends RosterRow>(
+  roster: T[],
+  covered: ReadonlySet<string>,
+  /**
+   * Register order or alphabetical.
+   *
+   * `roll` is what the messages use: a teacher finds a child in her register by
+   * roll number, so a list she is meant to work through reads in that order.
+   * `name` is what /requests/[id] has always shown and what its callers expect,
+   * so listNonResponders keeps it rather than reordering a live screen as a
+   * side effect of this refactor.
+   */
+  order: "roll" | "name",
+  keyOf: (row: T) => string = (row) => row.studentId,
+): MissingStudent[] {
+  const missing = roster
+    .filter((row) => !covered.has(keyOf(row)))
     .map((row) => ({
       studentId: row.studentId,
       rollNo: row.rollNo,
-      // The frozen snapshot, not the live master record — this list is about
-      // what the teacher was sent.
       name: (row.snapshot as { name?: string }).name ?? row.studentId,
+    }));
+
+  if (order === "name") {
+    return missing.sort((a, b) => compareStudentNames(a.name, b.name));
+  }
+
+  // Roll number ascending, and a child without one sorts LAST rather than
+  // first: a null is "we do not know where she is in the register", which is
+  // not the same claim as "she is number zero".
+  return missing.sort((a, b) => {
+    if (a.rollNo !== b.rollNo) {
+      if (a.rollNo === null) return 1;
+      if (b.rollNo === null) return -1;
+      return a.rollNo - b.rollNo;
+    }
+    return compareStudentNames(a.name, b.name);
+  });
+}
+
+/** One group in a round, and who in it is still outstanding. */
+export type MissingGroup = {
+  requestId: string;
+  audienceKind: string;
+  audienceLabel: string;
+  fieldKeys: string[];
+  teacherId: string;
+  teacherName: string;
+  rosterSize: number;
+  answered: number;
+  /** Empty for a group that is finished — those groups are dropped. */
+  students: MissingStudent[];
+};
+
+/**
+ * Who is still outstanding across a whole round, by group.
+ *
+ * THIS IS THE QUESTION THE OFFICE ACTUALLY ASKS. "Thirty-eight of five hundred
+ * and thirty-one photos are missing" is the headline; "which thirty-eight" is
+ * what somebody then has to type into WhatsApp by hand, off a screen, one class
+ * at a time. This is that list.
+ *
+ * SIX STATEMENTS, FLAT IN THE NUMBER OF LINKS, for the same reason
+ * collectedForBatch is: calling listNonResponders once per link would be two
+ * each, and a nineteen-class round against a serverless Postgres is a wait the
+ * office abandons. Four of the six are listRequests', and taking the counts
+ * from it rather than recomputing them is what stops this list disagreeing with
+ * the progress bar directly above it.
+ *
+ * ARCHIVED LINKS ARE EXCLUDED. An archived group is one the office has swept
+ * off the boards; chasing it would be asking a teacher for work that has been
+ * written off. The round's export takes the opposite view, and is right to —
+ * see the note on collectedForBatch.
+ */
+export async function listMissingForBatch(
+  batchId: string,
+): Promise<MissingGroup[]> {
+  const links = await listRequests({ batchId });
+  const ids = links.map((link) => link.id);
+  if (ids.length === 0) return [];
+
+  const [roster, answered] = await Promise.all([
+    db
+      .select()
+      .from(schema.requestStudents)
+      .where(inArray(schema.requestStudents.requestId, ids)),
+    coveredStudentsQuery(ids),
+  ]);
+
+  // Keyed by BOTH ids: the same child can sit on two links in one round — a
+  // house round and a class round overlap by construction — and a set of bare
+  // student ids would mark her answered everywhere the moment she answered
+  // anywhere.
+  const covered = new Set(
+    answered.map((row) => `${row.requestId}|${row.studentId}`),
+  );
+  const rosterBy = groupBy(roster, (row) => row.requestId);
+
+  return links
+    .map((link) => ({
+      requestId: link.id,
+      audienceKind: link.audienceKind,
+      audienceLabel: link.audienceLabel,
+      fieldKeys: link.fieldKeys,
+      teacherId: link.teacherId,
+      teacherName: link.teacher,
+      rosterSize: link.rosterSize,
+      answered: link.studentsAnswered,
+      students: missingFromRoster(
+        rosterBy.get(link.id) ?? [],
+        covered,
+        "roll",
+        (row) => `${row.requestId}|${row.studentId}`,
+      ),
     }))
-    .sort((a, b) => compareStudentNames(a.name, b.name));
+    .filter((group) => group.students.length > 0)
+    .sort((a, b) => compareClassLabels(a.audienceLabel, b.audienceLabel));
 }
 
 export type CollectedRow = {

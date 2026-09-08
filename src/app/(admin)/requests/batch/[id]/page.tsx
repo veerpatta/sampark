@@ -3,15 +3,21 @@ import { notFound, redirect } from "next/navigation";
 import { canCreateRequests, currentUser } from "@/lib/auth/session";
 import { requestOrigin } from "@/lib/request-origin";
 import { getBatch } from "@/lib/batches";
-import { listRequests } from "@/lib/requests";
+import {
+  groupBoardRows,
+  listMissingForBatch,
+  listRequests,
+  type BoardBatch,
+} from "@/lib/requests";
 import { groupRemindersByTeacher } from "@/lib/reminders";
 import { groupLinksByRecipient } from "@/lib/send-queue";
 import { todayISO } from "@/lib/today";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { RequestBulkBar } from "../../RequestBulkBar";
 import { btn } from "@/components/ui/controls";
+import { RoundProgress } from "@/components/admin/RoundProgress";
 import { SendQueue } from "./SendQueue";
-import { RoundNudge } from "./RoundNudge";
+import { ChaseQueue } from "./ChaseQueue";
 
 // The round's home, not just the screen you land on after sending — the board
 // links here now, so this is where a round is looked at afterwards too.
@@ -30,21 +36,44 @@ export default async function BatchPage({
   const detail = await getBatch(id);
   if (!detail) notFound();
 
-  const origin = await requestOrigin();
-
   const { batch, links } = detail;
+  const today = todayISO();
+
+  /*
+   * ONE QUERY, THREE USES. listRequests is the board's own query, so every
+   * number on this page is the board's number arrived at by the board's
+   * arithmetic — the progress header, the chase list and the per-group rows
+   * cannot disagree with each other or with /requests, because there is one
+   * source and one definition of "answered" (lib/answered.ts).
+   *
+   * `includeArchived` is on deliberately. groupBoardRows' own header says the
+   * board line is a view over the rows it was given and that "the round's own
+   * page always lists all nineteen" — this is that page. Where the two differ,
+   * the header says so out loud rather than letting somebody discover it.
+   */
+  const [rows, missing, origin] = await Promise.all([
+    listRequests({ batchId: batch.id, includeArchived: true }),
+    listMissingForBatch(batch.id),
+    requestOrigin(),
+  ]);
+
+  const round = groupBoardRows(rows, new Map([[batch.id, batch]])).find(
+    (entry): entry is BoardBatch => entry.kind === "batch",
+  );
 
   /*
    * Who in this round still owes something.
    *
-   * listRequests is the board's own query, so these numbers are the board's
-   * numbers — and groupRemindersByTeacher then collapses a teacher's several
-   * groups into one nudge, exactly as the dashboard does. A teacher taking
-   * maths for three classes in this round gets one message, not three.
+   * The UNARCHIVED rows, unlike the header above: an archived group is one the
+   * office has swept off the boards, and chasing a teacher for work that has
+   * been written off is the one thing this list must not do.
+   * groupRemindersByTeacher then collapses her several groups into one nudge,
+   * exactly as the dashboard does — a teacher taking maths for three classes in
+   * this round gets one message, not three.
    */
   const outstanding = groupRemindersByTeacher(
-    await listRequests({ batchId: batch.id }),
-    todayISO(),
+    rows.filter((row) => row.archivedAt === null),
+    today,
   );
 
   // Grouped HERE, on the server. groupLinksByRecipient is db-free so it could
@@ -101,6 +130,23 @@ export default async function BatchPage({
         </a>
       </header>
 
+      {/* How far the round has got, and who is left in it. Above the send
+          queue because after the first day this is the question — the queue is
+          a one-off act, the progress is what somebody comes back for.
+          `round` is absent only for a fan-out that failed before creating a
+          single link, which is a real state: runGroups keeps what it made and
+          the "Finish the batch" control inside SendQueue is what fixes it. */}
+      {round ? (
+        <RoundProgress
+          round={round}
+          title={batch.title}
+          dueDate={batch.dueDate}
+          today={today}
+          rows={rows}
+          missing={missing}
+        />
+      ) : null}
+
       <SendQueue
         batchId={batch.id}
         title={batch.title}
@@ -109,7 +155,12 @@ export default async function BatchPage({
         groups={groups}
       />
 
-      <RoundNudge teachers={outstanding} origin={origin} />
+      <ChaseQueue
+        batchId={batch.id}
+        teachers={outstanding}
+        origin={origin}
+        today={today}
+      />
 
       {/* The other half of a round's life. Sending it happens above; clearing
           it away once every class has answered used to mean going back to the
@@ -126,7 +177,9 @@ export default async function BatchPage({
 
         <RequestBulkBar showArchived>
           <DataTable
-            columns={cleanupColumns}
+            columns={cleanupColumns(
+              new Map(rows.map((row) => [row.id, row.studentsAnswered])),
+            )}
             rows={links}
             rowKey={(link) => link.requestId}
             href={(link) => `/requests/${link.requestId}`}
@@ -141,7 +194,19 @@ export default async function BatchPage({
 
 type BatchLink = NonNullable<Awaited<ReturnType<typeof getBatch>>>["links"][number];
 
-const cleanupColumns: Column<BatchLink>[] = [
+/**
+ * Built from the board's counts rather than from getBatch.
+ *
+ * getBatch reads no submissions at all — it exists for the send queue and this
+ * cleanup table — and giving it answered counts would put a second computation
+ * of "answered" one function away from coveredStudentsQuery. That is precisely
+ * what the request_progress view did before it was dropped; the gravestone is
+ * in drizzle/sql/grants.sql. The page already holds the board's numbers, so the
+ * column takes them as a map.
+ */
+const cleanupColumns = (
+  answeredBy: ReadonlyMap<string, number>,
+): Column<BatchLink>[] => [
   {
     key: "group",
     header: "Group",
@@ -155,9 +220,10 @@ const cleanupColumns: Column<BatchLink>[] = [
     cell: (link) => link.teacherName,
   },
   {
-    key: "roster",
-    header: "Children",
-    cell: (link) => link.rosterSize,
+    key: "answered",
+    header: "Answered",
+    cell: (link) =>
+      `${answeredBy.get(link.requestId) ?? 0} of ${link.rosterSize}`,
     cellClassName: "font-mono text-xs",
   },
   {

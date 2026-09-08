@@ -48,8 +48,22 @@ export type ProgressForm = {
    * between a chase and an apology.
    */
   sent: boolean;
+  /**
+   * Did she ever open it?
+   *
+   * A link that was sent and never opened is a wrong number or a message that
+   * scrolled away — a phone call, not a fourth reminder. Without this column
+   * that case renders as "not started", which is the same words the screen uses
+   * for a teacher who opened the list and has not filled it in, and only one of
+   * those two is her doing.
+   */
+  opened: boolean;
   overdue: boolean;
   done: boolean;
+  /** How many times the office has chased this link. Never decreases. */
+  remindCount: number;
+  /** The last chase, or null. ISO, so a server component can format it. */
+  remindedAt: Date | null;
 };
 
 /** One kind of work, totalled across a teacher's links. */
@@ -82,6 +96,19 @@ export type TeacherProgress = {
   overdue: boolean;
   /** What she has sent that the office still owes her a decision on. */
   changesPending: number;
+  /**
+   * How many times the office has chased HER, and when it last did.
+   *
+   * The MAXIMUM across her links rather than the sum, because one message
+   * covers all of them and stamps all of them — summing would report a teacher
+   * with three classes as chased three times for one nudge, which is the same
+   * arithmetic error lib/reminders.ts exists to prevent, in a different place.
+   * A Resume that adds a fourth link after she was chased leaves that link at
+   * zero, and the max is still the truthful answer to "how many times have we
+   * asked her".
+   */
+  remindCount: number;
+  remindedAt: Date | null;
 };
 
 const emptyBucket = (): Bucket => ({
@@ -164,6 +191,8 @@ export function groupProgressByTeacher(
       outstanding: 0,
       overdue: false,
       changesPending: 0,
+      remindCount: 0,
+      remindedAt: null,
     };
 
     const done = isAnsweredFully(row);
@@ -180,12 +209,15 @@ export function groupProgressByTeacher(
       rosterSize: row.rosterSize,
       changesPending: row.changesPending,
       sent: row.sentAt !== null,
+      opened: row.openedAt !== null,
       // Past due only counts against her while there is still work in it. A
       // link she FINISHED last week is not something anybody is late on, and
       // letting it set the flag would sort her to the top of a chase list she
       // does not belong on.
       overdue: row.dueDate < today && !done,
       done,
+      remindCount: row.remindCount,
+      remindedAt: row.remindedAt,
     });
     groups.set(key, entry);
   }
@@ -223,6 +255,18 @@ export function groupProgressByTeacher(
           buckets.mixed.outstanding,
         overdue: forms.some((form) => form.overdue),
         changesPending: forms.reduce((sum, form) => sum + form.changesPending, 0),
+        remindCount: forms.reduce(
+          (most, form) => Math.max(most, form.remindCount),
+          0,
+        ),
+        remindedAt: forms.reduce<Date | null>(
+          (latest, form) =>
+            form.remindedAt !== null &&
+            (latest === null || form.remindedAt > latest)
+              ? form.remindedAt
+              : latest,
+          null,
+        ),
       };
     })
     .sort((a, b) => {

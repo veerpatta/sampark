@@ -1,7 +1,5 @@
-"use client";
-
-import { useState } from "react";
 import { buildWhatsAppLink, teacherPageUrl } from "@/lib/whatsapp";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { issueTeacherLink, revokeTeacherLink } from "./actions";
 
 /**
@@ -15,6 +13,10 @@ import { issueTeacherLink, revokeTeacherLink } from "./actions";
  * old URL is dead the moment it commits — there is no separate revoke to
  * remember and no window where both work. The plain revoke below it exists for
  * the case where she should have no link at all, not a different one.
+ *
+ * A SERVER COMPONENT since the copy button became CopyButton: every other
+ * control here is already a <form action={serverAction}> or a real link, and
+ * the two-second "Copied" label was the only state in the file.
  */
 export function TeacherLinkPanel({
   teacherId,
@@ -31,8 +33,6 @@ export function TeacherLinkPanel({
   token: string | null;
   issuedAt: Date | null;
 }) {
-  const [copied, setCopied] = useState(false);
-
   if (!token) {
     return (
       <form action={issueTeacherLink} className="mt-3 border-t border-[var(--color-border)] pt-3">
@@ -66,16 +66,6 @@ export function TeacherLinkPanel({
     `— Veer Patta School office · वीर पत्ता विद्यालय कार्यालय`,
   ].join("\n");
 
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Refused clipboard access. The URL is on screen and selectable.
-    }
-  }
-
   return (
     <div className="mt-3 border-t border-[var(--color-border)] pt-3">
       <p className="text-label font-medium">Personal link</p>
@@ -97,13 +87,9 @@ export function TeacherLinkPanel({
         >
           Send it on WhatsApp
         </a>
-        <button
-          type="button"
-          onClick={() => void copy()}
-          className="min-h-[var(--tap-min)] rounded-[var(--radius-control)] border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
+        {/* Was a hand-rolled near-duplicate of btn() with its own two-second
+            state — and its own copy of the silent-failure bug. */}
+        <CopyButton text={url} />
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-3">

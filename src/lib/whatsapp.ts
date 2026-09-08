@@ -15,6 +15,7 @@
  * followed by a Hindi paragraph makes her scroll past three lines to find hers.
  */
 
+import { titleCaseName } from "./classes";
 import { HOUSES } from "./houses";
 import { subjectByFieldKey } from "./subjects";
 
@@ -462,6 +463,17 @@ export type RoundStatusInput = {
    * how far along it is.
    */
   outstanding: { label: string; answered: number; rosterSize: number }[];
+  /**
+   * The round this is about, when it is about one.
+   *
+   * OPTIONAL, AND ABSENT IS THE OLD BEHAVIOUR BYTE FOR BYTE. The dashboard's
+   * Share button covers everything currently open — several rounds at once —
+   * and has no single title or deadline to name. The round page does, and a
+   * status message posted in the staff group with no idea what it is about
+   * makes the room guess. There is a test on the equality.
+   */
+  title?: string;
+  dueDate?: Date | string;
 };
 
 /**
@@ -489,10 +501,17 @@ export type RoundStatusInput = {
 export function buildRoundStatusMessage(input: RoundStatusInput): string {
   const { submitted, total, outstanding } = input;
 
-  const lines = [
+  const lines: string[] = [];
+  // The heading, when this message is about one named round. A blank line
+  // after it, so the count still reads as the headline rather than as a
+  // subtitle of the title.
+  if (input.title) {
+    lines.push(input.title, ``);
+  }
+  lines.push(
     `${submitted} of ${total} ${total === 1 ? "group has" : "groups have"} submitted.`,
     `${total} में से ${submitted} पूरी हो चुकी हैं।`,
-  ];
+  );
 
   if (outstanding.length === 0) {
     lines.push(``, `Everything is in. Thank you.`, `सब आ गया है। धन्यवाद।`);
@@ -510,7 +529,211 @@ export function buildRoundStatusMessage(input: RoundStatusInput): string {
     );
   }
 
+  // Only on the round-scoped version, and only where there is still something
+  // outstanding — a deadline announced under "Everything is in" is a date
+  // nobody has to do anything about.
+  if (input.dueDate) {
+    const due = formatDue(input.dueDate);
+    lines.push(``, `Due: ${due} · अंतिम तिथि: ${due}`);
+  }
+
   lines.push(``, SIGN_OFF);
+  return lines.join("\n");
+}
+
+/* ------------------------------------------------------- who is still missing */
+
+/**
+ * One child who has not been answered for.
+ *
+ * STRUCTURAL, AND DELIBERATELY NOT AN IMPORT of MissingStudent from
+ * lib/requests.ts. This module is imported by "use client" components — the
+ * send queue, the chase queue, the share panel — and lib/requests.ts imports
+ * lib/db.ts, which its own header says must never reach the browser bundle.
+ * The two types are the same shape and a MissingStudent satisfies this one
+ * without either file knowing about the other.
+ */
+export type MissingChild = {
+  /** Null for a child with no roll number on the frozen roster. */
+  rollNo: number | null;
+  name: string;
+};
+
+/**
+ * How one child reads in a list a teacher is meant to work through.
+ *
+ * Roll number first, because that is the order her register is in and the
+ * number is how she finds the child in it. A child without one gets the name
+ * alone rather than a leading separator — "· Aarav Sharma" reads as a mistake,
+ * and on the real data most children have no roll number at all.
+ *
+ * TITLE-CASED, AND THAT IS NOT COSMETIC. 483 of the school's 504 names are
+ * stored in capitals because that is how the fee app took them, and
+ * titleCaseName runs at RENDER everywhere else in the app for the reason its
+ * own header gives: a screen shouting ANSHUL KUMAWAT reads as an error message.
+ * A WhatsApp message is render. Without this every one of these lists arrives
+ * on a teacher's phone in block capitals.
+ *
+ * lib/classes.ts imports nothing at all, so pulling it in here costs the four
+ * client components that import this module nothing.
+ */
+function childLine(child: MissingChild): string {
+  const name = titleCaseName(child.name);
+  return child.rollNo === null ? `• ${name}` : `• ${child.rollNo} · ${name}`;
+}
+
+export type GroupMissingInput = {
+  audience: MessageAudience;
+  /** The round's title, as the office typed it — "Student photos". */
+  title: string;
+  dueDate: Date | string;
+  answered: number;
+  rosterSize: number;
+  /** In register order. See missingFromRoster in lib/requests.ts. */
+  students: MissingChild[];
+};
+
+/**
+ * One group's outstanding children, by name and roll number.
+ *
+ * THE MESSAGE THAT ACTUALLY PRODUCES PHOTOGRAPHS. The status board tells a room
+ * that Class 8 is at eighteen of twenty-four; it does not tell the one person
+ * who can fix that WHICH six children she has left, which is the only fact she
+ * needs and the one she would otherwise get by squinting at a screen in the
+ * office and writing them down.
+ *
+ * NO GREETING AND NO NAME, because this is not necessarily addressed to a
+ * person. It is written to be pasted either to the class teacher or into that
+ * class's own group, and a message opening "Namaste Sunita ji" pasted into a
+ * group of forty parents is addressed to the wrong room.
+ *
+ * NO LINK, AND THAT IS THE SAFETY PROPERTY. A request token opens the whole
+ * class roster to whoever holds it — /requests/[id] already says so out loud —
+ * and this message is built to be forwarded. The office chases the teacher with
+ * her link privately, using the reminder; this one carries names and roll
+ * numbers and nothing else. No phone number, no parent's name, no field of any
+ * other kind.
+ */
+export function buildGroupMissingMessage(input: GroupMissingInput): string {
+  const due = formatDue(input.dueDate);
+  const left = input.students.length;
+
+  const lines = [
+    `${describeAudienceEn(input.audience)} — ${input.title}`,
+    `${describeAudienceHi(input.audience)} — ${input.title}`,
+    ``,
+  ];
+
+  if (input.answered === 0) {
+    lines.push(
+      `Not started. All ${left} are still to come:`,
+      `अभी शुरू नहीं। सभी ${left} बाकी हैं:`,
+    );
+  } else {
+    lines.push(
+      `${input.answered} of ${input.rosterSize} done. ${
+        left === 1 ? "This one is" : `These ${left} are`
+      } still to come:`,
+      `${input.rosterSize} में से ${input.answered} हो गए। ${
+        left === 1 ? "यह एक" : `ये ${left}`
+      } अभी बाकी ${left === 1 ? "है" : "हैं"}:`,
+    );
+  }
+
+  lines.push(``, ...input.students.map(childLine));
+  lines.push(``, `Due: ${due} · अंतिम तिथि: ${due}`, ``, SIGN_OFF);
+  return lines.join("\n");
+}
+
+/**
+ * Beyond this many, a group gets its count instead of its children.
+ *
+ * A class at eighteen of twenty-four needs its six naming; a class at nought of
+ * thirty-one needs its teacher to open the link, and thirty-one names in front
+ * of her says nothing the count did not. Between those two is a judgement, and
+ * twenty is where a list stops being something you read and starts being
+ * something you scroll past on a 360px screen. It comfortably covers the case
+ * the office described — thirty to forty children left across a whole round,
+ * which is a handful per class.
+ */
+export const MAX_NAMED_CHILDREN = 20;
+
+export type RoundMissingInput = {
+  title: string;
+  dueDate: Date | string;
+  /** In the order the board shows them. Finished groups are already dropped. */
+  groups: {
+    audience: MessageAudience;
+    answered: number;
+    rosterSize: number;
+    students: MissingChild[];
+  }[];
+};
+
+/**
+ * The whole round's outstanding children, under group headings.
+ *
+ * The office asked for this one directly: one message, posted once, saying
+ * exactly who is left across every class. It is the per-group message above,
+ * repeated, with a headline and one deadline.
+ *
+ * IT DOES NOT NAME CHILDREN IN A GROUP THAT HAS NOT STARTED, and that is what
+ * keeps a five-hundred-child round from producing a message nobody reaches the
+ * end of. A group nobody has touched gets the counts line the status board
+ * uses; so does one with more than MAX_NAMED_CHILDREN outstanding. Nothing is
+ * hidden by this — the headline still counts every missing child, and the group
+ * is still listed by name — but the message stays something a person reads
+ * rather than scrolls.
+ *
+ * NAMES IN A ROOM ARE A DECISION THE OFFICE MAKES, NOT THIS FILE. The status
+ * message deliberately names groups and not teachers, because a list of
+ * colleagues under a heading about unfinished work is a different act from a
+ * count. Children are different again — a class list is not a secret, and the
+ * whole point is that somebody recognises a name and fetches that child — but
+ * it is still the reason the screen offering this message says which group to
+ * paste it into. Names and roll numbers only, as above.
+ */
+export function buildRoundMissingMessage(input: RoundMissingInput): string {
+  const due = formatDue(input.dueDate);
+  const missing = input.groups.reduce(
+    (sum, group) => sum + group.students.length,
+    0,
+  );
+  const children = input.groups.reduce(
+    (sum, group) => sum + group.rosterSize,
+    0,
+  );
+
+  const lines = [
+    input.title,
+    ``,
+    `${missing} of ${children} still to come, across ${input.groups.length} ${
+      input.groups.length === 1 ? "group" : "groups"
+    }.`,
+    `${children} में से ${missing} अभी बाकी हैं — ${input.groups.length} ${
+      input.groups.length === 1 ? "समूह" : "समूहों"
+    } में।`,
+    ``,
+  ];
+
+  for (const group of input.groups) {
+    const en = describeAudienceLine(group.audience);
+    const hi = describeAudienceLineHi(group.audience);
+    const left = group.students.length;
+    const named = group.answered > 0 && left <= MAX_NAMED_CHILDREN;
+
+    lines.push(
+      `${en}${hi === en ? "" : ` · ${hi}`} — ${
+        group.answered === 0
+          ? `not started, all ${left} · अभी शुरू नहीं, सभी ${left}`
+          : `${left} left of ${group.rosterSize} · ${group.rosterSize} में से ${left} बाकी`
+      }`,
+    );
+    if (named) lines.push(...group.students.map(childLine));
+    lines.push(``);
+  }
+
+  lines.push(`Due: ${due} · अंतिम तिथि: ${due}`, ``, SIGN_OFF);
   return lines.join("\n");
 }
 

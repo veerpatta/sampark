@@ -196,7 +196,7 @@ npm test
 ```
 
 Node's built-in test runner (`node --test`) via `tsx`, so there is no test
-framework dependency to keep current. **552 tests across 41 files.**
+framework dependency to keep current. **626 tests across 45 files.**
 
 It started narrow, at the two places the build plan calls expensive to get wrong
 — the token resolver and the import matching rules — and grew to cover the shaping
@@ -319,6 +319,8 @@ src/
                         export/{request,batch}/[id] · auth
   components/           admin/ · teacher/ · ui/ (downscale.ts lives in ui/, not
                         teacher/: both surfaces resize photos with it)
+                        admin/progress-tone.ts is the one table saying which
+                        WORD goes with which colour, shared by the boards
   lib/
     db.ts               the single database entry point
     auth/token.ts       THE one place TEACHER authorization lives
@@ -356,7 +358,9 @@ src/
     ratelimit.ts        four buckets, counted in Postgres — 30/min and 100/hr,
                         and 60/min + 500/hr for photos, which is why a class of
                         forty-six does not starve her own answer flushes
-    whatsapp.ts         bilingual templates, English line over Hindi line
+    whatsapp.ts         bilingual templates, English line over Hindi line;
+                        the three "who is still missing" messages are
+                        copy-only, because wa.me cannot open a GROUP chat
   styles/tokens.css
 ```
 

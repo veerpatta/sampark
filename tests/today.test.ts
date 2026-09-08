@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { isoDay, isoDayFrom, todayISO } from "../src/lib/today";
+import { daysUntil, isoDay, isoDayFrom, todayISO } from "../src/lib/today";
 
 /**
  * The 5½ hours each night when the console and the teacher disagreed.
@@ -72,5 +72,37 @@ describe("todayISO", () => {
   it("is isoDay of now, and is what every board compares a due date against", () => {
     const at = new Date("2026-08-16T19:00:00Z");
     assert.equal(todayISO(at), isoDay(at));
+  });
+});
+
+describe("daysUntil", () => {
+  it("is zero on the day itself", () => {
+    assert.equal(daysUntil("2026-08-20", "2026-08-20"), 0);
+  });
+
+  it("counts forward to a deadline", () => {
+    assert.equal(daysUntil("2026-08-20", "2026-08-17"), 3);
+  });
+
+  it("goes negative once the date has passed", () => {
+    // "2 days overdue" is a different sentence from "in -2 days", and the
+    // round header needs the sign to pick between them.
+    assert.equal(daysUntil("2026-08-17", "2026-08-20"), -3);
+  });
+
+  it("crosses a month boundary", () => {
+    assert.equal(daysUntil("2026-09-02", "2026-08-30"), 3);
+  });
+
+  it("crosses a year boundary", () => {
+    assert.equal(daysUntil("2027-01-02", "2026-12-30"), 3);
+  });
+
+  it("counts whole days across a DST-free zone shift it never sees", () => {
+    // Both arguments are calendar days and are parsed as UTC midnights, so the
+    // machine running this cannot change the answer — the same property
+    // isoDayFrom gets by adding milliseconds rather than calling setDate. The
+    // zone question was already settled by whoever produced `today`.
+    assert.equal(daysUntil("2026-03-30", "2026-03-27"), 3);
   });
 });

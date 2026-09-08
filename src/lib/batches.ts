@@ -732,3 +732,36 @@ export async function markGroupSent(
     )
     .where(inArray(schema.requests.id, requestIds));
 }
+
+/**
+ * Record that one teacher was chased about everything she still owes.
+ *
+ * EVERY LINK ON HER CARD, because the reminder carried all of them — the same
+ * rule and the same statement shape as markGroupSent above, and the reason
+ * lib/reminders.ts collapses her groups into one message in the first place.
+ *
+ * INCREMENT-ONLY, WHICH IS WHERE IT PARTS COMPANY WITH markGroupSent. That one
+ * takes a boolean because "sent" means "WhatsApp opened" and the tick has to be
+ * takeable back for that claim to be honest. A reminder has either gone or it
+ * has not; there is no state to restore, and the count is the fact that earns
+ * its keep afterwards — a teacher on her third nudge needs a phone call rather
+ * than a fourth message, and only the number can tell the office that.
+ *
+ * The increment is done in SQL rather than read-modify-written in TypeScript,
+ * so two people chasing the same round from two phones cannot lose one of the
+ * two counts between the read and the write.
+ */
+export async function markGroupReminded(
+  requestIds: string[],
+  userId: string,
+): Promise<void> {
+  if (requestIds.length === 0) return;
+  await db
+    .update(schema.requests)
+    .set({
+      remindedAt: new Date(),
+      remindedBy: userId,
+      remindCount: sql`${schema.requests.remindCount} + 1`,
+    })
+    .where(inArray(schema.requests.id, requestIds));
+}

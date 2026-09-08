@@ -6,10 +6,12 @@ import { db, schema } from "../src/lib/db";
 import {
   createBatch,
   getBatch,
+  markGroupReminded,
   markSent,
   previewBatch,
   resumeBatch,
 } from "../src/lib/batches";
+import { listRequests } from "../src/lib/requests";
 
 /**
  * The fan-out, against the real database.
@@ -297,6 +299,45 @@ describe("the send queue", () => {
       0,
       "the tick must be reversible — opening WhatsApp is not proof she sent it",
     );
+  });
+});
+
+describe("recording that a teacher was chased", () => {
+  test("stamps every link on her card and counts up, never down", async () => {
+    const scenario = await createFanOutScenario();
+    const result = await createBatch({
+      title: "Phone check",
+      audience: { classes: scenario.groups.map((g) => g.classLabel) },
+      fieldKeys: ["phone"],
+      dueDate: futureDate(),
+      recipientMode: "class_teacher",
+      createdBy: scenario.userId,
+    });
+
+    const ids = result.created.map((row) => row.requestId);
+    const before = await listRequests({ batchId: result.batchId });
+    assert.ok(
+      before.every((row) => row.remindCount === 0 && row.remindedAt === null),
+      "a fresh round starts unchased",
+    );
+
+    // Every id at once, because the message she received carried all of them.
+    await markGroupReminded(ids, scenario.userId);
+    const once = await listRequests({ batchId: result.batchId });
+    assert.ok(once.every((row) => row.remindCount === 1));
+    assert.ok(once.every((row) => row.remindedAt !== null));
+
+    // INCREMENT-ONLY, which is the whole difference from the sent tick above.
+    // A reminder that has gone cannot be un-sent, and a teacher on her third
+    // needs a phone call rather than a fourth message — so the count has to
+    // survive being chased again.
+    await markGroupReminded(ids, scenario.userId);
+    const twice = await listRequests({ batchId: result.batchId });
+    assert.ok(twice.every((row) => row.remindCount === 2));
+  });
+
+  test("does nothing at all for an empty list", async () => {
+    await markGroupReminded([], "nobody");
   });
 });
 

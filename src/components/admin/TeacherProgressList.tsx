@@ -1,13 +1,8 @@
 import Link from "next/link";
-import type { Bucket, ProgressForm, TeacherProgress } from "@/lib/progress";
-import {
-  buildRoundReminderMessage,
-  buildWhatsAppLink,
-  teacherPageUrl,
-} from "@/lib/whatsapp";
-import { toReminder } from "@/lib/reminders";
-import { btn } from "@/components/ui/controls";
+import type { Bucket, TeacherProgress } from "@/lib/progress";
 import { ProgressBar } from "./ProgressBar";
+import { RemindButton } from "./RemindButton";
+import { TONE, toneOf } from "./progress-tone";
 
 /**
  * How far each teacher has got, and one way to chase her.
@@ -31,55 +26,15 @@ import { ProgressBar } from "./ProgressBar";
  * the same bug, larger.
  */
 
-type Tone = "unsent" | "waiting" | "progress" | "overdue" | "done";
-
 /**
- * Every state carries a WORD. Colour is never the sole carrier — the office
- * reads this on a phone in a corridor, and somebody who cannot separate the
- * amber from the red still has to know who to chase.
- */
-const TONE: Record<Tone, { label: string; pill: string; bar: string }> = {
-  unsent: {
-    label: "not sent",
-    pill: "bg-[var(--color-surface-muted)] text-[var(--color-ink-muted)]",
-    bar: "bg-[var(--color-border)]",
-  },
-  waiting: {
-    label: "not started",
-    pill: "bg-[var(--color-surface-muted)] text-[var(--color-ink-muted)]",
-    bar: "bg-[var(--color-border)]",
-  },
-  progress: {
-    label: "in progress",
-    pill: "bg-[var(--color-correct-bg)] text-[var(--color-correct-fg)]",
-    bar: "bg-[var(--color-warning)]",
-  },
-  overdue: {
-    label: "overdue",
-    pill: "bg-[var(--color-danger-bg)] text-[var(--color-danger)]",
-    bar: "bg-[var(--color-danger)]",
-  },
-  done: {
-    label: "complete",
-    pill: "bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]",
-    bar: "bg-[var(--color-success)]",
-  },
-};
-
-/**
- * "Not sent" outranks everything except being finished.
+ * The tone table and toneOf MOVED to ./progress-tone.
  *
- * A link the office never handed over is not a teacher who has not started, and
- * saying "not started" about it puts the blame on the wrong person. Done still
- * wins over it, because an answered link that was somehow never marked sent is
- * finished either way and there is nothing to do about it.
+ * The round page shows the same six states about the same links, and a second
+ * copy of "which word goes with which colour" is how the three separate colour
+ * policies that ProgressBar's header complains about came about in the first
+ * place. It also gained a sixth state there — "not opened" — which this screen
+ * gets for free by importing rather than by being edited to match.
  */
-function toneOf(form: ProgressForm): Tone {
-  if (form.done) return "done";
-  if (!form.sent) return "unsent";
-  if (form.overdue) return "overdue";
-  return form.answered > 0 ? "progress" : "waiting";
-}
 
 export function TeacherProgressList({
   teachers,
@@ -212,59 +167,5 @@ function Count({ label, bucket }: { label: string; bucket: Bucket }) {
         {bucket.answered}/{bucket.students}
       </span>
     </span>
-  );
-}
-
-/**
- * The nudge, addressed to her, carrying everything she still owes.
- *
- * A real link rather than a handler, so the tap goes straight to that teacher's
- * WhatsApp chat. Nothing when she has nothing outstanding — toReminder returns
- * null, and a Remind button on a finished teacher is a message with no content.
- */
-function RemindButton({
-  teacher,
-  origin,
-}: {
-  teacher: TeacherProgress;
-  origin: string;
-}) {
-  const reminder = toReminder(teacher);
-  if (!reminder) return null;
-
-  const href = buildWhatsAppLink(
-    reminder.phone,
-    buildRoundReminderMessage({
-      teacherName: reminder.teacherName,
-      // Her durable page when she has one: it already carries every form, so
-      // sending it instead of N per-request links is the same collapse this
-      // component does on screen.
-      teacherPageUrl: reminder.linkToken
-        ? teacherPageUrl(origin, reminder.linkToken)
-        : undefined,
-      items: reminder.forms.map((form) => ({
-        audience: {
-          kind: form.audienceKind,
-          label: form.audienceLabel,
-          fieldKeys: form.fieldKeys,
-        },
-        title: form.title,
-        dueDate: form.dueDate,
-        url: `${origin}/r/${form.token}`,
-        answered: form.answered,
-        rosterSize: form.rosterSize,
-      })),
-    }),
-  );
-
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer noopener"
-      className={`${btn()} shrink-0 px-3 text-[13px]`}
-    >
-      Remind
-    </a>
   );
 }

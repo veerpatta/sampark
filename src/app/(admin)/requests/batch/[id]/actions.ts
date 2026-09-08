@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { canCreateRequests, requireUser } from "@/lib/auth/session";
-import { markGroupSent, resumeBatch } from "@/lib/batches";
+import { markGroupReminded, markGroupSent, resumeBatch } from "@/lib/batches";
 
 /**
  * Record that one teacher's message was handed over — or take the tick back.
@@ -21,6 +21,31 @@ export async function setGroupSent(
   }
 
   await markGroupSent(requestIds, user.id, sent);
+  revalidatePath(`/requests/batch/${batchId}`);
+}
+
+/**
+ * Record that one teacher was chased about everything she owes in this round.
+ *
+ * Takes every request id on her card, for the reason setGroupSent above does:
+ * the nudge carried all of them, so all of them are equally chased.
+ *
+ * NO BOOLEAN, unlike setGroupSent. A send tick has to be takeable back for
+ * "WhatsApp opened" to be an honest claim; a reminder that has gone cannot be
+ * un-sent. What the queue reads instead is WHEN — it asks whether reminded_at
+ * falls on today's school date — so a new day empties the queue with nobody
+ * having to remember to reset anything. See markGroupReminded.
+ */
+export async function recordReminded(
+  requestIds: string[],
+  batchId: string,
+): Promise<void> {
+  const user = await requireUser();
+  if (!canCreateRequests(user.role)) {
+    throw new Error("Your role cannot send requests.");
+  }
+
+  await markGroupReminded(requestIds, user.id);
   revalidatePath(`/requests/batch/${batchId}`);
 }
 

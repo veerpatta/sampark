@@ -1,7 +1,5 @@
-"use client";
-
-import { useState } from "react";
 import { btn, card, eyebrow } from "@/components/ui/controls";
+import { CopyButton } from "@/components/ui/CopyButton";
 
 /**
  * The share panel.
@@ -9,6 +7,13 @@ import { btn, card, eyebrow } from "@/components/ui/controls";
  * v1 is copy-paste on purpose (plan section 11): the office copies the message
  * and sends it from their own WhatsApp. Automated sending waits until the
  * manual flow is proven.
+ *
+ * A SERVER COMPONENT since the two copy buttons became CopyButton. It was only
+ * ever "use client" for the two-second "Copied" label, and the inline version
+ * it used carried a real bug: `navigator.clipboard` is undefined on an insecure
+ * origin, so the property access threw inside a `try` with an empty `catch` and
+ * the button silently did nothing for ever. CopyButton says so on screen
+ * instead.
  */
 export function SharePanel({
   url,
@@ -30,19 +35,6 @@ export function SharePanel({
   /** True once she has started, so the message becomes a nudge not a first ask. */
   reminder: boolean;
 }) {
-  const [copied, setCopied] = useState<"link" | "message" | null>(null);
-
-  async function copy(text: string, which: "link" | "message") {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(which);
-      setTimeout(() => setCopied(null), 2000);
-    } catch {
-      // Clipboard access can be refused; the text is on screen and selectable,
-      // so there is nothing to recover from.
-    }
-  }
-
   return (
     <section className={`${card()} p-4 md:p-6`}>
       <h2 className={eyebrow()}>
@@ -62,13 +54,7 @@ export function SharePanel({
         <code className="min-w-0 flex-1 break-all rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 font-mono text-xs">
           {url}
         </code>
-        <button
-          type="button"
-          onClick={() => copy(url, "link")}
-          className={`${btn()} px-3`}
-        >
-          {copied === "link" ? "Copied" : "Copy link"}
-        </button>
+        <CopyButton text={url} label="Copy link" />
       </div>
 
       <p className="mt-4 text-xs font-medium text-[var(--color-ink-muted)]">
@@ -94,13 +80,7 @@ export function SharePanel({
         >
           {reminder ? "Nudge on WhatsApp" : "Send on WhatsApp"}
         </a>
-        <button
-          type="button"
-          onClick={() => copy(message, "message")}
-          className={`${btn()} px-3`}
-        >
-          {copied === "message" ? "Copied" : "Copy message"}
-        </button>
+        <CopyButton text={message} label="Copy message" />
       </div>
 
       <p className="mt-3 text-xs text-[var(--color-ink-muted)]">

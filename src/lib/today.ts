@@ -64,3 +64,25 @@ export function todayISO(now: Date = new Date()): string {
 export function isoDayFrom(now: Date, days: number): string {
   return isoDay(new Date(now.getTime() + days * 24 * 60 * 60 * 1000));
 }
+
+/**
+ * Whole calendar days from today to a due date. Negative once it has passed.
+ *
+ * Both arguments are YYYY-MM-DD calendar days, never instants, so this is
+ * arithmetic on dates and not on time. Parsed as UTC midnights — `Date.UTC`
+ * rather than `new Date("2026-09-12")`, which some engines read as local — for
+ * the same reason isoDayFrom adds milliseconds rather than calling setDate: the
+ * machine's own zone must not be able to change the answer. The zone question
+ * has already been settled by the time a caller gets here, because `today` came
+ * from todayISO() above.
+ *
+ * "3 days left" and "2 days overdue" are the words on the round header, and a
+ * date on its own could not produce either.
+ */
+export function daysUntil(dueDate: string, today: string = todayISO()): number {
+  const utc = (day: string) => {
+    const [y, m, d] = day.split("-").map(Number);
+    return Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1);
+  };
+  return Math.round((utc(dueDate) - utc(today)) / 86_400_000);
+}

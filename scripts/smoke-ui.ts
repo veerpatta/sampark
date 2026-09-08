@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import { eq, inArray, like } from "drizzle-orm";
 import ExcelJS from "exceljs";
 import { db, schema } from "../src/lib/db";
-import { createRequest, listRequests } from "../src/lib/requests";
+import {
+  createRequest,
+  listMissingForBatch,
+  listRequests,
+} from "../src/lib/requests";
+import { markGroupReminded } from "../src/lib/batches";
+import { titleCaseName } from "../src/lib/classes";
 import { TEST_PREFIX, TEST_USER } from "../drizzle/seed/test-school";
 import { mintSessionCookie } from "./test-session";
 
@@ -479,6 +485,73 @@ async function main() {
     assert.ok(text.includes("Class 9") && text.includes("Class 10"));
     assert.ok(text.includes("Still waiting"), "the round cannot be chased");
     return "both groups, with a nudge card";
+  });
+
+  await step("the round says how far it has got", async () => {
+    const text = visibleText(
+      await (await signedIn(`/requests/batch/${roundBatchId}`)).text(),
+    );
+    // A REGEX, NEVER A LITERAL COUNT. The fixture school's sizes are allowed
+    // to change; a hard-coded number would fail on something that is not a
+    // regression, which is the lesson the rest of this file already carries.
+    assert.match(
+      text,
+      /\d+ of \d+ children answered for/,
+      "the round page cannot say how far it has got",
+    );
+    assert.match(text, /still to go|Everything is in/);
+    assert.match(text, /\d+ of \d+ groups complete/);
+    assert.ok(text.includes("Group by group"), "no per-group breakdown");
+    return "children answered, groups complete, per group";
+  });
+
+  await step("it names the children who are still missing", async () => {
+    // THE ASSERTION THAT CATCHES A PANEL RENDERING BUT LISTING NOBODY. The
+    // count could be right while the list is silently empty, and the list is
+    // the whole point — it is what the office pastes into WhatsApp.
+    const missing = await listMissingForBatch(roundBatchId);
+    assert.ok(missing.length > 0, "nothing outstanding to name");
+    const child = missing[0]!.students[0];
+    assert.ok(child, "a group is listed as short but names nobody");
+
+    const text = visibleText(
+      await (await signedIn(`/requests/batch/${roundBatchId}`)).text(),
+    );
+    assert.ok(
+      text.includes(titleCaseName(child.name)),
+      `the missing list does not name ${child.name}`,
+    );
+    // Title-cased, exactly as every other rendering of a name is. 483 of the
+    // school's 504 names are stored in capitals.
+    assert.ok(
+      !text.includes(child.name.toUpperCase()) ||
+        child.name === titleCaseName(child.name),
+      "a name reached the office in capitals",
+    );
+    return `names ${titleCaseName(child.name)} and ${missing.length - 1} more groups`;
+  });
+
+  await step("chasing a teacher is recorded, and shows", async () => {
+    const before = visibleText(
+      await (await signedIn(`/requests/batch/${roundBatchId}`)).text(),
+    );
+    assert.match(before, /0 of \d+ chased today/, "the round starts unchased");
+
+    // One teacher's whole card, exactly as the button does — the message she
+    // receives carries every link she holds.
+    const rows = await listRequests({ batchId: roundBatchId });
+    const first = rows[0]!;
+    const hers = rows
+      .filter((row) => row.teacherId === first.teacherId)
+      .map((row) => row.id);
+    await markGroupReminded(hers, TEST_USER.id);
+
+    const after = visibleText(
+      await (await signedIn(`/requests/batch/${roundBatchId}`)).text(),
+    );
+    assert.doesNotMatch(after, /0 of \d+ chased today/, "the chase did not register");
+    assert.ok(after.includes("chased 1"), "the chase count is not shown");
+    return "chased once, and the queue says so";
   });
 
   await step("a link inside the round links back to it", async () => {

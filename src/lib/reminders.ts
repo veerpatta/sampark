@@ -30,6 +30,10 @@ export type PendingForm = {
   answered: number;
   rosterSize: number;
   overdue: boolean;
+  /** The office handed it over. */
+  sent: boolean;
+  /** She opened it. A sent-but-never-opened link is a different problem. */
+  opened: boolean;
 };
 
 export type TeacherReminder = {
@@ -48,6 +52,16 @@ export type TeacherReminder = {
   overdue: boolean;
   /** Children still unanswered for across every form she owes. */
   outstanding: number;
+  /**
+   * How many times she has been chased already, and when last.
+   *
+   * The maximum across her links, never the sum — see the note on
+   * TeacherProgress. It is what lets a chase queue say "chased 2×" rather than
+   * presenting a teacher on her third reminder identically to one nobody has
+   * spoken to.
+   */
+  remindCount: number;
+  remindedAt: Date | null;
 };
 
 /**
@@ -109,11 +123,24 @@ export function toReminder(entry: TeacherProgress): TeacherReminder | null {
       answered: form.answered,
       rosterSize: form.rosterSize,
       overdue: form.overdue,
+      sent: form.sent,
+      opened: form.opened,
     })),
     overdue: forms.some((form) => form.overdue),
     outstanding: forms.reduce(
       (sum, form) => sum + Math.max(0, form.rosterSize - form.answered),
       0,
+    ),
+    // Read off the OUTSTANDING forms, not off the entry: a teacher whose only
+    // chased link is the one she has since finished has not been chased about
+    // what she still owes.
+    remindCount: forms.reduce((most, form) => Math.max(most, form.remindCount), 0),
+    remindedAt: forms.reduce<Date | null>(
+      (latest, form) =>
+        form.remindedAt !== null && (latest === null || form.remindedAt > latest)
+          ? form.remindedAt
+          : latest,
+      null,
     ),
   };
 }
