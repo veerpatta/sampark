@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { btn, field } from "@/components/ui/controls";
+import { btn, chip, field } from "@/components/ui/controls";
 import { useToast } from "@/components/ui/Toast";
 import { saveOfficeNumber } from "./actions";
 
@@ -63,17 +63,30 @@ export function OfficeForm({
       </div>
 
       <fieldset>
-        <legend className="text-label font-medium">Message language</legend>
-        <div className="mt-1 flex gap-3">
+        <legend className="text-sm font-medium">Message language</legend>
+        {/*
+         * Chips over bare radios, for the reason the teacher editor uses them:
+         * a 13px radio beside a 13px word is a 13px target, and this screen is
+         * worked from a phone. The radio is still the control — it is
+         * `sr-only` under a `<label>`, so the keyboard and a screen reader get
+         * the real thing and a thumb gets 44px of it. Same pattern as
+         * FilterBar.
+         */}
+        <div className="mt-2 flex gap-2">
           {(["hi", "en"] as const).map((code) => (
-            <label key={code} className="flex items-center gap-2">
+            <label key={code} className="flex-1 sm:flex-none">
               <input
                 type="radio"
                 name="language"
                 value={code}
                 defaultChecked={(office?.language ?? "hi") === code}
+                className="peer sr-only"
               />
-              <span className="text-sm">{code === "hi" ? "Hindi" : "English"}</span>
+              <span
+                className={`${chip()} w-full cursor-pointer peer-checked:border-[var(--color-brand-600)] peer-checked:bg-[var(--color-brand-50)] peer-checked:text-[var(--color-brand-600)] peer-focus-visible:outline-solid peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--color-brand-600)]`}
+              >
+                {code === "hi" ? "Hindi" : "English"}
+              </span>
             </label>
           ))}
         </div>
@@ -86,7 +99,7 @@ export function OfficeForm({
       <button
         type="submit"
         disabled={pending}
-        className={`${btn({ tone: "primary" })} w-full md:w-auto`}
+        className={`${btn({ tone: "primary", full: true })} sm:w-auto`}
       >
         {pending ? "Saving…" : office ? "Save" : "Set the office number"}
       </button>

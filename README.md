@@ -748,6 +748,20 @@ The master screen also opens remaining-first — the blanks/known split is
 unchanged, but the already-done section starts collapsed behind a counted button
 — and carries a class jump bar saying how much of each register is left.
 
+**It is a phone screen, because it renders on the phone surface.** The office
+opens the master link on a laptop often and in a corridor often enough, and the
+two want opposite things from one block: dropping and pasting are pointer verbs
+and their copy is hidden below `md`, so nothing on a phone tells you to do
+something you cannot, while the button that works everywhere is full width and
+56px. The drop zone speaks **both languages** like everything else on that
+surface — an English-only block in the middle of a bilingual list reads as
+something half-built — so its words live in `teacher/strings.ts` with the rest.
+The class jump bar is the one thing on the surface that scrolls sideways, and it
+is a rail rather than a page: full-bleed, snap, scroll padding, and each chip
+capped at `60vw` so one can never be wider than the screen it has to be scrolled
+past. Verified at 320px and 1280px — the page itself never scrolls sideways at
+either.
+
 ### The office's standing page
 
 `/t/<token>` on the office's own row: one link, saved once, listing every open

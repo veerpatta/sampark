@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { btn, field } from "@/components/ui/controls";
+import { btn, eyebrow, field, mono } from "@/components/ui/controls";
 import { useCopy } from "@/components/ui/useCopy";
 import { useToast } from "@/components/ui/Toast";
 import { buildRequestMessage, buildWhatsAppLink } from "@/lib/whatsapp";
@@ -29,6 +29,12 @@ import {
  * "Open in WhatsApp instead" IS NEVER REMOVED, the same rule every other send
  * on this page follows: it is the path for a number the API refuses, a day a
  * template is paused, and a deployment with no key.
+ *
+ * ONE COLUMN ON A PHONE, AND EVERY CONTROL FULL WIDTH. The console is worked
+ * one-handed in a corridor: four buttons wrapped into a ragged two-by-two grid
+ * is four targets whose position changes with the width of their own labels.
+ * They stack to full width below `sm` and return to a row above it, which is
+ * the same rule RoundShare follows one card down.
  */
 export function MasterLinkCard({
   batchId,
@@ -80,8 +86,9 @@ export function MasterLinkCard({
   if (!token) {
     return (
       <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-card">
-        <h2 className="text-label font-medium">No master link for this round</h2>
-        <p className="mt-1 text-meta text-[var(--color-ink-muted)]">
+        <h2 className={eyebrow()}>Master link</h2>
+        <p className="mt-1 text-sm font-medium">None for this round</p>
+        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
           A master link opens every class in the round at once, so the office can
           finish what the teachers have not. Rounds sent to subject teachers
           never get one — every other kind does, once an office number is set.
@@ -102,7 +109,7 @@ export function MasterLinkCard({
               }
             })
           }
-          className={`${btn({ tone: "primary" })} mt-3 w-full md:w-auto`}
+          className={`${btn({ tone: "primary", full: true })} mt-3 sm:w-auto`}
         >
           {pending ? "Making…" : "Make one"}
         </button>
@@ -112,13 +119,12 @@ export function MasterLinkCard({
 
   return (
     <section className="rounded-[var(--radius-card)] border border-[var(--color-brand-200)] bg-[var(--color-surface)] p-4 shadow-card">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-label font-medium">Master link · all classes</h2>
-        <span className="font-mono text-meta text-[var(--color-ink-muted)]">
-          {master?.rosterSize ?? 0} children
-        </span>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 className={eyebrow()}>Master link · all classes</h2>
+        <span className={mono()}>{master?.rosterSize ?? 0} children</span>
       </div>
-      <p className="mt-1 text-meta text-[var(--color-ink-muted)]">
+
+      <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
         One address over every class in this round. It opens with no login and
         dies when the round is closed.
       </p>
@@ -130,15 +136,17 @@ export function MasterLinkCard({
           : "Not sent yet — it was made, but no message has gone out."}
       </p>
 
+      {/* break-all, because a 16-character token after a long origin has no
+          space in it to wrap at and would otherwise push the card sideways. */}
       <p className="mt-3 break-all rounded-[var(--radius-control)] bg-[var(--color-surface-muted)] px-3 py-2 font-mono text-meta">
         {url}
       </p>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap">
         <button
           type="button"
           onClick={() => copy("master", url!)}
-          className={btn({ tone: "quiet" })}
+          className={btn({ tone: "quiet", full: true }) + " sm:w-auto"}
         >
           {copiedKey === "master" ? "Copied" : "Copy link"}
         </button>
@@ -146,7 +154,7 @@ export function MasterLinkCard({
           href={buildWhatsAppLink(typed || officePhone || "", message)}
           target="_blank"
           rel="noreferrer"
-          className={btn({ tone: "quiet" })}
+          className={btn({ tone: "quiet", full: true }) + " sm:w-auto"}
         >
           Open in WhatsApp instead
         </a>
@@ -154,7 +162,7 @@ export function MasterLinkCard({
 
       <div className="mt-4 border-t border-[var(--color-border)] pt-4">
         <label className="block">
-          <span className="text-label font-medium">Send it to a number</span>
+          <span className="text-sm font-medium">Send it to a number</span>
           <span className="mt-0.5 block text-meta text-[var(--color-ink-muted)]">
             The office&rsquo;s own number is filled in. Change it to send this to
             whoever is doing the round.
@@ -164,6 +172,7 @@ export function MasterLinkCard({
             onChange={(event) => setPhone(event.target.value)}
             inputMode="tel"
             placeholder="9XXXXXXXXX"
+            aria-label="Number to send the master link to"
             className={`${field({ invalid: phone !== "" && !sendable })} mt-2 font-mono`}
           />
         </label>
@@ -182,7 +191,7 @@ export function MasterLinkCard({
               if (outcome.ok) show({ message: `Sent to ${typed}.` });
             })
           }
-          className={`${btn({ shape: "commit", tone: "go" })} mt-3 w-full md:w-auto`}
+          className={`${btn({ shape: "commit", tone: "go", full: true })} mt-3 sm:w-auto`}
         >
           {pending ? "Sending…" : "Send on WhatsApp"}
         </button>
@@ -196,7 +205,17 @@ export function MasterLinkCard({
       </div>
 
       {canRotate ? (
-        <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+        <details className="mt-4 border-t border-[var(--color-border)] pt-3">
+          {/* Folded away. It is the rarest control on the card and the only
+              destructive one, and an always-visible red button beside three
+              ordinary ones is a thing somebody eventually taps by accident. */}
+          <summary className="flex min-h-[var(--tap-min)] cursor-pointer list-none items-center text-sm text-[var(--color-ink-muted)]">
+            The link went somewhere it should not have
+          </summary>
+          <p className="mt-1 text-meta text-[var(--color-ink-muted)]">
+            Rotating replaces the address. The old one stops working
+            immediately, and anyone still on it loses an unsaved page.
+          </p>
           <button
             type="button"
             disabled={pending}
@@ -210,16 +229,11 @@ export function MasterLinkCard({
                 }
               })
             }
-            className={btn({ tone: "danger" })}
+            className={`${btn({ tone: "danger", full: true })} mt-2 sm:w-auto`}
           >
             Rotate the address
           </button>
-          <p className="mt-1 text-meta text-[var(--color-ink-muted)]">
-            For a link that reached somebody it should not have. The old address
-            stops working immediately, and anyone still using it loses an
-            unsaved page.
-          </p>
-        </div>
+        </details>
       ) : null}
     </section>
   );

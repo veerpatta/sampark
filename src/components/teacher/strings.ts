@@ -84,6 +84,69 @@ export const T = {
     "कई फ़ोटो बाकी हैं। और लेने से पहले इंटरनेट से जुड़ जाएँ।",
   ),
 
+  /* ------------------------------------------- photos from a folder (bulk) */
+  /*
+   * THE MASTER LINK IS ON THIS SURFACE, SO IT SPEAKS THIS SURFACE'S LANGUAGE.
+   * It is opened by the office rather than by a class teacher, and the office
+   * reads English — but it renders inside the same bilingual page as every
+   * teacher's list, and one English-only block in the middle of it reads as
+   * something half-built. English on top, Hindi under, exactly as everywhere.
+   */
+  bulkHeading: p("Photos from a folder", "फ़ोल्डर से फ़ोटो"),
+  bulkChoose: p("Choose photos", "फ़ोटो चुनें"),
+  bulkHowPhone: p(
+    "Pick many at once. A file named with a student ID, SR number or the child's name is attached on its own.",
+    "एक साथ कई चुन सकते हैं। जिस फ़ाइल के नाम में छात्र ID, SR नंबर या बच्चे का नाम हो, वह अपने आप लग जाएगी।",
+  ),
+  bulkHowDesktop: p(
+    "Drop them here or paste them, or use the button.",
+    "यहाँ छोड़ें, पेस्ट करें, या बटन से चुनें।",
+  ),
+  bulkReading: (done: number, total: number) =>
+    p(`Reading ${done} of ${total}…`, `${total} में से ${done} पढ़ी जा रही हैं…`),
+  bulkAttached: (n: number) =>
+    p(
+      `${n} ${n === 1 ? "photo" : "photos"} attached and sending`,
+      `${n} फ़ोटो लग गईं और भेजी जा रही हैं`,
+    ),
+  /** The tray. Nothing here was guessed — that is the point of saying so. */
+  bulkTrayHeading: (n: number) =>
+    p(
+      `${n} ${n === 1 ? "file needs" : "files need"} a name`,
+      `${n} फ़ाइल के लिए बच्चा चुनना है`,
+    ),
+  bulkTrayWhy: p(
+    "These were not attached, because guessing would put a face on the wrong record.",
+    "ये अपने आप नहीं लगीं — अंदाज़े से गलत बच्चे पर फ़ोटो लग सकती थी।",
+  ),
+  bulkPickChild: p("Search by name, ID or SR", "नाम, ID या SR से खोजें"),
+  bulkNoClue: p(
+    "No student ID, SR number or name in the file name",
+    "फ़ाइल के नाम में न ID है, न SR नंबर, न बच्चे का नाम",
+  ),
+  bulkTwoFiles: p(
+    "More than one file in this drop is for the same child",
+    "इस बार की कई फ़ाइलें एक ही बच्चे की हैं",
+  ),
+  bulkTwoChildren: p(
+    "That name fits more than one child",
+    "यह नाम एक से ज़्यादा बच्चों से मिलता है",
+  ),
+  bulkUnreadable: (name: string) =>
+    p(`${name} could not be read as a photo`, `${name} फ़ोटो के रूप में नहीं खुली`),
+  bulkFull: p(
+    "That is as many as can wait at once. Add more as the number comes down.",
+    "इतनी ही एक साथ रुक सकती हैं। संख्या घटते ही और जोड़ें।",
+  ),
+  bulkRemoveFile: p("Remove", "हटाएँ"),
+
+  /* ------------------------------------------ the master link's jump bar */
+  jumpToClass: p("Jump to a class", "कक्षा पर जाएँ"),
+  classLeft: (n: number) => p(`${n} left`, `${n} बाकी`),
+  classAllDone: (n: number) => p(`all ${n}`, `पूरे ${n}`),
+  showDone: (n: number) =>
+    p(`Show the ${n} already on record`, `जो ${n} पहले से दर्ज हैं, दिखाएँ`),
+
   /* ----------------------------------------------------------- the form */
   markedCorrect: (n: number) =>
     p(`Marked ${n} as correct`, `${n} पर सही का निशान लगाया`),

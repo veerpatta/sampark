@@ -1145,25 +1145,40 @@ export function RequestForm({
           a bar when the link genuinely spans several — a class link's own label
           already says which one it is. */}
       {master && classCounts.length > 1 ? (
+        /*
+         * THE ONE PLACE ON THIS SURFACE THAT SCROLLS SIDEWAYS, and it is a rail
+         * rather than a page: full-bleed so the first chip starts at the screen
+         * edge and the last one can be reached, scroll-padding so a snapped
+         * chip is never flush against the frame, and snap so a thumb flick
+         * lands on a chip instead of between two. Nineteen classes will not fit
+         * across 320px in any layout, and stacking them would push the actual
+         * list below the fold on the screen whose whole point is the list.
+         */
         <nav
-          aria-label="Jump to a class"
-          className="-mx-4 flex gap-2 overflow-x-auto border-b border-[var(--color-border)] px-4 py-3"
+          aria-label={T.jumpToClass.en}
+          className="-mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto scroll-px-4 border-b border-[var(--color-border)] px-4 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {classCounts.map((entry) => (
             <a
               key={entry.label}
               href={`#class-${encodeURIComponent(entry.label)}`}
-              className={`flex min-h-12 shrink-0 items-center gap-2 rounded-[var(--radius-chip)] border px-3 text-sm ${
+              className={`flex min-h-12 shrink-0 snap-start flex-col justify-center rounded-[var(--radius-control)] border px-3 py-1 leading-tight transition-transform active:scale-[0.98] ${
                 entry.remaining > 0
                   ? "border-[var(--color-partial-border)] bg-[var(--color-surface)]"
                   : "border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
               }`}
             >
-              <span className="font-medium">{entry.label}</span>
-              <span className="font-mono text-meta">
+              {/* Capped and truncated. The nineteen real labels are short —
+                  "11 Commerce" is the longest — but a chip is only ever as wide
+                  as the string it is given, and one wider than the screen
+                  cannot be scrolled past to reach the next. */}
+              <span className="max-w-[60vw] truncate text-sm font-semibold">
+                {entry.label}
+              </span>
+              <span className="font-mono text-meta opacity-80">
                 {entry.remaining > 0
-                  ? `${entry.remaining} left`
-                  : `all ${entry.total}`}
+                  ? T.classLeft(entry.remaining).en
+                  : T.classAllDone(entry.total).en}
               </span>
             </a>
           ))}
@@ -1223,7 +1238,7 @@ export function RequestForm({
               onClick={() => setShowDone(true)}
               className="mt-3 min-h-14 w-full rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 font-medium transition-transform active:scale-[0.98]"
             >
-              Show the {known.length} already on record
+              <Bi t={T.showDone(known.length)} />
             </button>
           )}
         </section>
