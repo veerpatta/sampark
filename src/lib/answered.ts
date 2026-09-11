@@ -136,6 +136,86 @@ export function coveredStudentsInRound(requestIds: string[]) {
 }
 
 /**
+ * What OTHER links in the same round already hold for this request's roster.
+ *
+ * THE LAST MILE OF THE MASTER LINK, and without it the feature has a hole you
+ * can see from the corridor: the office photographs the six children a teacher
+ * never got to, the teacher opens her link that evening, and the camera opens
+ * on the same six. She takes them again. Two photographs of one child arrive in
+ * the review queue and somebody has to decide which is the real one — over work
+ * nobody needed to do.
+ *
+ * A SECOND FUNCTION RATHER THAN A WIDENING OF answersForRequest, deliberately.
+ * That one means "what SHE sent", and it is what seeds her sent-state; folding
+ * somebody else's work into it would make her client re-upload the office's
+ * answer under her token, which is both a lie about who said it and a duplicate
+ * row in an append-only table.
+ *
+ * IT DISCLOSES NOTHING THE TOKEN DOES NOT ALREADY OPEN. Scoped to this
+ * request's own frozen roster and this request's own field keys — so a teacher
+ * sees, about her own children and the fields she was asked about, a value the
+ * school already holds. That is the same thing the snapshot already showed her.
+ */
+export async function answersFromRoundMates(
+  requestId: string,
+  batchId: string | null,
+  fieldKeys: string[],
+): Promise<Map<string, Record<string, string | null>>> {
+  const out = new Map<string, Record<string, string | null>>();
+  // A one-off request has no round to have mates in, and nothing to ask.
+  if (!batchId || fieldKeys.length === 0) return out;
+
+  const siblings = db
+    .select({ id: schema.requests.id })
+    .from(schema.requests)
+    .where(
+      and(
+        eq(schema.requests.batchId, batchId),
+        sql`${schema.requests.id} <> ${requestId}`,
+      ),
+    );
+
+  const mine = db
+    .select({ studentId: schema.requestStudents.studentId })
+    .from(schema.requestStudents)
+    .where(eq(schema.requestStudents.requestId, requestId));
+
+  const rows = await db
+    .select({
+      studentId: schema.submissions.studentId,
+      fieldKey: schema.submissions.fieldKey,
+      action: schema.submissions.action,
+      newValue: schema.submissions.newValue,
+      oldValue: schema.submissions.oldValue,
+    })
+    .from(schema.submissions)
+    .where(
+      and(
+        inArray(schema.submissions.requestId, siblings),
+        inArray(schema.submissions.studentId, mine),
+        inArray(schema.submissions.fieldKey, fieldKeys),
+        // The office turned this one down, so it is not something the school
+        // holds — the same exclusion answersForRequest makes, for the same
+        // reason: showing a rejected answer back as done is a lie.
+        sql`${schema.submissions.reviewStatus} <> 'rejected'`,
+      ),
+    )
+    .orderBy(asc(schema.submissions.submittedAt));
+
+  // Last write wins, folded in TypeScript exactly as answersForRequest folds it.
+  for (const row of rows) {
+    // "Not in my class" is a statement about a roster, not a value, and it is
+    // not this teacher's roster being talked about. Skipped rather than merged.
+    if (row.action === "not_present" || row.action === "absent") continue;
+    const held = out.get(row.studentId) ?? {};
+    held[row.fieldKey] = row.action === "confirmed" ? row.oldValue : row.newValue;
+    out.set(row.studentId, held);
+  }
+
+  return out;
+}
+
+/**
  * Is every child on this roster answered for?
  *
  * THE ZERO GUARD IS THE WHOLE POINT. A request whose frozen roster is empty has

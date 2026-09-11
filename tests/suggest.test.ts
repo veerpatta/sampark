@@ -53,6 +53,7 @@ const student = (
   siblingPhone: null,
   values,
   answered: {},
+  elsewhere: {},
   notPresent: false,
 });
 

@@ -32,6 +32,16 @@ export type TeacherRosterRow = {
   house: string | null;
   /** Which class — a house or route link carries children from several. */
   classLabel: string | null;
+  /**
+   * What ANOTHER link in this round has collected for this child. Never hers.
+   *
+   * Required rather than optional, deliberately: the whole value of this field
+   * is that every question about whether a row is finished passes through
+   * knownValues, and an optional one would let a caller build a row without it
+   * and get the old, wrong answer with nothing to notice. See the fuller note
+   * on ResolvedRosterRow in lib/auth/token.ts.
+   */
+  elsewhere: Record<string, string | null>;
   fatherName: string | null;
   values: Record<string, string | null>;
   /**
@@ -63,9 +73,26 @@ export type TeacherRosterRow = {
  * has to treat them the same or the row comes back empty on the next reload.
  */
 export function knownValues(
-  student: Pick<TeacherRosterRow, "values" | "answered">,
+  student: Pick<TeacherRosterRow, "values" | "answered" | "elsewhere">,
 ): Record<string, string | null> {
-  return { ...student.values, ...student.answered };
+  /*
+   * THREE LAYERS, OLDEST FIRST, AND THE ORDER IS THE MEANING.
+   *
+   *   values     what we held when the link went out — the frozen snapshot
+   *   elsewhere  what another link in this round has collected since
+   *   answered   what SHE sent, which is the newest thing about her own work
+   *
+   * `elsewhere` sits in the middle because the office's master pass is newer
+   * than the snapshot and older than anything she has typed on this screen: if
+   * she corrects a value the office supplied, hers wins, which is the same
+   * last-write-wins rule the rest of this surface runs on.
+   *
+   * ONE MERGE, AND IT REACHES EVERYTHING. requiredByStudent, seedRow's
+   * `required` and StudentRow's own "still to fill" line all read through here,
+   * so a child the office photographed leaves the blanks group, the camera does
+   * not open on her, and nobody is asked to do the job twice.
+   */
+  return { ...student.values, ...student.elsewhere, ...student.answered };
 }
 
 /**
@@ -208,6 +235,23 @@ export function seedRow(
   }
 
   if (Object.keys(values).length === 0) {
+    /*
+     * SHE SENT NOTHING, BUT SOMEBODY ELSE DID.
+     *
+     * The office finished this child through the round's master link. The row
+     * owes nothing, so it must not sit in the blanks group with the camera
+     * open — and it must not be uploaded either, because she did not say it.
+     *
+     * `sent: true` with `values: {}` is exactly that pair: pickBatch skips a
+     * sent row, so nothing of the office's work is re-submitted under her
+     * token, and the empty values mean her client has no opinion to send. The
+     * row renders in the known group showing what the school holds, through
+     * knownValues, and she can still retake it if it is wrong.
+     */
+    const owed = requiredKeys({ values: knownValues(student) }, fields);
+    if (owed.length === 0 && Object.keys(student.elsewhere).length > 0) {
+      return { row: { status: "todo", values: {} }, sent: true };
+    }
     return { row: { status: "todo", values: {} }, sent: false };
   }
 

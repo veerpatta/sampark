@@ -131,7 +131,9 @@ export async function GET(
 ) {
   const { token } = await params;
 
-  const limited = await guard(request, token, "photos");
+  // Reads, not uploads: their own budget, so a long list of thumbnails cannot
+  // spend the allowance the office needs to upload with. See lib/ratelimit.ts.
+  const limited = await guard(request, token, "photo-reads");
   if (limited) return limited;
 
   const pathname = new URL(request.url).searchParams.get("p");

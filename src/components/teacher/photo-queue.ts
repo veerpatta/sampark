@@ -41,6 +41,33 @@ export type QueuedPhoto = {
 /** Above this she is told, rather than silently filling her phone. */
 export const QUEUE_CAP = 20;
 
+/**
+ * The same cap for the office, which is a different machine doing a different
+ * job.
+ *
+ * TWENTY IS RIGHT FOR A VILLAGE PHONE and wrong for the round's master link.
+ * A teacher queues photographs one at a time as she takes them, and twenty
+ * waiting means something is wrong with her signal — telling her is the kind
+ * thing. The office drops two hundred files from a folder in one gesture, and
+ * refusing at twenty would turn one drop into ten.
+ *
+ * At the 800px, quality-0.8 output of ui/downscale.ts a photo is about 100 KB,
+ * so three hundred is roughly 30 MB of blobs in IndexedDB — well inside any
+ * desktop quota, and the entries drain and delete as they go.
+ */
+export const MASTER_QUEUE_CAP = 300;
+
+/**
+ * The gap between two uploads while draining.
+ *
+ * 40 a minute, against a budget of 60 (LIMITS.perPhotoToken). The headroom is
+ * not politeness: a drop of two hundred that saturated the bucket would take
+ * the whole minute's allowance and start colliding with its own retries, which
+ * is slower than pacing as well as noisier. A teacher taking one photograph at
+ * a time never reaches this — she cannot press the shutter twice in 1.5s.
+ */
+export const MIN_UPLOAD_INTERVAL_MS = 1_500;
+
 /** Matches the draft's own age limit — a photo from last term is not wanted. */
 export const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -144,7 +171,8 @@ export const oldestFirst = (
   b: { capturedAt: number },
 ) => a.capturedAt - b.capturedAt;
 
-export const queueFull = (length: number) => length >= QUEUE_CAP;
+export const queueFull = (length: number, cap: number = QUEUE_CAP) =>
+  length >= cap;
 
 /**
  * Should the drain loop run right now?

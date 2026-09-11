@@ -235,6 +235,28 @@ describe("isListableOnTeacherPage", () => {
   test("one sensitive field is enough to keep the whole round off", () => {
     assert.equal(isListableOnTeacherPage(["phone", "aadhaar"]), false);
   });
+
+  /*
+   * THE OFFICE IS THE ONE EXCEPTION, and these two tests are the fence around
+   * it. The rule above exists because a durable page outlives its round and
+   * reaches several groups — true of the office's page too, except that the
+   * only thing it can list is the office's own master links, and whoever holds
+   * it already has a console login showing the same children behind a password.
+   *
+   * The second test is the one that matters: the exception is keyed on a
+   * column, on one row, and must never widen to a real teacher.
+   */
+  test("the office's own page may carry a photo or Aadhaar round", () => {
+    assert.equal(isListableOnTeacherPage(["photo"], true), true);
+    assert.equal(isListableOnTeacherPage(["aadhaar"], true), true);
+    assert.equal(isListableOnTeacherPage(["dob", "jan_aadhaar"], true), true);
+  });
+
+  test("and a teacher is still refused one, flag absent or false", () => {
+    assert.equal(isListableOnTeacherPage(["photo"]), false);
+    assert.equal(isListableOnTeacherPage(["photo"], false), false);
+    assert.equal(isListableOnTeacherPage(["aadhaar"], false), false);
+  });
 });
 
 describe("marking a grouped send", () => {

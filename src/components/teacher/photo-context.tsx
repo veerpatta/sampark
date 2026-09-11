@@ -11,12 +11,21 @@ import {
 import {
   dequeuePhoto,
   enqueuePhoto,
+  MIN_UPLOAD_INTERVAL_MS,
   pendingPhotos,
   queueFull,
   queueKey,
   shouldDrain,
   type QueuedPhoto,
 } from "./photo-queue";
+
+/** No Retry-After to go on: the same backoff RequestForm uses for a flush. */
+const DEFAULT_RETRY_SECONDS = 15;
+
+/** A ceiling, so a server that says "try in an hour" does not strand a tab. */
+const MAX_RETRY_SECONDS = 120;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Who owns a photograph between the shutter and the school.
@@ -68,12 +77,21 @@ export function PhotoProvider({
   token,
   online,
   onUploaded,
+  queueCap,
   children,
 }: {
   token: string;
   online: boolean;
   /** Called with the blob pathname once the school actually has the bytes. */
   onUploaded: (studentId: string, pathname: string) => void;
+  /**
+   * How many photos may wait before she is told to stop.
+   *
+   * Defaults to the phone's cap. The master link passes MASTER_QUEUE_CAP,
+   * because a folder of two hundred is one gesture there and ten refusals at
+   * twenty — see the note on both constants in photo-queue.ts.
+   */
+  queueCap?: number;
   children: React.ReactNode;
 }) {
   const [statuses, setStatuses] = useState<Record<string, PhotoStatus>>({});
@@ -88,6 +106,43 @@ export function PhotoProvider({
     setStatuses((current) => ({ ...current, [studentId]: status }));
   }, []);
 
+  /**
+   * A failed drain restarts itself, which it did not used to.
+   *
+   * THE BUG THIS CLOSES was invisible on the surface it was written for and
+   * fatal on the one added later. `drain` breaks out of its loop on the first
+   * failure, and the only things that ever called it again were mounting, going
+   * back online, and taking another photograph. On a teacher's phone the third
+   * of those is never far away, so a single 429 healed itself the next time she
+   * pressed the shutter. On a two-hundred-file drop there IS no next capture —
+   * the queue simply stopped, with everything still in it, saying "failed" and
+   * meaning "abandoned".
+   *
+   * `Retry-After` is what the server already sends with every 429 (see
+   * api/r/[token]/guard.ts); this is the first thing to read it. Anything else
+   * — no signal, a timeout, a 500 — gets a flat fifteen seconds, which is the
+   * same number RequestForm backs off by for the answer flush.
+   */
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastUploadAt = useRef(0);
+  const drainRef = useRef<() => void>(() => {});
+
+  const scheduleRetry = useCallback((error: unknown) => {
+    const seconds =
+      error instanceof UploadError && error.retryAfterSeconds
+        ? error.retryAfterSeconds
+        : DEFAULT_RETRY_SECONDS;
+
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+    retryTimer.current = setTimeout(
+      () => {
+        retryTimer.current = null;
+        drainRef.current();
+      },
+      Math.max(1, Math.min(seconds, MAX_RETRY_SECONDS)) * 1000,
+    );
+  }, []);
+
   /* ----------------------------------------------------------- the drain */
   const drain = useCallback(async () => {
     if (inFlight.current) return;
@@ -100,15 +155,27 @@ export function PhotoProvider({
       // Oldest first, one at a time, and stop at the first failure rather than
       // marching through twenty on a link that has just proved it is down.
       for (const photo of queue) {
+        // PACED. Two hundred files dropped at once would otherwise spend the
+        // whole minute's upload budget and start colliding with their own
+        // retries. A teacher taking one photograph at a time never waits here:
+        // she cannot press the shutter twice inside the interval.
+        const since = Date.now() - lastUploadAt.current;
+        if (since < MIN_UPLOAD_INTERVAL_MS) {
+          await sleep(MIN_UPLOAD_INTERVAL_MS - since);
+        }
+
         setStatus(photo.studentId, { state: "uploading", percent: 0 });
         let pathname: string;
         try {
           pathname = await upload(token, photo, (percent) =>
             setStatus(photo.studentId, { state: "uploading", percent }),
           );
-        } catch {
+        } catch (error) {
           setStatus(photo.studentId, { state: "failed" });
+          scheduleRetry(error);
           break;
+        } finally {
+          lastUploadAt.current = Date.now();
         }
         await dequeuePhoto(photo.key);
         setStatus(photo.studentId, { state: "idle" });
@@ -118,7 +185,19 @@ export function PhotoProvider({
       inFlight.current = false;
       setWaiting((await pendingPhotos(token)).length);
     }
-  }, [token, setStatus]);
+  }, [token, setStatus, scheduleRetry]);
+
+  // So the retry timer can reach the CURRENT drain without being rebuilt every
+  // time drain's identity changes — which would restart the timer with it.
+  drainRef.current = () => void drain();
+
+  // A pending retry must not outlive the surface that scheduled it.
+  useEffect(
+    () => () => {
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+    },
+    [],
+  );
 
   /* --------------------------------------------------------- the capture */
   const capture = useCallback(
@@ -234,7 +313,7 @@ export function PhotoProvider({
         capture,
         statusFor: (studentId) => statuses[studentId] ?? { state: "idle" },
         previewFor: (studentId) => previews[studentId] ?? null,
-        full: queueFull(waiting),
+        full: queueFull(waiting, queueCap),
       }}
     >
       {children}
@@ -268,8 +347,8 @@ function upload(
         onProgress(Math.round((event.loaded / event.total) * 100));
       }
     };
-    request.onerror = () => reject(new Error("No signal."));
-    request.ontimeout = () => reject(new Error("Timed out."));
+    request.onerror = () => reject(new UploadError("No signal."));
+    request.ontimeout = () => reject(new UploadError("Timed out."));
     request.onload = () => {
       const pathname = (request.response as { pathname?: string } | null)
         ?.pathname;
@@ -277,8 +356,33 @@ function upload(
         resolve(pathname);
         return;
       }
-      reject(new Error(`Upload refused (${request.status}).`));
+      // The server says how long to wait; the queue is what listens. Without
+      // carrying this out of here a 429 was indistinguishable from a dead link.
+      const header = request.getResponseHeader("retry-after");
+      const retryAfter = header ? Number(header) : NaN;
+      reject(
+        new UploadError(`Upload refused (${request.status}).`, {
+          status: request.status,
+          retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : null,
+        }),
+      );
     };
     request.send(body);
   });
+}
+
+/** An upload that failed, and what the server said about trying again. */
+class UploadError extends Error {
+  readonly status: number | null;
+  readonly retryAfterSeconds: number | null;
+
+  constructor(
+    message: string,
+    info?: { status?: number; retryAfterSeconds?: number | null },
+  ) {
+    super(message);
+    this.name = "UploadError";
+    this.status = info?.status ?? null;
+    this.retryAfterSeconds = info?.retryAfterSeconds ?? null;
+  }
 }

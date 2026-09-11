@@ -55,6 +55,7 @@ const row = (values: Record<string, string | null>): TeacherRosterRow => ({
   fatherName: null,
   siblingPhone: null,
   answered: {},
+  elsewhere: {},
   notPresent: false,
   values,
 });

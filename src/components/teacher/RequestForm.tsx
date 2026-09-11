@@ -26,6 +26,8 @@ import { canCarryDown, suggestForRow } from "./suggest";
 import { Bi } from "./Bi";
 import { watchKeyboard } from "./focus";
 import { PhotoProvider } from "./photo-context";
+import { BulkPhotoDrop } from "./BulkPhotoDrop";
+import { MASTER_QUEUE_CAP } from "./photo-queue";
 import { T, type Phrase } from "./strings";
 import {
   COMPLETE,
@@ -136,10 +138,26 @@ export function RequestForm({
   token,
   fields,
   roster,
+  master = false,
 }: {
   token: string;
   fields: TeacherField[];
   roster: TeacherRosterRow[];
+  /**
+   * This is the round's master link, not a teacher's.
+   *
+   * ONE PROP, AND IT REACHES StudentRow THROUGH NONE OF ITS OWN. The memo
+   * contract at the head of StudentRow.tsx is that a prop rebuilt per render
+   * silently re-renders every row, each one re-running validateField — which on
+   * a five-hundred-child roster is the difference between a list and a
+   * slideshow. Everything this flag changes is above the rows: a drop zone, a
+   * jump bar, and whether the already-done section starts open.
+   *
+   * What it deliberately does NOT change is the row itself. The office is doing
+   * the same job the teacher is, on the same card, with the same camera and the
+   * same validation.
+   */
+  master?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -533,6 +551,47 @@ export function RequestForm({
   const hasPhotoField = photoFieldKey !== null;
 
   /**
+   * How much of each class is still owed — for the master link's jump bar.
+   *
+   * Off `blanks`, so it is the same arithmetic the list itself is sorted by and
+   * cannot drift from it. A class with nothing left is still listed, at zero,
+   * because a bar whose entries come and go as you work is a bar you cannot
+   * aim at.
+   */
+  const classCounts = useMemo(() => {
+    if (!master) return [];
+    const total = new Map<string, number>();
+    const left = new Map<string, number>();
+    for (const student of roster) {
+      const label = student.classLabel;
+      if (!label) continue;
+      total.set(label, (total.get(label) ?? 0) + 1);
+    }
+    for (const student of blanks) {
+      const label = student.classLabel;
+      if (!label) continue;
+      left.set(label, (left.get(label) ?? 0) + 1);
+    }
+    return [...total.entries()].map(([label, count]) => ({
+      label,
+      total: count,
+      remaining: left.get(label) ?? 0,
+    }));
+  }, [master, roster, blanks]);
+
+  /**
+   * On the master link the already-done section starts CLOSED.
+   *
+   * The office opens this link to finish what is left, and a five-hundred-row
+   * list whose first four hundred rows are finished work is a list nobody
+   * scrolls to the bottom of. It is a disclosure rather than a filter, so
+   * nothing is hidden that cannot be reached in one tap — and on a teacher's
+   * own link it stays exactly as it was, open, because forty-six rows is a list
+   * and hiding half of it would only be a thing to discover.
+   */
+  const [showDone, setShowDone] = useState(!master);
+
+  /**
    * Confirm the whole known group in one tap.
    *
    * Deliberately narrow. It touches ONLY untouched rows in the known group:
@@ -906,7 +965,19 @@ export function RequestForm({
              above it — and vanished. A divider does not need to stick anyway:
              the class chip on every row is what answers "which register is
              this" once the heading has scrolled past. */
-          <li className="-mx-4 mt-2 bg-[var(--color-surface-muted)] px-4 py-2">
+          <li
+            /* The jump bar's target. Only the blanks group carries it — the
+               whole point of aiming at a class is to land on what is left of
+               it, and two elements with one id is a bar that jumps to whichever
+               the browser found first. scroll-mt keeps the heading clear of the
+               page header it would otherwise land underneath. */
+            id={
+              group === blanks
+                ? `class-${encodeURIComponent(student.classLabel)}`
+                : undefined
+            }
+            className="-mx-4 mt-2 scroll-mt-20 bg-[var(--color-surface-muted)] px-4 py-2"
+          >
             <h3 className="text-sm font-semibold text-[var(--color-ink)]">
               <Bi
                 t={T.classHeading(
@@ -982,6 +1053,7 @@ export function RequestForm({
       token={token}
       online={online}
       onUploaded={onPhotoUploaded}
+      queueCap={master ? MASTER_QUEUE_CAP : undefined}
     >
       <section
         aria-label="How to complete this list"
@@ -1064,6 +1136,40 @@ export function RequestForm({
         </p>
       ) : null}
 
+      {/* A folder of photographs, on the master link only. A teacher has a
+          camera and a class in front of her; the office has five hundred files
+          somebody already took. See BulkPhotoDrop. */}
+      {master && hasPhotoField ? <BulkPhotoDrop roster={roster} /> : null}
+
+      {/* Which register to aim at next, and how much of it is left. Only worth
+          a bar when the link genuinely spans several — a class link's own label
+          already says which one it is. */}
+      {master && classCounts.length > 1 ? (
+        <nav
+          aria-label="Jump to a class"
+          className="-mx-4 flex gap-2 overflow-x-auto border-b border-[var(--color-border)] px-4 py-3"
+        >
+          {classCounts.map((entry) => (
+            <a
+              key={entry.label}
+              href={`#class-${encodeURIComponent(entry.label)}`}
+              className={`flex min-h-12 shrink-0 items-center gap-2 rounded-[var(--radius-chip)] border px-3 text-sm ${
+                entry.remaining > 0
+                  ? "border-[var(--color-partial-border)] bg-[var(--color-surface)]"
+                  : "border-[var(--color-confirm-border)] bg-[var(--color-confirm-bg)] text-[var(--color-confirm-fg)]"
+              }`}
+            >
+              <span className="font-medium">{entry.label}</span>
+              <span className="font-mono text-meta">
+                {entry.remaining > 0
+                  ? `${entry.remaining} left`
+                  : `all ${entry.total}`}
+              </span>
+            </a>
+          ))}
+        </nav>
+      ) : null}
+
       {/* ============================================ 1. the ones that matter */}
       {/* No blanks, no heading. An empty section with a zero in it is noise. */}
       {blanks.length > 0 ? (
@@ -1104,9 +1210,22 @@ export function RequestForm({
             </p>
           ) : null}
 
-          <ol className="mt-3 border-t border-[var(--color-border)]">
-            {known.map(renderRow)}
-          </ol>
+          {/* Closed by default on the master link, open everywhere else. One
+              tap either way, and the count is on the button so nothing is
+              hidden that the office does not know the size of. */}
+          {showDone ? (
+            <ol className="mt-3 border-t border-[var(--color-border)]">
+              {known.map(renderRow)}
+            </ol>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowDone(true)}
+              className="mt-3 min-h-14 w-full rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 font-medium transition-transform active:scale-[0.98]"
+            >
+              Show the {known.length} already on record
+            </button>
+          )}
         </section>
       ) : null}
 

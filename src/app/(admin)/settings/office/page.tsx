@@ -7,7 +7,9 @@ import { requestOrigin } from "@/lib/request-origin";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { SettingsCrumbs } from "@/components/admin/SettingsCrumbs";
 import { Card } from "@/components/admin/Card";
+import { isApiConfigured } from "@/lib/aisensy";
 import { OfficeForm } from "./OfficeForm";
+import { OfficeLink } from "./OfficeLink";
 
 export const metadata = { title: "Office — Sampark" };
 export const dynamic = "force-dynamic";
@@ -70,6 +72,20 @@ export default async function OfficeSettingsPage() {
           </p>
         )}
         <OfficeForm office={office} />
+      </Card>
+
+      <Card title="The office's standing page">
+        <OfficeLink
+          token={office?.linkToken ?? null}
+          issuedAt={
+            office?.linkIssuedAt
+              ? office.linkIssuedAt.toISOString().slice(0, 10)
+              : null
+          }
+          origin={origin}
+          hasOffice={Boolean(office)}
+          apiEnabled={isApiConfigured()}
+        />
       </Card>
 
       <Card title="Master links open right now">

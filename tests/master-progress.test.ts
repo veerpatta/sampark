@@ -5,7 +5,12 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "../src/lib/db";
 import { createBatch } from "../src/lib/batches";
 import { listNonResponders, listRequests } from "../src/lib/requests";
-import { coveredStudentsInRound, coveredStudentsQuery } from "../src/lib/answered";
+import {
+  answersFromRoundMates,
+  coveredStudentsInRound,
+  coveredStudentsQuery,
+} from "../src/lib/answered";
+import { listPendingReview } from "../src/lib/submissions";
 import {
   ensureOfficeRecipient,
   getOfficeRecipient,
@@ -173,5 +178,128 @@ describe("a round where the office finished what a teacher did not", () => {
     assert.equal(own.length, 1);
     assert.equal(round.length, 1);
     assert.equal(own[0]!.studentId, round[0]!.studentId);
+  });
+});
+
+/**
+ * When both links answer the same child.
+ *
+ * Two ways into one box is a state this app did not have before the master
+ * link, and the two things that must be true about it are opposite in shape:
+ * the later answer must WIN in the review queue, and the earlier one must not
+ * be re-uploaded by the phone that sent it.
+ */
+describe("two links answering the same child", () => {
+  it("lets the later answer retire the earlier one", async () => {
+    const scenario = await createFanOutScenario();
+    const result = await createBatch({
+      title: "Test supersede round",
+      audience: { classes: [scenario.groups[0]!.classLabel] },
+      fieldKeys: ["phone"],
+      dueDate: futureDate(),
+      recipientMode: "class_teacher",
+      createdBy: scenario.userId,
+    });
+    assert.ok(result.master);
+    const link = result.created[0]!;
+    const child = scenario.groups[0]!.studentIds[0]!;
+
+    // Her answer first, the office's second — which is the order a real round
+    // produces, because the master pass happens at the end of one.
+    await answer(link.requestId, child, "9111111111");
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await answer(result.master.requestId, child, "9222222222");
+
+    const queue = await listPendingReview();
+    const mine = queue.filter(
+      (item) => item.studentId === child && item.fieldKey === "phone",
+    );
+    assert.equal(mine.length, 2, "both rows are on record — nothing is deleted");
+
+    const live = mine.filter((item) => !item.superseded);
+    assert.equal(live.length, 1, "but only one is still standing");
+    assert.equal(
+      live[0]!.newValue,
+      "9222222222",
+      "and it is the office's, because it came later",
+    );
+    assert.equal(
+      live[0]!.audienceKind,
+      "master",
+      "the queue can say which link it came through",
+    );
+  });
+
+  it("does not let one round's answer retire another round's", async () => {
+    // The reason the key is `batch_id ?? id` and not just (student, field): a
+    // September correction must not reach back and reject an August one.
+    const scenario = await createFanOutScenario();
+    const shared = { 
+      audience: { classes: [scenario.groups[0]!.classLabel] },
+      fieldKeys: ["phone"],
+      dueDate: futureDate(),
+      recipientMode: "class_teacher" as const,
+      createdBy: scenario.userId,
+    };
+    const first = await createBatch({ ...shared, title: "Test round one" });
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const second = await createBatch({ ...shared, title: "Test round two" });
+
+    const child = scenario.groups[0]!.studentIds[0]!;
+    await answer(first.created[0]!.requestId, child, "9333333333");
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await answer(second.created[0]!.requestId, child, "9444444444");
+
+    const queue = await listPendingReview();
+    const mine = queue.filter(
+      (item) => item.studentId === child && item.fieldKey === "phone",
+    );
+    assert.equal(
+      mine.filter((item) => !item.superseded).length,
+      2,
+      "two rounds, two live proposals — neither retires the other",
+    );
+  });
+});
+
+describe("what a teacher's own link shows her about the office's work", () => {
+  it("hands back what the round holds that she did not send", async () => {
+    const scenario = await createFanOutScenario();
+    const result = await createBatch({
+      title: "Test round mates",
+      audience: { classes: [scenario.groups[0]!.classLabel] },
+      fieldKeys: ["phone"],
+      dueDate: futureDate(),
+      recipientMode: "class_teacher",
+      createdBy: scenario.userId,
+    });
+    assert.ok(result.master);
+    const link = result.created[0]!;
+    const child = scenario.groups[0]!.studentIds[0]!;
+
+    await answer(result.master.requestId, child, "9555555555");
+
+    const mates = await answersFromRoundMates(link.requestId, result.batchId, [
+      "phone",
+    ]);
+    assert.equal(
+      mates.get(child)?.phone,
+      "9555555555",
+      "her link can see what the office collected",
+    );
+
+    // And the office's own link does not read its own work back as somebody
+    // else's — a request is never its own round-mate.
+    const own = await answersFromRoundMates(
+      result.master.requestId,
+      result.batchId,
+      ["phone"],
+    );
+    assert.equal(own.get(child), undefined);
+  });
+
+  it("has nothing to say about a request with no round", async () => {
+    const mates = await answersFromRoundMates("any-id", null, ["phone"]);
+    assert.equal(mates.size, 0);
   });
 });

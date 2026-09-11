@@ -230,6 +230,7 @@ export async function createScenario(options?: {
       requestId: request!.id,
       title: "Test request",
       audienceLabel: TEST_CLASS,
+      audienceKind: "class",
       period: options?.period ?? null,
       dueDate: futureDate(),
       status: "open",
@@ -245,6 +246,7 @@ export async function createScenario(options?: {
           studentId: student.id,
           ...snapshot,
           answered: {},
+      elsewhere: {},
           notPresent: false,
         };
       }),

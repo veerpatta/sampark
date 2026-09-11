@@ -352,6 +352,7 @@ src/
     answered.ts         THE one definition of "answered" — and now the second,
                         round-wide one beside it; see the master link below
     office.ts           the office as a recipient, and the master link's constants
+    photo-filename.ts   which child a photo FILE is of — pure, and refuses ties
     progress.ts         per-teacher rollup for the board
     marks.ts            the marks board and its workbook
     batches.ts          send-to-many: one round, one row, one file
@@ -476,6 +477,7 @@ belonging to no phase:
 | Subjects, `teacher_subjects`, timetable import | **done** |
 | The durable teacher link `/t/[token]` | **done** |
 | The round's master link, and Settings → Office | **done** |
+| Bulk photo intake, and the office's standing page | **done** |
 | Marks written at submit, `/marks` board, marks workbook | **done** |
 | Per-teacher progress board | **done** |
 | Source precedence (`sources`, `field_sources`, `value_sources`) | **done** |
@@ -696,14 +698,69 @@ data — it grants reach without a login, and that is bounded by closing the rou
 old URL dies as the new one is born), by the ordinary rate limits, and by
 Settings → Office, which lists every master link currently open.
 
-One thing genuinely does not work yet, and the review screen says so rather than
-pretending otherwise: two links in one round can answer the same child and field,
-and `groupKey` in `lib/submissions.ts` keys supersede on `(request, student,
-field)`, so neither supersedes the other. The queue marks the row — "2 links
-answered this child" — and the office decides. Making them supersede properly
-means keying on `(batch, student, field)`, which is a larger change than it
-looks: simply dropping the request from that key would let a September correction
-retro-reject an August one across two unrelated rounds.
+**When both links answer the same child.** `groupKey` in `lib/submissions.ts`
+keys supersede on `batch_id ?? id`, not on the request — so a class link and its
+round's master link retire each other by time, and the later answer is the one
+the office sees standing. The fallback half is the careful half: dropping the
+request from that key entirely would let a September correction retro-reject an
+August one across two unrelated rounds, so two one-off requests keep their own
+keys and only links sharing a round share one. The queue still marks a row that
+more than one link has proposed something about, because two *rounds* can each
+hold a live proposal and those genuinely are for a person to read.
+
+**The other half of the last mile** is `answersFromRoundMates` in
+`lib/answered.ts`, and without it the feature has a hole you can see from the
+corridor: the office photographs the six children a teacher never got to, she
+opens her link that evening, and the camera opens on the same six. Her roster now
+carries an `elsewhere` map — what the round holds that she did not send — merged
+for display in `knownValues`, so the child leaves the blanks group. It is kept
+separate from `answered` deliberately: that map is what *she* sent and is what
+seeds her sent-state, and folding somebody else's work into it would make her
+phone re-upload the office's answer under her token.
+
+### The office is good at bulk, and a teacher's phone is not
+
+The two surfaces run the same code and the same row, and three things differ.
+
+- **A folder, dropped.** `BulkPhotoDrop` takes a multi-file pick, a drag, or a
+  paste; `lib/photo-filename.ts` decides which child each file is of — student id
+  as a whole token, then SR number, then the name **scoped to one class** through
+  `matchName`. **More than one candidate at any tier is a refusal**, and so are
+  two files claiming one child: both go to a tray for a person to place. Nothing
+  is guessed, because a photograph on the wrong record is not recoverable from a
+  spreadsheet. It is pure and it has its own tests.
+- **Photo *reads* have their own rate-limit bucket.** A `GET …/photo?p=` proxies
+  an immutable blob and cannot store anything, so it never belonged in a budget
+  written to stop a link being a dropbox — and sharing one produced a real
+  failure: opening a half-finished round fires one authenticated read per child
+  already photographed, so a 300-child round spent the whole minute's *upload*
+  allowance drawing thumbnails.
+- **The queue holds more, drains slower, and restarts itself.** `QUEUE_CAP` is a
+  parameter now (20 on a phone, `MASTER_QUEUE_CAP` on the office's laptop), the
+  drain paces at ~40/min against a 60/min budget, and a failed drain schedules a
+  retry off the server's own `Retry-After`. **That last one was a latent bug**,
+  not something this feature introduced: `drain` breaks on the first failure and
+  was only ever restarted by mounting, reconnecting, or taking another
+  photograph. On a phone the third is never far away. On a two-hundred-file drop
+  there is no next capture, and the queue simply stopped.
+
+The master screen also opens remaining-first — the blanks/known split is
+unchanged, but the already-done section starts collapsed behind a counted button
+— and carries a class jump bar saying how much of each register is left.
+
+### The office's standing page
+
+`/t/<token>` on the office's own row: one link, saved once, listing every open
+round's master link. It is the durable teacher page with nothing added, because
+the office is a row in `teachers` and that page already knew how to draw it.
+
+It is **the one durable page that may carry a photo or Aadhaar round**, and the
+exception is one parameter on `isListableOnTeacherPage`, keyed on
+`teachers.is_office` — a column, on one row, not a checkbox somebody ticks. A
+test pins that every real teacher is still refused. Issuing and rotating are the
+same UPDATE, so the old address dies as the new one is born; **"revoke every
+link" in Settings → Teachers kills this one too**, which is what a kill switch is
+for and is said on the screen.
 
 ### The durable teacher link
 

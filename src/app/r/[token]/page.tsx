@@ -84,6 +84,9 @@ export default async function TeacherRequestPage({
           targetColumn: field.targetColumn,
         }))}
         roster={request.roster}
+        // The round's own link gets a folder drop zone and a class jump bar; a
+        // teacher's gets neither, because she has a camera and one register.
+        master={request.audienceKind === "master"}
       />
     </main>
   );

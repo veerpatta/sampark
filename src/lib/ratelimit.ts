@@ -38,6 +38,27 @@ export const LIMITS = {
    */
   perPhotoToken: { limit: 60, windowMs: 60_000 },
   perPhotoIp: { limit: 500, windowMs: 60 * 60_000 },
+  /**
+   * READING a photo back is not uploading one, and it stopped being safe to
+   * count them together the day one link could open five hundred children.
+   *
+   * The budget above defends against a live link being used as a file dropbox.
+   * A `GET …/photo?p=` cannot store anything — it proxies an immutable blob
+   * whose pathname must already belong to a child on this link's frozen roster
+   * — so it is not the thing that budget is about, and paying for it out of the
+   * same purse produced a genuine failure rather than a theoretical one:
+   * opening a half-finished photo round fires one authenticated read per child
+   * already photographed, so the office arrived at a 300-child round, spent the
+   * entire 60/minute upload allowance rendering thumbnails, and could not
+   * upload anything for a minute. Lazy loading bounds it to the viewport and
+   * "Remaining only" bounds it further; separate buckets make it structurally
+   * impossible rather than merely unlikely.
+   *
+   * Sized for a scroll, not for a trickle: 600/min is a fast thumb through a
+   * long list, 5000/hour is a whole school twice over.
+   */
+  perPhotoReadToken: { limit: 600, windowMs: 60_000 },
+  perPhotoReadIp: { limit: 5_000, windowMs: 60 * 60_000 },
 } as const;
 
 export type RateLimitResult = {
@@ -111,6 +132,18 @@ export function limitPhotosByToken(token: string): Promise<RateLimitResult> {
 export function limitPhotosByIp(ip: string): Promise<RateLimitResult> {
   const { limit, windowMs } = LIMITS.perPhotoIp;
   return hit(`photoip:${ip}`, limit, windowMs);
+}
+
+/** Photo READS, per link. Own prefix, own budget — see perPhotoReadToken. */
+export function limitPhotoReadsByToken(token: string): Promise<RateLimitResult> {
+  const { limit, windowMs } = LIMITS.perPhotoReadToken;
+  return hit(`photoread:${token}`, limit, windowMs);
+}
+
+/** Photo READS, per IP. */
+export function limitPhotoReadsByIp(ip: string): Promise<RateLimitResult> {
+  const { limit, windowMs } = LIMITS.perPhotoReadIp;
+  return hit(`photoreadip:${ip}`, limit, windowMs);
 }
 
 /** Best-effort client IP from Vercel's forwarding headers. */

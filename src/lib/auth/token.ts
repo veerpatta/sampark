@@ -3,7 +3,11 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "../db";
 // Sits below this file on purpose — lib/requests.ts imports generateToken from
 // here, so the shared "answered" rule cannot live there. See lib/answered.ts.
-import { answersForRequest, coveredStudentsInRound } from "../answered";
+import {
+  answersForRequest,
+  answersFromRoundMates,
+  coveredStudentsInRound,
+} from "../answered";
 import { compareClassLabels, compareStudentNames } from "../classes";
 import type { RosterSnapshot } from "../snapshots";
 import type { FieldDef } from "../../../drizzle/schema";
@@ -95,6 +99,21 @@ export type ResolvedRosterRow = {
    * she actually stopped rather than an untouched list. See answersForRequest.
    */
   answered: Record<string, string | null>;
+  /**
+   * ALREADY ON RECORD FROM ANOTHER LINK IN THIS ROUND. Never hers.
+   *
+   * A round now has more than one way to answer for a child: her own link, and
+   * the office's master link over every group. Without this the office
+   * photographs the six children she never got to, she opens her link that
+   * evening, and the camera opens on the same six.
+   *
+   * KEPT SEPARATE FROM `answered` ON PURPOSE. That map is what she sent, and it
+   * is what seeds her sent-state; merging somebody else's work into it would
+   * make her client upload the office's answer again under her token. This is
+   * merged for DISPLAY — see knownValues in teacher/types.ts — and seedRow
+   * reads it only to decide that a row owes nothing, never to fill one in.
+   */
+  elsewhere: Record<string, string | null>;
   /** She has already said this child is not in her class. */
   notPresent: boolean;
 };
@@ -108,6 +127,15 @@ export type ResolvedRequest = {
    * carries children from several.
    */
   audienceLabel: string;
+  /**
+   * class | house | route | subject | master.
+   *
+   * The screen needs it for exactly one thing: a master link is the round's
+   * own, held by the office over every group at once, and that surface gets a
+   * folder drop zone and a class jump bar a teacher's does not. Carried as the
+   * kind rather than compared against the label, which is a display string.
+   */
+  audienceKind: string;
   period: string | null;
   dueDate: string;
   status: string;
@@ -158,7 +186,7 @@ export async function resolveToken(token: string): Promise<ResolvedRequest | nul
   );
   if (!access.ok) return null;
 
-  const [fields, roster, answered] = await Promise.all([
+  const [fields, roster, answered, elsewhere] = await Promise.all([
     db
       .select()
       .from(schema.fieldDefs)
@@ -171,6 +199,15 @@ export async function resolveToken(token: string): Promise<ResolvedRequest | nul
     // Alongside the roster, not after it. This is one more small read on a page
     // that is already doing two, and it is what makes the link resumable.
     answersForRequest(row.request.id, row.request.fieldKeys),
+    // And what the ROUND holds that she did not send — the office's master
+    // pass, most of the time. One more read on the same trip, and it returns an
+    // empty map immediately for a request with no batch, which is every
+    // one-off. See answersFromRoundMates.
+    answersFromRoundMates(
+      row.request.id,
+      row.request.batchId,
+      row.request.fieldKeys,
+    ),
   ]);
 
   // Keep the field order the request asked for, not the registry's, so the
@@ -184,6 +221,7 @@ export async function resolveToken(token: string): Promise<ResolvedRequest | nul
     requestId: row.request.id,
     title: row.request.title,
     audienceLabel: row.request.audienceLabel,
+    audienceKind: row.request.audienceKind,
     period: row.request.period,
     dueDate: row.request.dueDate,
     status: row.request.status,
@@ -220,6 +258,7 @@ export async function resolveToken(token: string): Promise<ResolvedRequest | nul
           values: snapshot.values ?? {},
           siblingPhone: snapshot.siblingPhone ?? null,
           answered: sent?.values ?? {},
+          elsewhere: elsewhere.get(entry.studentId) ?? {},
           notPresent: sent?.notPresent ?? false,
         };
       })
@@ -266,8 +305,29 @@ const NEVER_ON_TEACHER_PAGE = new Set([
   "photo",
 ]);
 
-/** Pure, so the rule can be tested without a database. */
-export function isListableOnTeacherPage(fieldKeys: string[]): boolean {
+/**
+ * Pure, so the rule can be tested without a database.
+ *
+ * THE OFFICE IS THE ONE EXCEPTION, and it is keyed on a column rather than on
+ * a checkbox somebody ticks — `teachers.is_office`, true for exactly one row.
+ *
+ * Why the exception is narrow rather than a hole. The rule above exists because
+ * a DURABLE page outlives the round it advertises and reaches more than one
+ * group, so a photo or Aadhaar round should not sit on one: the round runs on
+ * its own /r/ link instead, one message at a time. The office's page is durable
+ * too — but the only thing it can ever list is master links, which are the
+ * office's own, and whoever holds it has a console login showing the same
+ * children behind a password. It grants no data that recipient cannot already
+ * reach. And it is revocable the same way every durable link is: nulling the
+ * column, including by the global revoke-all in Settings → Teachers.
+ *
+ * Every real teacher is refused exactly as before. A test pins that.
+ */
+export function isListableOnTeacherPage(
+  fieldKeys: string[],
+  isOffice = false,
+): boolean {
+  if (isOffice) return true;
   return !fieldKeys.some((key) => NEVER_ON_TEACHER_PAGE.has(key));
 }
 
@@ -320,6 +380,7 @@ export async function resolveTeacherToken(
       id: schema.teachers.id,
       name: schema.teachers.name,
       active: schema.teachers.active,
+      isOffice: schema.teachers.isOffice,
     })
     .from(schema.teachers)
     .where(eq(schema.teachers.linkToken, token))
@@ -356,7 +417,7 @@ export async function resolveTeacherToken(
   const open = rows.filter(
     (row) =>
       checkRequestAccess({ status: row.status, dueDate: row.dueDate }).ok &&
-      isListableOnTeacherPage(row.fieldKeys),
+      isListableOnTeacherPage(row.fieldKeys, teacher.isOffice),
   );
 
   if (open.length === 0) return { teacherName: teacher.name, items: [] };

@@ -2,6 +2,8 @@ import {
   clientIp,
   limitByIp,
   limitByToken,
+  limitPhotoReadsByIp,
+  limitPhotoReadsByToken,
   limitPhotosByIp,
   limitPhotosByToken,
   type RateLimitResult,
@@ -34,15 +36,32 @@ const PHOTOS: Limiters = ({ token, ip }) => [
   limitPhotosByIp(ip),
 ];
 
+/**
+ * Reading a photo back has its own budget, and must.
+ *
+ * A GET proxies an immutable blob and can store nothing, so it is not what the
+ * upload budget defends against — and sharing that budget meant opening a
+ * half-finished round spent the whole minute's uploads on thumbnails. See
+ * perPhotoReadToken in lib/ratelimit.ts.
+ */
+const PHOTO_READS: Limiters = ({ token, ip }) => [
+  limitPhotoReadsByToken(token),
+  limitPhotoReadsByIp(ip),
+];
+
+const BUCKETS = {
+  answers: ANSWERS,
+  photos: PHOTOS,
+  "photo-reads": PHOTO_READS,
+} as const;
+
 export async function guard(
   request: Request,
   token: string,
-  kind: "answers" | "photos" = "answers",
+  kind: keyof typeof BUCKETS = "answers",
 ): Promise<Response | null> {
   const ip = clientIp(request.headers);
-  const results = await Promise.all(
-    (kind === "photos" ? PHOTOS : ANSWERS)({ token, ip }),
-  );
+  const results = await Promise.all(BUCKETS[kind]({ token, ip }));
 
   const worst = results.find((result) => !result.ok);
   if (!worst) return null;

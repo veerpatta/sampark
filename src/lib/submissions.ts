@@ -548,7 +548,10 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
       ]),
     );
 
-  const newest = newestByKey(times);
+  // Keyed on the ROUND, so a class link and the round's master link supersede
+  // each other by time rather than both standing. See roundsOf.
+  const rounds = await roundsOf(times);
+  const newest = newestByKey(times, rounds);
   const conflicts = conflictsByStudentField(times);
 
   const alsoOn = await countSharedPhones(rows.map((row) => row.submission));
@@ -570,7 +573,7 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
     oldValue: row.submission.oldValue,
     newValue: row.submission.newValue,
     submittedAt: row.submission.submittedAt,
-    superseded: isSuperseded(row.submission, newest),
+    superseded: isSuperseded(row.submission, newest, rounds),
     conflicts:
       conflicts.get(
         `${row.submission.studentId}|${row.submission.fieldKey}`,
@@ -611,8 +614,49 @@ function conflictsByStudentField(
   return counts;
 }
 
-const groupKey = (s: { requestId: string; studentId: string; fieldKey: string }) =>
-  `${s.requestId}|${s.studentId}|${s.fieldKey}`;
+/**
+ * WHICH ROUND AN ANSWER BELONGS TO, which is what supersede is keyed on.
+ *
+ * It used to be the request, and that was right while a round had exactly one
+ * way to answer for each child. A round now has two — her class link and the
+ * office's master link over every group — and two links answering the same box
+ * produced two rows neither of which superseded the other: both un-superseded,
+ * both ticked by default, both approved, `students.photo_path` written twice
+ * with whichever came last in the loop winning and one blob orphaned. Worse,
+ * the queue sorts by group, so they landed in different parts of the screen and
+ * nobody ever saw the pair.
+ *
+ * `batch_id ?? id` IS THE WHOLE FIX, and the fallback is the careful half:
+ * dropping the request from the key entirely would make one round's correction
+ * retro-reject another round's, so a September phone number would silently
+ * reject an August one. Two one-off requests keep their own keys; two links in
+ * one round now share one, which is exactly the case that was broken.
+ */
+type RoundOf = Map<string, string>;
+
+const roundKey = (requestId: string, rounds: RoundOf) =>
+  rounds.get(requestId) ?? requestId;
+
+const groupKey = (
+  s: { requestId: string; studentId: string; fieldKey: string },
+  rounds: RoundOf,
+) => `${roundKey(s.requestId, rounds)}|${s.studentId}|${s.fieldKey}`;
+
+/** requestId -> the round it belongs to, for every request named in `rows`. */
+async function roundsOf(
+  rows: { requestId: string }[],
+  runner: { select: typeof db.select } = db,
+): Promise<RoundOf> {
+  const ids = [...new Set(rows.map((row) => row.requestId))];
+  if (ids.length === 0) return new Map();
+
+  const found = await runner
+    .select({ id: schema.requests.id, batchId: schema.requests.batchId })
+    .from(schema.requests)
+    .where(inArray(schema.requests.id, ids));
+
+  return new Map(found.map((row) => [row.id, row.batchId ?? row.id]));
+}
 
 type Timed = {
   requestId: string;
@@ -632,10 +676,10 @@ type Timed = {
  * still the newest thing anyone can see, so it shows un-superseded, ticked by
  * default, and approving it writes back a value she already took back.
  */
-function newestByKey(rows: Timed[]): Map<string, Date> {
+function newestByKey(rows: Timed[], rounds: RoundOf): Map<string, Date> {
   const newest = new Map<string, Date>();
   for (const row of rows) {
-    const key = groupKey(row);
+    const key = groupKey(row, rounds);
     const seen = newest.get(key);
     if (!seen || row.submittedAt > seen) newest.set(key, row.submittedAt);
   }
@@ -643,8 +687,12 @@ function newestByKey(rows: Timed[]): Map<string, Date> {
 }
 
 /** Strictly newer, so a tie is never treated as having been replaced. */
-function isSuperseded(row: Timed, newest: Map<string, Date>): boolean {
-  const latest = newest.get(groupKey(row));
+function isSuperseded(
+  row: Timed,
+  newest: Map<string, Date>,
+  rounds: RoundOf,
+): boolean {
+  const latest = newest.get(groupKey(row, rounds));
   return latest ? row.submittedAt.getTime() < latest.getTime() : false;
 }
 
@@ -786,9 +834,14 @@ export async function decideSubmissions(
         ]),
       );
 
-    const newest = newestByKey(times);
+    // Round-aware, so the office's later answer retires the class teacher's
+    // earlier one instead of both being written. See roundsOf.
+    const rounds = await roundsOf(times, tx);
+    const newest = newestByKey(times, rounds);
     const staleIds = new Set(
-      claimed.filter((row) => isSuperseded(row, newest)).map((row) => row.id),
+      claimed
+        .filter((row) => isSuperseded(row, newest, rounds))
+        .map((row) => row.id),
     );
     const effective = claimed.filter((row) => !staleIds.has(row.id));
 
@@ -929,8 +982,9 @@ async function supersede(tx: Tx, claimed: Claimed[], decidedBy: string) {
       ),
     );
 
-  const keys = new Set(claimed.map(groupKey));
-  const stale = older.filter((row) => keys.has(groupKey(row)));
+  const rounds = await roundsOf([...claimed, ...older], tx);
+  const keys = new Set(claimed.map((row) => groupKey(row, rounds)));
+  const stale = older.filter((row) => keys.has(groupKey(row, rounds)));
   if (stale.length === 0) return [];
 
   await tx

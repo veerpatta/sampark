@@ -59,6 +59,7 @@ const student = (over: Partial<TeacherRosterRow> = {}): TeacherRosterRow => ({
   siblingPhone: null,
   values: {},
   answered: {},
+  elsewhere: {},
   notPresent: false,
   ...over,
 });
@@ -139,5 +140,66 @@ describe("knownValues", () => {
       requiredKeys({ values: knownValues(child) }, [field()]),
       [],
     );
+  });
+});
+
+/**
+ * The other link in the round.
+ *
+ * A round has two ways to answer for a child now — her own link, and the
+ * office's master link over every group. What these pin is the seam between
+ * them: she must SEE what the office did, so nobody photographs a child twice,
+ * and she must never SEND it, because she did not say it.
+ */
+describe("what another link in the round already holds", () => {
+  test("a child the office finished is not one she still owes", () => {
+    const child = student({ elsewhere: { photo: PHOTO } });
+    // Before the merge this child is required, which is the bug: the camera
+    // opens on a child the school already has a photograph of.
+    assert.deepEqual(requiredKeys(child, [field()]), ["photo"]);
+    assert.deepEqual(
+      requiredKeys({ values: knownValues(child) }, [field()]),
+      [],
+    );
+  });
+
+  test("and her row is seeded as sent, so her phone never re-uploads it", () => {
+    const seed = seedRow(student({ elsewhere: { photo: PHOTO } }), [field()]);
+    assert.equal(
+      seed.sent,
+      true,
+      "sent keeps pickBatch from submitting the office's work under her token",
+    );
+    assert.deepEqual(
+      seed.row.values,
+      {},
+      "and her client holds no value of its own to send",
+    );
+  });
+
+  test("a child nobody has done is still hers to do", () => {
+    const seed = seedRow(student(), [field()]);
+    assert.equal(seed.sent, false);
+  });
+
+  test("her own correction still beats what the office supplied", () => {
+    const merged = knownValues(
+      student({
+        values: { phone: "9000000000" },
+        elsewhere: { phone: "9111111111" },
+        answered: { phone: "9222222222" },
+      }),
+    );
+    assert.equal(merged.phone, "9222222222", "newest wins, and hers is newest");
+  });
+
+  test("the office's answer beats the snapshot it was collected after", () => {
+    const merged = knownValues(
+      student({
+        values: { phone: "9000000000" },
+        elsewhere: { phone: "9111111111" },
+      }),
+    );
+    assert.equal(merged.phone, "9111111111");
   });
 });
