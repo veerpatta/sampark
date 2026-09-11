@@ -439,6 +439,14 @@ export type ReviewItem = {
   requestTitle: string;
   /** The group the link was for: a class, a house or a bus route. */
   audienceLabel: string;
+  /**
+   * class | house | route | subject | master.
+   *
+   * Carried so the queue can say "this came through the office's link, not
+   * the class teacher's" from the column rather than from a name — `teachers`
+   * holds the office as an ordinary row and somebody may rename it.
+   */
+  audienceKind: string;
   teacherName: string;
   studentId: string;
   studentName: string;
@@ -462,6 +470,12 @@ export type ReviewItem = {
   submittedAt: Date;
   /** True when a later submission for the same student and field exists. */
   superseded: boolean;
+  /**
+   * How many links are currently proposing something about this child and
+   * field. 1 is the ordinary case; 2 means two links in the round answered the
+   * same box and neither supersedes the other. See conflictsByStudentField.
+   */
+  conflicts: number;
   /**
    * How many OTHER active students already hold this same number.
    *
@@ -495,6 +509,7 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
       submission: schema.submissions,
       requestTitle: schema.requests.title,
       audienceLabel: schema.requests.audienceLabel,
+      audienceKind: schema.requests.audienceKind,
       teacherName: schema.teachers.name,
       studentName: schema.students.name,
       rollNo: schema.students.rollNo,
@@ -524,6 +539,7 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
       studentId: schema.submissions.studentId,
       fieldKey: schema.submissions.fieldKey,
       submittedAt: schema.submissions.submittedAt,
+      reviewStatus: schema.submissions.reviewStatus,
     })
     .from(schema.submissions)
     .where(
@@ -533,6 +549,7 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
     );
 
   const newest = newestByKey(times);
+  const conflicts = conflictsByStudentField(times);
 
   const alsoOn = await countSharedPhones(rows.map((row) => row.submission));
 
@@ -541,6 +558,7 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
     requestId: row.submission.requestId,
     requestTitle: row.requestTitle,
     audienceLabel: row.audienceLabel,
+    audienceKind: row.audienceKind,
     teacherName: row.teacherName,
     studentId: row.submission.studentId,
     studentName: row.studentName,
@@ -553,8 +571,44 @@ export async function listPendingReview(requestId?: string): Promise<ReviewItem[
     newValue: row.submission.newValue,
     submittedAt: row.submission.submittedAt,
     superseded: isSuperseded(row.submission, newest),
+    conflicts:
+      conflicts.get(
+        `${row.submission.studentId}|${row.submission.fieldKey}`,
+      ) ?? 0,
     alsoOn: alsoOn.get(row.submission.id) ?? 0,
   }));
+}
+
+/**
+ * How many links are proposing something about the same child and field.
+ *
+ * THIS IS NEW WITH THE MASTER LINK AND IT REPORTS RATHER THAN DECIDES. A round
+ * now has two ways to answer for one child — her class teacher's link and the
+ * office's — and `groupKey` keys supersede on `(request, student, field)`, so
+ * two links answering the same box produce two rows neither of which supersedes
+ * the other. Both show un-superseded, both are ticked by default, and the queue
+ * sorts by audienceLabel, so "All classes" and "Class 8" are nowhere near each
+ * other on screen and nobody ever sees the pair.
+ *
+ * Making them supersede each other is the right fix and is deliberately NOT
+ * done here: the key would have to become `(batch, student, field)`, and simply
+ * dropping the request from it would let a September correction retro-reject an
+ * August one across two unrelated rounds. Until that is built, the honest thing
+ * is to say so on the row and let the office look.
+ *
+ * The office's answer is the later one by construction — the master pass
+ * happens at the end of a round — so where they disagree, it is the correction.
+ */
+function conflictsByStudentField(
+  rows: { studentId: string; fieldKey: string; reviewStatus: string }[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    if (row.reviewStatus !== "pending") continue;
+    const key = `${row.studentId}|${row.fieldKey}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
 }
 
 const groupKey = (s: { requestId: string; studentId: string; fieldKey: string }) =>

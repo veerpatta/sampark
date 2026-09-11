@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { asc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import { listPickableTeachers } from "@/lib/office";
 import { canManageSettings, currentUser } from "@/lib/auth/session";
 import { CLASS_LABELS, compareClassLabels } from "@/lib/classes";
 import { SUBJECTS } from "@/lib/subjects";
@@ -29,11 +29,7 @@ export default async function SubjectsSettingsPage() {
   if (!session || !canManageSettings(session.role)) redirect("/");
 
   const [teachers, assignments] = await Promise.all([
-    db
-      .select()
-      .from(schema.teachers)
-      .where(eq(schema.teachers.active, true))
-      .orderBy(asc(schema.teachers.name)),
+    listPickableTeachers(),
     db.select().from(schema.teacherSubjects),
   ]);
 

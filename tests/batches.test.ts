@@ -1,7 +1,8 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { cleanup, createFanOutScenario } from "./fixtures";
+import { MASTER_AUDIENCE_KIND } from "../src/lib/office";
 import { db, schema } from "../src/lib/db";
 import {
   createBatch,
@@ -27,11 +28,30 @@ function futureDate(): string {
   return new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
 }
 
+/**
+ * The GROUP links a fan-out made — never the round's master link.
+ *
+ * A round also mints one link over every group's roster (lib/office.ts), which
+ * is a third row in this table and is not a group. Filtering it here rather
+ * than in each assertion does two things: it keeps every count in this file
+ * about the thing the file is actually testing, and it makes them independent
+ * of whether an office row happens to exist — which, since the office is a
+ * singleton no test may create for itself, otherwise depends on which other
+ * test file is running alongside this one. That is the cross-file race the
+ * note at the head of fixtures.ts is about.
+ *
+ * tests/master-link.test.ts is where the master link itself is asserted on.
+ */
 async function requestsIn(batchId: string) {
   return db
     .select()
     .from(schema.requests)
-    .where(eq(schema.requests.batchId, batchId));
+    .where(
+      and(
+        eq(schema.requests.batchId, batchId),
+        ne(schema.requests.audienceKind, MASTER_AUDIENCE_KIND),
+      ),
+    );
 }
 
 async function rosterOf(requestId: string) {

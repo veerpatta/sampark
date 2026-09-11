@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db, schema } from "./db";
 
 /**
@@ -64,6 +65,73 @@ export function coveredStudentsQuery(requestIds: string[]) {
     )
     .having(
       sql`count(distinct ${schema.submissions.fieldKey}) >= coalesce(array_length(${schema.requests.fieldKeys}, 1), 0)`,
+    );
+}
+
+/**
+ * The same question, counting answers from ANY link in the same round.
+ *
+ * WHY THERE ARE NOW TWO OF THESE, when the whole point of this file was that
+ * there is one. Because they answer two different questions, and a round with a
+ * master link needs both:
+ *
+ *   - coveredStudentsQuery: "what did THIS link collect." That is what an
+ *     export says, and what a per-request page shows. It must not change.
+ *   - coveredStudentsInRound: "does anybody still owe this." A round mints a
+ *     master link over every group's roster (lib/office.ts), so when the office
+ *     photographs the six children a teacher never got to, the honest answer to
+ *     "is Class 8 done" is yes — and to "should we chase her" is no.
+ *
+ * Using the first for the second is the bug this exists to prevent: the board
+ * would report a finished class as empty, and RemindAll would send nineteen
+ * teachers a nudge naming children somebody already did.
+ *
+ * THE ROSTER JOIN IS NOT DECORATION. A master link's roster is a superset of
+ * every class link's, so without restricting to the scored request's own frozen
+ * roster, an office answer for a Class 9 child would count toward Class 8's
+ * coverage and the class would read finished while six of its own children were
+ * still blank.
+ *
+ * Rejected submissions count here exactly as they count in coveredStudentsQuery
+ * — the two differ in scope and in nothing else, which is what makes the pair
+ * readable and what tests/master-progress.test.ts pins.
+ */
+export function coveredStudentsInRound(requestIds: string[]) {
+  // `asked` is the request being scored; `wrote` is the one the answer came
+  // through. For a round with no master link they are always the same row, and
+  // this returns exactly what coveredStudentsQuery returns.
+  const asked = alias(schema.requests, "asked");
+  const wrote = alias(schema.requests, "wrote");
+
+  return db
+    .select({
+      requestId: asked.id,
+      studentId: schema.submissions.studentId,
+    })
+    .from(schema.submissions)
+    .innerJoin(wrote, eq(wrote.id, schema.submissions.requestId))
+    .innerJoin(
+      asked,
+      // Itself, or a batch-mate. `batch_id is not null` keeps two one-off
+      // requests — both with a NULL batch — from being read as the same round.
+      sql`(${asked.id} = ${wrote.id} or (${asked.batchId} is not null and ${asked.batchId} = ${wrote.batchId}))`,
+    )
+    .innerJoin(
+      schema.requestStudents,
+      and(
+        eq(schema.requestStudents.requestId, asked.id),
+        eq(schema.requestStudents.studentId, schema.submissions.studentId),
+      ),
+    )
+    .where(
+      and(
+        inArray(asked.id, requestIds),
+        sql`${schema.submissions.fieldKey} = any(${asked.fieldKeys})`,
+      ),
+    )
+    .groupBy(asked.id, schema.submissions.studentId, asked.fieldKeys)
+    .having(
+      sql`count(distinct ${schema.submissions.fieldKey}) >= coalesce(array_length(${asked.fieldKeys}, 1), 0)`,
     );
 }
 

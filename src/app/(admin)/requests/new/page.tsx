@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import { listPickableTeachers } from "@/lib/office";
 import { countByClass } from "@/lib/students";
 import { CLASS_LABELS } from "@/lib/classes";
 import { TEMPLATES } from "@/lib/templates";
@@ -21,11 +22,7 @@ export default async function NewRequestPage({
   const handoff = await searchParams;
   const [counts, teachers, fields] = await Promise.all([
     countByClass(),
-    db
-      .select()
-      .from(schema.teachers)
-      .where(eq(schema.teachers.active, true))
-      .orderBy(asc(schema.teachers.name)),
+    listPickableTeachers(),
     db
       .select()
       .from(schema.fieldDefs)

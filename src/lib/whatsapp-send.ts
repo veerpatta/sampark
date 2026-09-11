@@ -37,7 +37,13 @@ import {
   isApiConfigured,
   sendTemplate,
 } from "./aisensy";
-import { getBatch, markGroupReminded, markGroupSent } from "./batches";
+import { findMasterLink, getBatch, markGroupReminded, markGroupSent } from "./batches";
+import {
+  getOfficeRecipient,
+  MASTER_AUDIENCE_KIND,
+  OFFICE_AUDIENCE_LABEL,
+} from "./office";
+import { isCompletePhone, normalisePhone } from "./phone";
 import { listRequests, pendingForBoard } from "./requests";
 import { groupRemindersByTeacher } from "./reminders";
 import { groupLinksByRecipient, toQueueLinks } from "./send-queue";
@@ -219,6 +225,95 @@ export async function sendRoundGroup(input: {
     phone: group.phone,
     batchId: input.batchId,
     actor: input.actor,
+    tick: (requestIds) => markGroupSent(requestIds, input.actor, true),
+  });
+}
+
+/* ============ THE ROUND'S OWN LINK ============ */
+
+/**
+ * Hand the master link over — to the office by default, or to a typed number.
+ *
+ * IT REUSES THE `request` TEMPLATE, unchanged and un-re-approved. "Namaste
+ * Office ji, please check Student photos for All classes (504 children). Due:
+ * 5 Sep." is exactly what this message has to say, and a template is approved
+ * once and cannot be edited — so a seventh template would have been a week of
+ * Meta review to say the same sentence. describeAudience* carries the count.
+ *
+ * `linkToken: null` IS LOAD-BEARING. It forces suffixFor into `single` mode, so
+ * the button carries this round's master token. Passing the office's durable
+ * page token instead would make the button point at the page for some rounds
+ * and at the link for others — one button, two destinations, depending on a
+ * field the sender cannot see.
+ *
+ * NO DOUBLE-SEND GUARD, unlike sendRoundGroup. Sending the same link to a
+ * second person is not a mistake here, it is the feature: the office forwards
+ * it to whoever is actually doing the round. Every send writes its own
+ * whatsapp_messages row naming the number and the sender, which is the record
+ * that matters.
+ */
+export async function sendMasterLink(input: {
+  batchId: string;
+  /** A number to send to instead of the office's. Ten digits. */
+  phone?: string | null;
+  actor: string | null;
+}): Promise<SendOutcome> {
+  if (!isApiConfigured()) return { ok: false, error: NOT_CONFIGURED };
+
+  const [batch] = await db
+    .select()
+    .from(schema.requestBatches)
+    .where(eq(schema.requestBatches.id, input.batchId))
+    .limit(1);
+  if (!batch) return { ok: false, error: "That round no longer exists." };
+
+  const master = await findMasterLink(input.batchId);
+  if (!master) {
+    return { ok: false, error: "This round has no master link yet." };
+  }
+
+  const office = await getOfficeRecipient();
+  if (!office) {
+    return { ok: false, error: "No office number is set. Settings → Office." };
+  }
+
+  const phone = input.phone ? normalisePhone(input.phone) : office.phone;
+  if (!isCompletePhone(phone)) {
+    return { ok: false, error: "A phone number is 10 digits, with no country code." };
+  }
+
+  const language = isLanguage(office.language) ? office.language : DEFAULT_LANGUAGE;
+
+  const payloads = buildRequestPayloads({
+    teacherName: office.name,
+    language,
+    title: batch.title,
+    dueDate: batch.dueDate,
+    links: [
+      {
+        requestId: master.requestId,
+        token: master.token,
+        fieldKeys: batch.fieldKeys,
+        audience: {
+          kind: MASTER_AUDIENCE_KIND,
+          label: OFFICE_AUDIENCE_LABEL,
+          fieldKeys: batch.fieldKeys,
+          rosterSize: master.rosterSize,
+        },
+      },
+    ],
+    linkToken: null,
+  });
+
+  return deliver({
+    payloads,
+    teacherId: office.id,
+    teacherName: office.name,
+    phone,
+    batchId: input.batchId,
+    actor: input.actor,
+    // "The office was handed this link", which is true of whichever number it
+    // went to. Who exactly, and when, is every row in whatsapp_messages.
     tick: (requestIds) => markGroupSent(requestIds, input.actor, true),
   });
 }

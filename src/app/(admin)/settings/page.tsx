@@ -7,7 +7,7 @@ export const metadata = { title: "Settings — Sampark" };
 export const dynamic = "force-dynamic";
 
 /**
- * Where the seven configuration screens live.
+ * Where the eight configuration screens live.
  *
  * The Settings tab used to go straight to /settings/teachers, which meant the
  * other five were reachable only from links inside pages that happened to
@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
  * of working the student board.
  *
  * Every page linked from here is owner-only and checks that for itself. The
- * check is repeated here so the list is not a menu of six redirects.
+ * check is repeated here so the list is not a menu of seven redirects.
  */
 const ITEMS = [
   {
@@ -42,6 +42,11 @@ const ITEMS = [
     href: "/students/import",
     label: "Import students",
     note: "From a PSP or fee-app export — matched on ID, never on name",
+  },
+  {
+    href: "/settings/office",
+    label: "Office",
+    note: "The number every round's master link is sent to, and which are open",
   },
   {
     href: "/settings/whatsapp",

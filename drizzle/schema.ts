@@ -284,6 +284,29 @@ export const teachers = pgTable(
      * write against LANGUAGES in src/lib/whatsapp-templates.ts; never inferred.
      */
     language: text("language").notNull().default("hi"),
+    /**
+     * The office's own recipient row, and there is exactly one of it.
+     *
+     * A master link reaches every group in a round, so it needs a recipient
+     * that is not a teacher. It could not be a NULL teacher_id: resolveToken
+     * INNER JOINs this table, so a link with no recipient would 404 on its own
+     * URL. So the office is a row here — it has a name, a number and a
+     * language, which is everything this table is for.
+     *
+     * IT IS A COLUMN RATHER THAN A CONVENTION because `classes = '{}'` only
+     * stops the fan-out SELECTING it. The override dropdowns offer every active
+     * teacher, and a mistap that makes "Office" the class teacher of Class 8
+     * would send that class's link to the wrong phone. lib/office.ts is the one
+     * place that reads this; every picker calls listPickableTeachers() rather
+     * than writing the filter itself, for the reason listRequests gives about
+     * archived rows.
+     *
+     * It is also what lets the office's durable page carry a photo round when
+     * no teacher's may — see NEVER_ON_TEACHER_PAGE in lib/auth/token.ts. Keying
+     * that exception on a column, on one row, is narrower than a checkbox
+     * somebody ticks.
+     */
+    isOffice: boolean("is_office").notNull().default(false),
   },
   (t) => [uniqueIndex("teachers_link_token_idx").on(t.linkToken)],
 );
@@ -405,7 +428,16 @@ export const requests = pgTable(
      * later reader. `audienceKind` and `audienceLabel` carry the general case.
      */
     classLabel: text("class_label"),
-    /** class | house | route */
+    /**
+     * class | house | route | subject | master
+     *
+     * `master` is the round's own link — one token over every group's roster,
+     * held by the office rather than by a teacher. It is an ordinary row here
+     * precisely so that resolveToken, the submit and photo routes, the rate
+     * limits, the review queue and /w/<token> all carry it unchanged. Plain
+     * text with no enum and no check constraint is what made a fifth value
+     * cost nothing; see the note on `status` in lib/submissions.ts.
+     */
     audienceKind: text("audience_kind").notNull().default("class"),
     /** How the group reads on screen and in the WhatsApp message. */
     audienceLabel: text("audience_label").notNull(),
@@ -523,6 +555,22 @@ export const requests = pgTable(
      * guess whether to restore `open` or `closed`.
      */
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    /**
+     * When this link's token was last replaced, or NULL for one that never was.
+     *
+     * NEVER READ BY THE RESOLVER — the same rule teachers.link_issued_at
+     * follows, and for the same reason: rotation is one UPDATE that overwrites
+     * `token`, so the old URL is dead the instant the new one is born and
+     * nothing has to consult a second column to know it. This exists only so
+     * the office screen can say "rotated 3 Sep", which is how somebody tells
+     * whether the link in front of her predates the last time it was pulled.
+     *
+     * It is on requests rather than only on teachers because a master link is
+     * the one request token worth rotating on its own: it reaches every group
+     * in the round, so "this went somewhere it should not have" is answered by
+     * replacing it rather than by closing a round that is still being worked.
+     */
+    tokenRotatedAt: timestamp("token_rotated_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("requests_token_idx").on(t.token),

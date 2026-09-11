@@ -310,7 +310,7 @@ src/
     (admin)/            admin console — the layout is the auth gate
                         page · requests/{new,bulk,batch/[id],[id]} · review
                         students/{[id],new,import,health} · marks · marks/grid
-                        settings/{fields,teachers,subjects,users,audit}
+                        settings/{fields,teachers,subjects,office,users,audit}
                         error.tsx and not-found.tsx, so a bad link is a page
     r/[token]/          the teacher form — no shell, no navigation
     t/[token]/          the durable teacher link — see below
@@ -349,7 +349,9 @@ src/
                         two destinations — read its header first
     requests.ts         request creation and the frozen roster snapshot
     request-origin.ts   absolute origin, so a link in WhatsApp is not relative
-    answered.ts         THE one definition of "answered"
+    answered.ts         THE one definition of "answered" — and now the second,
+                        round-wide one beside it; see the master link below
+    office.ts           the office as a recipient, and the master link's constants
     progress.ts         per-teacher rollup for the board
     marks.ts            the marks board and its workbook
     batches.ts          send-to-many: one round, one row, one file
@@ -473,6 +475,7 @@ belonging to no phase:
 | Houses and bus routes as request audiences | **done** |
 | Subjects, `teacher_subjects`, timetable import | **done** |
 | The durable teacher link `/t/[token]` | **done** |
+| The round's master link, and Settings → Office | **done** |
 | Marks written at submit, `/marks` board, marks workbook | **done** |
 | Per-teacher progress board | **done** |
 | Source precedence (`sources`, `field_sources`, `value_sources`) | **done** |
@@ -641,6 +644,66 @@ one group. A due date is a deadline, not an expiry: teachers can keep adding or
 correcting data after it passes. Closing a request is the way to kill a link that
 has gone somewhere it should not. Worth revisiting before an Aadhaar collection
 round.
+
+### The master link, and why it is the exception
+
+A round fans out to one link per class teacher. It also mints **one more**: an
+ordinary `requests` row with `audience_kind = 'master'`, whose frozen roster is
+the whole round's audience. It exists because the end of a round is not nineteen
+classes, it is forty children spread six here and four there across five teachers
+who have stopped reading WhatsApp — and chasing those five costs more than doing
+the forty. This is the link the office does them on.
+
+It is **an ordinary request row**, which is the entire trick: `resolveToken`
+opens it, the submit and photo routes accept it, the rate limits and security
+headers cover it, the offline queue works on it, every answer lands in the same
+review queue, and the approved `request` template routes to it through
+`/w/<token>` with no Meta re-approval. Nothing on the teacher surface knows this
+feature exists. `audience_kind` is plain text with no enum, so it cost no
+migration — see the note on `status` in `lib/submissions.ts`.
+
+- **One per round is a database guarantee.** The label is the constant
+  `OFFICE_AUDIENCE_LABEL`, so `requests_batch_scope_idx` — already unique on
+  `(batch_id, audience_kind, audience_label)` — is what makes a double-tapped
+  Resume find the existing row instead of minting a second 504-child roster.
+- **It is hidden in exactly one place.** `listRequests` excludes it, the same
+  function and the same reasoning that hides archived rows: the dashboard, the
+  board, `groupBoardRows`, `groupProgressByTeacher` and `sendTeacherReminder` all
+  ask that one function what exists. Counting it as a group would double a
+  round's roster, add a twentieth "class", put "Office" on the per-teacher
+  progress list, and let RemindAll nudge the office to chase itself.
+- **The office is a row in `teachers`,** because `resolveToken` INNER JOINs that
+  table and a link with no recipient would 404 on its own URL. It is also where
+  the number lives: this repository is public, so the office's phone number
+  cannot be a constant in it, and an environment variable would need a redeploy
+  to change. `teachers.is_office` keeps it out of every picker — one column read
+  by `lib/office.ts`, rather than six screens each remembering a filter.
+- **"Answered" now has two definitions and both are in `lib/answered.ts`.**
+  `coveredStudentsQuery` is still "what did THIS link collect", which is what an
+  export says. `coveredStudentsInRound` is "does anybody still owe this", which
+  is what the board, the chase list and a teacher's own `/t/` card ask. Using the
+  first for the second would report a class the office finished as empty and send
+  nineteen teachers a nudge naming children somebody had already done.
+  `tests/master-progress.test.ts` asserts the two **disagree**, on purpose.
+
+**What it crosses.** The build plan's threat model says a teacher link "never
+reaches another teacher's work". This one reaches every group in its round, and
+that is deliberate. The justification is that it is a **weaker credential than
+the one its holder already has**: whoever receives it has a console login showing
+the same children's photographs and numbers behind a password. It grants no new
+data — it grants reach without a login, and that is bounded by closing the round
+(`checkRequestAccess` refuses `closed`), by `rotateRequestToken` (one UPDATE, the
+old URL dies as the new one is born), by the ordinary rate limits, and by
+Settings → Office, which lists every master link currently open.
+
+One thing genuinely does not work yet, and the review screen says so rather than
+pretending otherwise: two links in one round can answer the same child and field,
+and `groupKey` in `lib/submissions.ts` keys supersede on `(request, student,
+field)`, so neither supersedes the other. The queue marks the row — "2 links
+answered this child" — and the office decides. Making them supersede properly
+means keying on `(batch, student, field)`, which is a larger change than it
+looks: simply dropping the request from that key would let a September correction
+retro-reject an August one across two unrelated rounds.
 
 ### The durable teacher link
 

@@ -1,8 +1,14 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { canCreateRequests, currentUser } from "@/lib/auth/session";
+import {
+  canCreateRequests,
+  canManageSettings,
+  currentUser,
+} from "@/lib/auth/session";
 import { requestOrigin } from "@/lib/request-origin";
-import { getBatch } from "@/lib/batches";
+import { findMasterLink, getBatch } from "@/lib/batches";
+import { getOfficeRecipient } from "@/lib/office";
+import { MasterLinkCard } from "./MasterLinkCard";
 import {
   groupBoardRows,
   listRequests,
@@ -48,6 +54,14 @@ export default async function BatchPage({
   const origin = await requestOrigin();
 
   const { batch, links } = detail;
+
+  // The round's own link and the number it goes to. Both may be absent — a
+  // subject round never has one, and neither does a round created before
+  // anybody set an office number. The card says which, and offers the fix.
+  const [master, office] = await Promise.all([
+    findMasterLink(batch.id),
+    getOfficeRecipient(),
+  ]);
 
   /*
    * Who in this round still owes something.
@@ -171,6 +185,33 @@ export default async function BatchPage({
           }
         />
       ) : null}
+
+      {/* Above the queue, because it is the alternative to working through it:
+          one link over every class, for the office to finish what is left. */}
+      <MasterLinkCard
+        batchId={batch.id}
+        master={
+          master
+            ? {
+                token: master.token,
+                rosterSize: master.rosterSize,
+                // Formatted on the server: a Date crossing into a client
+                // component renders differently in the two passes and trips
+                // hydration. The same reason every other date here is a string.
+                sentAt: master.sentAt
+                  ? master.sentAt.toISOString().slice(0, 10)
+                  : null,
+              }
+            : null
+        }
+        officeName={office?.name ?? "Office"}
+        officePhone={office?.phone ?? null}
+        title={batch.title}
+        dueDate={batch.dueDate}
+        origin={origin}
+        apiEnabled={apiEnabled}
+        canRotate={canManageSettings(session.role)}
+      />
 
       <SendQueue
         batchId={batch.id}

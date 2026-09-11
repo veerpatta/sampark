@@ -368,6 +368,15 @@ export function ReviewQueue({
               {group.audienceLabel} · {group.teacherName} ·{" "}
               {group.items.length} item{group.items.length === 1 ? "" : "s"}
             </span>
+            {/* Off the column, not off the name: `teachers` holds the office as
+                an ordinary row and somebody may rename it, but audience_kind
+                is what the link actually is. It matters here because these
+                rows were not proposed by the child's own teacher. */}
+            {group.audienceKind === "master" ? (
+              <span className="rounded-[var(--radius-chip)] bg-[var(--color-surface-muted)] px-2 py-0.5 text-meta text-[var(--color-ink-muted)]">
+                office&rsquo;s master link
+              </span>
+            ) : null}
             {/* Approving one class at a time beats unticking two hundred rows
                 to get at nineteen. It earned its place on marks rounds, which
                 no longer queue at all; a school-wide phone round is still
@@ -475,6 +484,18 @@ export function ReviewQueue({
                         ? "superseded"
                         : formatWhen(item.submittedAt)}
                     </p>
+
+                    {/* Two links in one round answered the same box, and
+                        neither supersedes the other — see
+                        conflictsByStudentField. Said out loud because the
+                        queue sorts by group, so the other one is nowhere near
+                        this row on screen. */}
+                    {!item.superseded && item.conflicts > 1 ? (
+                      <p className="mt-0.5 text-meta text-[var(--color-correct-fg)]">
+                        {item.conflicts} links answered this child — check the
+                        other before approving
+                      </p>
+                    ) : null}
                   </div>
                 </label>
               </li>
@@ -645,6 +666,7 @@ type Group = {
   requestId: string;
   requestTitle: string;
   audienceLabel: string;
+  audienceKind: string;
   teacherName: string;
   items: ReviewItem[];
 };
@@ -660,6 +682,7 @@ function groupByRequest(items: ReviewItem[]): Group[] {
         requestId: item.requestId,
         requestTitle: item.requestTitle,
         audienceLabel: item.audienceLabel,
+        audienceKind: item.audienceKind,
         teacherName: item.teacherName,
         items: [item],
       });

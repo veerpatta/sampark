@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "../db";
 // Sits below this file on purpose — lib/requests.ts imports generateToken from
 // here, so the shared "answered" rule cannot live there. See lib/answered.ts.
-import { answersForRequest, coveredStudentsQuery } from "../answered";
+import { answersForRequest, coveredStudentsInRound } from "../answered";
 import { compareClassLabels, compareStudentNames } from "../classes";
 import type { RosterSnapshot } from "../snapshots";
 import type { FieldDef } from "../../../drizzle/schema";
@@ -384,8 +384,13 @@ export async function resolveTeacherToken(
      *
      * Two screens disagreeing about one number is worse than either number
      * being wrong, because there is no way for her to tell which to believe.
+     *
+     * WHICH IS ALSO WHY IT IS THE ROUND-WIDE ONE. /requests counts a class as
+     * done when the master link finished it, so her page has to as well — and
+     * it is the truth she needs anyway: the question her card answers is "do I
+     * still owe this", and she does not owe what the office already did.
      */
-    coveredStudentsQuery(ids),
+    coveredStudentsInRound(ids),
   ]);
 
   const sizeBy = new Map(sizes.map((row) => [row.requestId, row.n]));

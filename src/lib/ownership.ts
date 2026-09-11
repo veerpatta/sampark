@@ -30,8 +30,14 @@ export type Scope = { kind: ScopeKind; value: string };
  * triple (teacher, subject, class), lives in its own table, and is resolved by
  * chooseTeacherForSubject in lib/subjects.ts. It never passes through ownedBy,
  * so it is not a ScopeKind — but it IS something requests.audience_kind holds.
+ *
+ * `master` is further out still: it is the round's own link, owned by the
+ * office rather than by anybody in `teachers`' ownership columns, and it is
+ * never planned — ensureMasterLink writes it after the fan-out has run. It
+ * reaches ownedBy no more than `subject` does, and for the same reason it is
+ * listed here: audience_kind holds it.
  */
-export type AudienceKind = ScopeKind | "subject";
+export type AudienceKind = ScopeKind | "subject" | "master";
 
 export type TeacherLike = {
   id: string;

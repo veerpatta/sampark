@@ -4,7 +4,7 @@ import Link from "next/link";
  * The other settings screens, one line under the title.
  *
  * On a pointer only: below md the bottom nav's Settings tab lands on an index
- * of all seven, so this row would be the same navigation twice — and it is the
+ * of all eight, so this row would be the same navigation twice — and it is the
  * row that pushes the actual content off the first screen of a phone.
  *
  * One component, because five pages each carried a hand-typed copy of this
@@ -15,6 +15,7 @@ const SCREENS: [href: string, label: string][] = [
   ["/settings/fields", "field registry"],
   ["/settings/subjects", "subjects"],
   ["/students/import", "import students"],
+  ["/settings/office", "office"],
   ["/settings/whatsapp", "whatsapp api"],
   ["/settings/users", "admin users"],
   ["/settings/audit", "audit log"],

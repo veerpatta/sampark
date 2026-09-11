@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { asc, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import { listPickableTeachers } from "@/lib/office";
 import { listRequests, pendingForBoard } from "@/lib/requests";
 import { groupProgressByTeacher } from "@/lib/progress";
 import { marksFieldKeys } from "@/lib/marks";
@@ -61,11 +62,7 @@ export default async function DashboardPage() {
       })
       .from(schema.students),
     countByClass(),
-    db
-      .select()
-      .from(schema.teachers)
-      .where(eq(schema.teachers.active, true))
-      .orderBy(asc(schema.teachers.name)),
+    listPickableTeachers(),
     marksFieldKeys(),
     healthByClass(),
     trend(30),

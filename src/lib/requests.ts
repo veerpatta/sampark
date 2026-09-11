@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db, schema } from "./db";
-import { coveredStudentsQuery, isAnsweredFully } from "./answered";
+import { coveredStudentsInRound, isAnsweredFully } from "./answered";
+import { isMasterRequest, MASTER_AUDIENCE_KIND } from "./office";
 import { generateToken } from "./auth/token";
 import {
   compareClassLabels,
@@ -435,6 +436,34 @@ export async function uniqueTokens(count: number): Promise<string[]> {
   return [...chosen];
 }
 
+/**
+ * Replace one link's token. The old URL dies as the new one is born.
+ *
+ * ONE UPDATE, which is the whole design — the same property teachers.link_token
+ * rotation has. There is no `revoked` flag beside a token that is still there,
+ * because a second column somebody has to remember to check is a link that
+ * outlives its own kill switch, and there is no window in which both URLs work.
+ *
+ * THIS IS FOR THE MASTER LINK. A class link that has gone astray is dealt with
+ * by closing the request — the round is over for that group anyway. A master
+ * link reaches every group, so "this went somewhere it should not have" has to
+ * be answerable without closing a round that nineteen teachers are still
+ * working in. Nothing references `token` by a foreign key, so replacing it
+ * strands only the holder's localStorage draft, which is keyed by token and is
+ * the correct thing to lose.
+ */
+export async function rotateRequestToken(requestId: string): Promise<string> {
+  const [token] = await uniqueTokens(1);
+  const [row] = await db
+    .update(schema.requests)
+    .set({ token: token!, tokenRotatedAt: new Date() })
+    .where(eq(schema.requests.id, requestId))
+    .returning({ token: schema.requests.token });
+
+  if (!row) throw new RequestValidationError("No such request.");
+  return row.token;
+}
+
 /* ------------------------------------------------------------------ boards */
 
 export type RequestBoardRow = {
@@ -530,6 +559,16 @@ export { coveredStudentsQuery, isAnsweredFully } from "./answered";
  * each reader is the same reasoning as coveredStudentsQuery: the dashboard, the
  * requests table and the overdue list all ask this one function what exists, and
  * a filter any of them could forget is a filter one of them eventually will.
+ *
+ * MASTER LINKS ARE ABSENT FOR THE SAME REASON, and it is the only place they
+ * are hidden. A round's master link is an ordinary row (lib/office.ts), which
+ * is exactly what makes every teacher-facing surface carry it for free — but it
+ * is not a group, and counting it as one would double a round's roster, add a
+ * nineteenth "class" to an eighteen-class board, put "Office" on the per-teacher
+ * progress list, and let RemindAll send the office a reminder to chase itself.
+ * Every one of those falls out of this one predicate: the dashboard, the board,
+ * groupBoardRows, groupProgressByTeacher and sendTeacherReminder all read what
+ * exists through here.
  */
 export async function listRequests(
   options: {
@@ -540,6 +579,14 @@ export async function listRequests(
      * arrive at them a second way — see coveredStudentsQuery.
      */
     batchId?: string;
+    /**
+     * Include the round's master link, which every other caller wants gone.
+     *
+     * Exactly two callers pass this: the round page, which draws the master
+     * link's own card, and collectedForBatch, whose workbook would otherwise
+     * lose everything the office collected.
+     */
+    includeMaster?: boolean;
   } = {},
 ): Promise<RequestBoardRow[]> {
   const rows = await db
@@ -573,6 +620,9 @@ export async function listRequests(
       and(
         options.includeArchived ? undefined : isNull(schema.requests.archivedAt),
         options.batchId ? eq(schema.requests.batchId, options.batchId) : undefined,
+        options.includeMaster
+          ? undefined
+          : ne(schema.requests.audienceKind, MASTER_AUDIENCE_KIND),
       ),
     )
     .orderBy(desc(schema.requests.createdAt));
@@ -581,10 +631,11 @@ export async function listRequests(
 
   const ids = rows.map((row) => row.id);
 
-  // One row per student who has answered for EVERY field their request asked
-  // about. See coveredStudentsQuery for why "answered" cannot mean "has any
-  // submission".
-  const covered = coveredStudentsQuery(ids).as("covered");
+  // One row per student answered for on EVERY field their request asked about,
+  // counting answers that came through ANY link in the same round. See
+  // coveredStudentsInRound: the board must not report a class as empty because
+  // the office finished it, and RemindAll must not chase for children it did.
+  const covered = coveredStudentsInRound(ids).as("covered");
 
   // The counts behind "8 of 11 classes submitted". Three small aggregates beat
   // one clever join here — this board is read far more often than it is slow.
@@ -878,7 +929,11 @@ export async function listPendingByRequest(
       })
       .from(schema.requestStudents)
       .where(inArray(schema.requestStudents.requestId, requestIds)),
-    coveredStudentsQuery(requestIds),
+    // Round-wide, not per-link: this is the list the office chases FROM, and a
+    // child the master link already collected is not somebody anybody should be
+    // nudged about. coveredStudentsQuery still answers "what did this one link
+    // collect", which is a different question and is what the export asks.
+    coveredStudentsInRound(requestIds),
   ]);
 
   const done = new Set(
@@ -1130,8 +1185,12 @@ export async function collectedForBatch(batchId: string): Promise<{
     .from(schema.requests)
     .where(eq(schema.requests.batchId, batchId));
 
-  const [links, fields, roster, subs] = await Promise.all([
-    listRequests({ batchId, includeArchived: true }),
+  const [allLinks, fields, roster, subs] = await Promise.all([
+    // WITH THE MASTER LINK, which every other caller excludes. The round's
+    // workbook is what the office collected, and the office is who the master
+    // link is for — leaving it out would produce a file that silently omits
+    // every child it finished, which is the worst shape a report can have.
+    listRequests({ batchId, includeArchived: true, includeMaster: true }),
     db
       .select()
       .from(schema.fieldDefs)
@@ -1152,18 +1211,41 @@ export async function collectedForBatch(batchId: string): Promise<{
   const rosterBy = groupBy(roster, (row) => row.requestId);
   const subsBy = groupBy(subs, (row) => row.requestId);
 
-  const groups = links
-    .slice()
+  /*
+   * The master link is not a sheet of its own; its answers belong to the class
+   * whose child they are about.
+   *
+   * A sheet per link is how the office reads this file — one register, one
+   * teacher, one tab. A nineteenth tab called "All classes" holding a scatter
+   * of children from every other tab would be the one place a value could hide.
+   * So the master's rows are folded into the group that owns each child, cut to
+   * that group's frozen roster, and re-sorted by time so the last answer about
+   * a child still wins whichever link it arrived through.
+   */
+  const master = allLinks.find((link) => isMasterRequest(link));
+  const masterSubs = master ? (subsBy.get(master.id) ?? []) : [];
+
+  const groups = allLinks
+    .filter((link) => !isMasterRequest(link))
     .sort((a, b) => compareClassLabels(a.audienceLabel, b.audienceLabel))
     .map((link) => {
       const own = link.fieldKeys
         .map((key) => fieldByKey.get(key))
         .filter((field): field is FieldDef => Boolean(field));
-      const rows = buildCollectedRows(
-        own,
-        rosterBy.get(link.id) ?? [],
-        subsBy.get(link.id) ?? [],
-      );
+      const ownRoster = rosterBy.get(link.id) ?? [];
+      const ownSubs = subsBy.get(link.id) ?? [];
+      const mine = new Set(ownRoster.map((row) => row.studentId));
+      const merged =
+        masterSubs.length === 0
+          ? ownSubs
+          : [
+              ...ownSubs,
+              ...masterSubs.filter((row) => mine.has(row.studentId)),
+            ].sort(
+              (a, b) => a.submittedAt.getTime() - b.submittedAt.getTime(),
+            );
+
+      const rows = buildCollectedRows(own, ownRoster, merged);
 
       return {
         link,

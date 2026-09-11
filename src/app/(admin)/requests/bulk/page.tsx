@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import { listPickableTeachers } from "@/lib/office";
 import { canCreateRequests, currentUser } from "@/lib/auth/session";
 import { countByClass, countByHouse, countByRoute } from "@/lib/students";
 import { CLASS_LABELS } from "@/lib/classes";
@@ -29,11 +30,7 @@ export default async function BulkSendPage() {
       countByClass(),
       countByHouse(),
       countByRoute(),
-      db
-        .select()
-        .from(schema.teachers)
-        .where(eq(schema.teachers.active, true))
-        .orderBy(asc(schema.teachers.name)),
+      listPickableTeachers(),
       db
         .select()
         .from(schema.fieldDefs)

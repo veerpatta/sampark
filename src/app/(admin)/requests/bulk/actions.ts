@@ -11,8 +11,8 @@ import {
 import { RequestValidationError } from "@/lib/requests";
 import type { Audience } from "@/lib/students";
 import type { RecipientMode } from "@/lib/fanout";
-import { asc, eq } from "drizzle-orm";
-import { db, schema } from "@/lib/db";
+import { listPickableTeachers } from "@/lib/office";
+import { sendMasterLink } from "@/lib/whatsapp-send";
 
 /**
  * Everyone the office could name for a group nobody is down for.
@@ -24,11 +24,8 @@ import { db, schema } from "@/lib/db";
  * whoever is available, and so do subjects.
  */
 async function pickableTeachers() {
-  return db
-    .select({ id: schema.teachers.id, name: schema.teachers.name })
-    .from(schema.teachers)
-    .where(eq(schema.teachers.active, true))
-    .orderBy(asc(schema.teachers.name));
+  const rows = await listPickableTeachers();
+  return rows.map((row) => ({ id: row.id, name: row.name }));
 }
 
 /**
@@ -163,6 +160,15 @@ export type SendResult =
       failedAt: string | null;
       failedMessage: string | null;
       remaining: number;
+      /**
+       * The round's own link, and whether it reached the office.
+       *
+       * Null is ordinary: a subject round has no master link, and neither does
+       * one created before anybody set an office number. `sent: false` with no
+       * error is the same fact the rest of this app states plainly — the API
+       * is off on this deployment, so use the card on the round's page.
+       */
+      master: { rosterSize: number; sent: boolean; error: string | null } | null;
     }
   | { ok: false; error: string };
 
@@ -175,6 +181,25 @@ export async function send(input: BulkRequest): Promise<SendResult> {
   try {
     const result = await createBatch(toBatchInput(input, user.id));
 
+    /*
+     * The master link goes out on its own, without anybody pressing anything.
+     *
+     * That is the whole point of it: the office should not have to remember
+     * that the round it just sent to nineteen teachers also has a link of its
+     * own. It arrives on the office's phone at the same moment the teachers'
+     * do, and is there at the end of the week when the last forty children are
+     * what is left.
+     *
+     * AFTER THE LINKS AND NEVER INSTEAD OF THEM. Awaited rather than left
+     * floating — a server action's process can be torn down the moment it
+     * returns — but its outcome only decorates the result. A round whose
+     * master link could not be sent is a round; the card on its page says so
+     * and offers the button. Nothing here can fail the send that mattered.
+     */
+    const masterSent = result.master
+      ? await sendMasterLink({ batchId: result.batchId, actor: user.id })
+      : null;
+
     revalidatePath("/requests");
     revalidatePath("/");
 
@@ -185,6 +210,13 @@ export async function send(input: BulkRequest): Promise<SendResult> {
       failedAt: result.failed?.scope.value ?? null,
       failedMessage: result.failed?.message ?? null,
       remaining: result.remaining.length,
+      master: result.master
+        ? {
+            rosterSize: result.master.rosterSize,
+            sent: masterSent?.ok === true,
+            error: masterSent && !masterSent.ok ? masterSent.error : null,
+          }
+        : null,
     };
   } catch (error) {
     return { ok: false, error: message(error) };

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import {
   classesByRequest,
@@ -12,6 +12,12 @@ import {
   uniqueTokens,
 } from "./requests";
 import { listAudienceRoster, type Audience } from "./students";
+import {
+  getOfficeRecipient,
+  MASTER_AUDIENCE_KIND,
+  OFFICE_AUDIENCE_LABEL,
+  listPickableTeachers,
+} from "./office";
 import {
   isRecipientMode,
   planFanOut,
@@ -253,7 +259,37 @@ export type FanOutResult = {
   failed: { scope: GroupScope; message: string } | null;
   /** Groups after it, untouched. Resume picks these up. */
   remaining: GroupScope[];
+  /**
+   * The round's own link, or null when it has none.
+   *
+   * Null is an ordinary outcome, not a failure: a subject round gets no master
+   * link, and neither does a round created before anybody set the office's
+   * number. The caller says so on screen rather than treating it as an error.
+   */
+  master: { requestId: string; token: string; rosterSize: number } | null;
 };
+
+/**
+ * Add the master link to a finished fan-out, and never let it break one.
+ *
+ * The round is the thing that matters. Seven links of eleven is seven teachers
+ * who can start; the same run losing all eleven because the office's number was
+ * malformed would be the tail wagging the dog.
+ */
+async function withMasterLink(
+  result: Omit<FanOutResult, "master">,
+  createdBy: string,
+): Promise<FanOutResult> {
+  try {
+    return {
+      ...result,
+      master: await ensureMasterLink({ batchId: result.batchId, createdBy }),
+    };
+  } catch (error) {
+    console.error("Master link could not be minted", error);
+    return { ...result, master: null };
+  }
+}
 
 export async function createBatch(input: BatchInput): Promise<FanOutResult> {
   // Pre-generated so the period for an ad-hoc question can be derived before
@@ -294,7 +330,10 @@ export async function createBatch(input: BatchInput): Promise<FanOutResult> {
   // was already used to build it.
   if (input.remember) await rememberChoices(resolved.rawPlan, input.overrides);
 
-  return runGroups(batch.id, groups, resolved, input);
+  return withMasterLink(
+    await runGroups(batch.id, groups, resolved, input),
+    input.createdBy,
+  );
 }
 
 /**
@@ -421,11 +460,156 @@ export async function resumeBatch(
     (group) => !done.has(scopeKey(group.scope)),
   );
 
+  // Every group already has its link — but the master may still be missing,
+  // from a round created before the office had a number. Resume is the button
+  // that finishes a round, so it finishes this too.
   if (groups.length === 0) {
-    return { batchId, created: [], failed: null, remaining: [] };
+    return withMasterLink(
+      { batchId, created: [], failed: null, remaining: [] },
+      createdBy,
+    );
   }
 
-  return runGroups(batchId, groups, resolved, input);
+  return withMasterLink(
+    await runGroups(batchId, groups, resolved, input),
+    createdBy,
+  );
+}
+
+/**
+ * Mint the round's own link: one token over every group's roster.
+ *
+ * WHY A ROUND NEEDS ONE. The fan-out's whole shape is "one link per teacher",
+ * and it is the right shape — a teacher checks her own register and nobody
+ * else's. What it has no answer for is the end of a round: eighteen classes in,
+ * forty children left, spread six here and four there across five teachers who
+ * have stopped reading WhatsApp. Chasing those five costs more than doing the
+ * forty. This is the link that lets the office do them.
+ *
+ * IT IS AN ORDINARY REQUEST ROW, and that is the entire trick. audience_kind is
+ * plain text, so `master` cost no migration; and because the row is ordinary,
+ * resolveToken opens it, the submit and photo routes accept it, the rate limits
+ * and security headers cover it, the offline queue works on it, every answer
+ * lands in the same review queue, and the WhatsApp button routes to it through
+ * /w/<token> with no template re-approval. Nothing on the teacher surface knows
+ * this feature exists.
+ *
+ * ONE PER ROUND IS A DATABASE GUARANTEE, not a check. The label is the constant
+ * OFFICE_AUDIENCE_LABEL, so requests_batch_scope_idx — unique on (batch_id,
+ * audience_kind, audience_label) — is what makes this safe to call from both
+ * createBatch and resumeBatch and safe to race with itself. A second call finds
+ * the row that already exists and returns it.
+ *
+ * IT NEVER FAILS THE ROUND. A fan-out is deliberately not one transaction
+ * (see the note at the head of this file): eleven links of which seven were
+ * created is seven teachers who can start. A master link that could not be
+ * minted must be exactly as survivable — the round is the thing that matters,
+ * and the office can mint this one from the round's page afterwards.
+ */
+export async function ensureMasterLink(input: {
+  batchId: string;
+  createdBy: string;
+}): Promise<{ requestId: string; token: string; rosterSize: number } | null> {
+  const [batch] = await db
+    .select()
+    .from(schema.requestBatches)
+    .where(eq(schema.requestBatches.id, input.batchId))
+    .limit(1);
+  if (!batch) return null;
+
+  const existing = await findMasterLink(input.batchId);
+  if (existing) return existing;
+
+  /*
+   * A SUBJECT ROUND GETS NO MASTER LINK.
+   *
+   * Every other mode asks one question of every child, so one screen over the
+   * whole audience is a list somebody can actually work through. A subject
+   * round asks a different question per group — Hemlata's link carries
+   * Chemistry and nobody else's — so its master would be sixteen subjects
+   * against five hundred children, which is not a screen, and whose marks the
+   * office has no way to know anyway. The fan-out already refuses to guess who
+   * teaches what; this refuses to pretend the office does.
+   */
+  if (batch.recipientMode === "subject_teacher") return null;
+
+  const office = await getOfficeRecipient();
+  // No number set yet. Not an error: the round is fine, and Settings → Office
+  // is one screen away. Minting a link nobody can be sent would only hide that.
+  if (!office) return null;
+
+  const roster = await listAudienceRoster(batch.audience as Audience);
+  if (roster.length === 0) return null;
+
+  const fieldKeys = normaliseFieldKeys(batch.fieldKeys);
+  const fields = await resolveFields(fieldKeys);
+  const [token] = await uniqueTokens(1);
+
+  try {
+    const created = await createOneRequest(
+      {
+        title: batch.title,
+        // NULL exactly as a house or route link's is: this roster spans every
+        // class, so a column that joins students.class_label cannot be true.
+        classLabel: null,
+        audienceKind: MASTER_AUDIENCE_KIND,
+        audienceLabel: OFFICE_AUDIENCE_LABEL,
+        batchId: batch.id,
+        teacherId: office.id,
+        fieldKeys,
+        period: batch.period,
+        dueDate: batch.dueDate,
+        createdBy: input.createdBy,
+      },
+      {
+        roster,
+        fields,
+        priorRecords: await loadPriorRecords(roster, fields, batch.period),
+        token: token!,
+        requestId: randomUUID(),
+      },
+    );
+    return {
+      requestId: created.id,
+      token: created.token,
+      rosterSize: created.rosterSize,
+    };
+  } catch {
+    // Lost a race with another tab, most likely — the unique index did its job.
+    // Whatever the cause, the round stands and the office can mint from the
+    // round's page. Return whatever is actually there now.
+    return findMasterLink(input.batchId);
+  }
+}
+
+/** The round's master link, or null for a round that has none. */
+export async function findMasterLink(batchId: string): Promise<{
+  requestId: string;
+  token: string;
+  rosterSize: number;
+  /** When it was last handed over. Null until the first successful send. */
+  sentAt: Date | null;
+} | null> {
+  const [row] = await db
+    .select({
+      requestId: schema.requests.id,
+      token: schema.requests.token,
+      sentAt: schema.requests.sentAt,
+      rosterSize: sql<number>`(
+        select count(*)::int from ${schema.requestStudents}
+        where ${schema.requestStudents.requestId} = ${schema.requests.id}
+      )`,
+    })
+    .from(schema.requests)
+    .where(
+      and(
+        eq(schema.requests.batchId, batchId),
+        eq(schema.requests.audienceKind, MASTER_AUDIENCE_KIND),
+      ),
+    )
+    .limit(1);
+
+  return row ?? null;
 }
 
 /** The sequential loop. Stops at the first failure and reports where. */
@@ -434,7 +618,7 @@ async function runGroups(
   groups: FanOutPlan["ready"],
   resolved: Resolved,
   input: BatchInput,
-): Promise<FanOutResult> {
+): Promise<Omit<FanOutResult, "master">> {
   const tokens = await uniqueTokens(groups.length);
   // Loaded for the WHOLE field set in one query. The map is keyed by (student,
   // fieldKey), so narrowing it per group costs nothing and reading it thirty
@@ -548,11 +732,11 @@ function subjectsFor(fields: FieldDef[]): SubjectPick[] {
 }
 
 async function activeRecipients(): Promise<Recipient[]> {
-  const rows = await db
-    .select()
-    .from(schema.teachers)
-    .where(eq(schema.teachers.active, true))
-    .orderBy(asc(schema.teachers.name));
+  // Not the office: its classes, houses and routes are all empty so ownedBy
+  // could never select it anyway, but a candidate list is also what the blocked-
+  // group override dropdown is built from, and "Office" offered there is one
+  // mistap from sending Class 8's link to the wrong phone. See lib/office.ts.
+  const rows = await listPickableTeachers();
 
   return rows.map((row) => ({
     id: row.id,
@@ -637,7 +821,18 @@ export async function getBatch(batchId: string): Promise<BatchDetail | null> {
     })
     .from(schema.requests)
     .innerJoin(schema.teachers, eq(schema.teachers.id, schema.requests.teacherId))
-    .where(eq(schema.requests.batchId, batchId))
+    .where(
+      and(
+        eq(schema.requests.batchId, batchId),
+        // NOT THE MASTER LINK. This queue is one card per person to chase, and
+        // the office is not one of them — a card called "Office" sitting among
+        // the teachers would make a two-class round read as three links, put a
+        // Remind button against the people doing the reminding, and disagree
+        // with the round's own progress line, which counts groups. The master
+        // link has its own card above the queue; see MasterLinkCard.
+        ne(schema.requests.audienceKind, MASTER_AUDIENCE_KIND),
+      ),
+    )
     .orderBy(asc(schema.requests.createdAt));
 
   const ids = rows.map((row) => row.requestId);

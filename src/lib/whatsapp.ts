@@ -58,6 +58,16 @@ export type MessageAudience = {
    * does not show. See classesByRequest in lib/requests.ts.
    */
   classLabels?: string[];
+  /**
+   * How many children a MASTER link carries, and only a master link.
+   *
+   * Every other kind names its group and the teacher already knows how big her
+   * own register is. "All classes" says nothing about the size of the job, and
+   * the size is the whole of what the office is deciding on when the message
+   * arrives — so it goes in the one line she reads. Absent for every other
+   * kind, where the count would be noise beside a label that already tells her.
+   */
+  rosterSize?: number;
 };
 
 /**
@@ -125,6 +135,13 @@ export function describeAudienceHi(audience: MessageAudience): string {
     return `${house?.hi ?? audience.label} सदन`;
   }
   if (audience.kind === "route") return `${audience.label} रूट`;
+  if (audience.kind === "master") {
+    // The round's own link. It names the size because that is the fact the
+    // office is deciding on — five hundred children is an afternoon, forty is
+    // a cup of tea — and the count is the one thing the label cannot carry.
+    const size = audience.rosterSize;
+    return size ? `सभी कक्षाएँ (${size} बच्चे)` : "सभी कक्षाएँ";
+  }
   if (audience.kind === "subject") {
     const subject = audience.fieldKeys
       ?.map((key) => subjectByFieldKey(key))
@@ -154,6 +171,10 @@ export function describeAudienceEn(audience: MessageAudience): string {
     return classes.length > 0
       ? `${audience.label} ${noun} — ${describeClasses(classes, "classes")}`
       : `${audience.label} ${noun}`;
+  }
+  if (audience.kind === "master") {
+    const size = audience.rosterSize;
+    return size ? `All classes (${size} children)` : "All classes";
   }
   if (audience.kind === "subject") {
     const subject = audience.fieldKeys

@@ -42,6 +42,31 @@ describe("describeAudienceHi", () => {
     );
   });
 
+  /*
+   * The master link names the SIZE, and no other kind does.
+   *
+   * Every other message goes to a teacher who already knows how big her own
+   * register is. "All classes" says nothing about the size of the job, and the
+   * size is the whole of what the office is deciding on when it arrives.
+   */
+  it("names the whole school and how many children", () => {
+    assert.equal(
+      describeAudienceHi({
+        kind: "master",
+        label: "All classes",
+        rosterSize: 504,
+      }),
+      "सभी कक्षाएँ (504 बच्चे)",
+    );
+  });
+
+  it("still reads as a sentence when the count is missing", () => {
+    assert.equal(
+      describeAudienceHi({ kind: "master", label: "All classes" }),
+      "सभी कक्षाएँ",
+    );
+  });
+
   it("leaves a bus route in Latin script", () => {
     // Route names are places off the route master. A transliteration nobody
     // uses is harder to recognise than the name written on the bus.
@@ -421,6 +446,17 @@ describe("a link that spans registers says which ones", () => {
       classLabels: ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6"],
     };
     assert.equal(describeAudienceEn(house), "Rana Pratap House — 6 classes");
+  });
+
+  it("names the whole school and how many children, for a master link", () => {
+    assert.equal(
+      describeAudienceEn({
+        kind: "master",
+        label: "All classes",
+        rosterSize: 504,
+      }),
+      "All classes (504 children)",
+    );
   });
 
   it("leaves a class link alone", () => {
