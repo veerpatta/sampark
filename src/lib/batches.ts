@@ -11,7 +11,7 @@ import {
   resolvePeriod,
   uniqueTokens,
 } from "./requests";
-import { listAudienceRoster, type Audience } from "./students";
+import { listAudienceRoster, normaliseAudience, type Audience } from "./students";
 import {
   getOfficeRecipient,
   MASTER_AUDIENCE_KIND,
@@ -90,6 +90,17 @@ export type BatchInput = {
    * would be a deletion nobody asked for.
    */
   remember?: boolean;
+  /**
+   * Why these children, when the group label alone would be a lie.
+   *
+   * Either the office's own typed sentence or one derived from the gaps it
+   * filtered on — see describeGaps in lib/student-filters.ts. Both halves are
+   * stored, because the teacher surface is bilingual and deriving Hindi from
+   * English after the fact is not a thing this app can do.
+   */
+  reason?: { en: string; hi: string } | null;
+  /** A line about one child, by student id. From an uploaded list. */
+  notes?: Record<string, string>;
 };
 
 export const scopeKey = (scope: GroupScope) => `${scope.kind}|${scope.value}`;
@@ -116,6 +127,8 @@ type Resolved = {
   fields: FieldDef[];
   period: string | null;
   byId: Map<string, Student>;
+  /** The audience as it was actually resolved, after normaliseAudience. */
+  audience: Audience;
 };
 
 /**
@@ -146,11 +159,25 @@ async function resolveBatch(
 
   const fields = await resolveFields(normaliseFieldKeys(input.fieldKeys));
   const period = resolvePeriod(fields, input.period, scopeId);
-  const roster = await listAudienceRoster(input.audience);
+  const audience = normaliseAudience(input.audience);
+  const roster = await listAudienceRoster(audience);
 
   if (roster.length === 0) {
+    /*
+     * AN EMPTY GAP SELECTION IS GOOD NEWS, and must not read as a mistake.
+     *
+     * "Widen it, or check the class list" is the right sentence for a class
+     * nobody has imported yet. It is exactly the wrong one for "every child in
+     * Class 8 already has a photograph" — that is the office being told to undo
+     * the work it just finished, over the one result the whole feature exists
+     * to produce.
+     */
     throw new RequestValidationError(
-      "That selection covers no active students. Widen it, or check the class list.",
+      (audience.gaps?.length ?? 0) > 0
+        ? "Nothing is missing in that selection — every child there already has what you are asking for."
+        : audience.studentIds?.length
+          ? "None of those children is on the active roll any more."
+          : "That selection covers no active students. Widen it, or check the class list.",
     );
   }
   if (roster.length > MAX_STUDENTS) {
@@ -179,6 +206,7 @@ async function resolveBatch(
     fields,
     period,
     byId: new Map(roster.map((student) => [student.id, student])),
+    audience,
   };
 }
 
@@ -291,6 +319,55 @@ async function withMasterLink(
   }
 }
 
+/**
+ * The audience as it will be stored: the ids it actually resolved to.
+ *
+ * THIS REVERSES WHAT THE SCHEMA COMMENT ON request_batches.audience SAYS, on
+ * purpose and only here. "The office's selection as given, not the resolved
+ * roster" is right for a class, a house or a route: Class 8 is still Class 8 on
+ * Thursday, so a Resume re-resolving it finishes the job it started.
+ *
+ * A GAP AUDIENCE IS DEFINED BY THE ABSENCE OF THE VERY DATA THE ROUND IS
+ * COLLECTING. Six photographs arrive overnight; Resume re-resolves; the links
+ * it creates cover a different, smaller set than the ones it is finishing, and
+ * a class whose last photo-less child was photographed gets no link at all
+ * while the board still counts nineteen groups. ensureMasterLink reads the same
+ * column, so the round's own link would cover a set its class links do not.
+ *
+ * Frozen for every audience, not only a gap one, because "Resume finishes what
+ * the send started" is what the button claims in all of them — and a child
+ * imported into Class 8 after the send was not on the other teachers' frozen
+ * rosters either.
+ *
+ * `from` keeps what she ticked, so the round's page can still say "no photo,
+ * Classes 6 to 8" rather than reading back five hundred ids.
+ */
+function freezeAudience(resolved: Resolved, input: BatchInput): Audience {
+  const notes = input.notes ?? resolved.audience.notes;
+  if (resolved.audience.studentIds?.length) {
+    return { ...resolved.audience, notes };
+  }
+  return {
+    studentIds: resolved.roster.map((student) => student.id),
+    from: resolved.audience,
+    notes,
+  };
+}
+
+/** The stored per-child notes, in the shape createOneRequest wants. */
+function noteMap(audience: Audience): Map<string, string> | undefined {
+  return audience.notes ? new Map(Object.entries(audience.notes)) : undefined;
+}
+
+/** The reason as the two columns hold it, or null when the round has none. */
+function reasonOf(batch: {
+  reasonEn: string | null;
+  reasonHi: string | null;
+}): { en: string; hi: string } | null {
+  if (!batch.reasonEn && !batch.reasonHi) return null;
+  return { en: batch.reasonEn ?? "", hi: batch.reasonHi ?? "" };
+}
+
 export async function createBatch(input: BatchInput): Promise<FanOutResult> {
   // Pre-generated so the period for an ad-hoc question can be derived before
   // anything is written, and so validation still runs before the batch row
@@ -313,12 +390,14 @@ export async function createBatch(input: BatchInput): Promise<FanOutResult> {
     .values({
       id: batchId,
       title: input.title.trim(),
-      audience: input.audience,
+      audience: freezeAudience(resolved, input),
       fieldKeys: normaliseFieldKeys(input.fieldKeys),
       period: resolved.period,
       dueDate: input.dueDate,
       recipientMode: input.recipientMode,
       createdBy: input.createdBy,
+      reasonEn: input.reason?.en ?? null,
+      reasonHi: input.reason?.hi ?? null,
     })
     .returning({ id: schema.requestBatches.id });
 
@@ -441,6 +520,10 @@ export async function resumeBatch(
     dueDate: batch.dueDate,
     recipientMode: batch.recipientMode as RecipientMode,
     createdBy,
+    // Carried forward so a link created by Resume says exactly what the links
+    // created by the send it is finishing say.
+    reason: reasonOf(batch),
+    notes: (batch.audience as Audience).notes,
   };
 
   const resolved = await resolveBatch(input, batchId);
@@ -560,6 +643,9 @@ export async function ensureMasterLink(input: {
         period: batch.period,
         dueDate: batch.dueDate,
         createdBy: input.createdBy,
+        // The office's own link says what the teachers' links say. It is the
+        // alternative to working through them, not a different question.
+        reason: reasonOf(batch),
       },
       {
         roster,
@@ -567,6 +653,7 @@ export async function ensureMasterLink(input: {
         priorRecords: await loadPriorRecords(roster, fields, batch.period),
         token: token!,
         requestId: randomUUID(),
+        notes: noteMap(batch.audience as Audience),
       },
     );
     return {
@@ -630,6 +717,11 @@ async function runGroups(
   );
   const batchKeys = normaliseFieldKeys(input.fieldKeys);
   const fieldsByKey = new Map(resolved.fields.map((field) => [field.key, field]));
+  // Built once for the whole round. createOneRequest looks up only the children
+  // in its own group, so one map serves all nineteen links.
+  const notes = input.notes
+    ? new Map(Object.entries(input.notes))
+    : noteMap(resolved.audience);
 
   const created: FanOutResult["created"] = [];
 
@@ -667,6 +759,11 @@ async function runGroups(
           dueDate: input.dueDate,
           createdBy: input.createdBy,
           contactPhone: override?.contactPhone ?? null,
+          // The SAME reason on every link in the round, including the master
+          // one. It says why the round exists, which does not change per group
+          // — and a per-group count would have to be recomputed in the message
+          // builder anyway, which is where the group's own size already lives.
+          reason: input.reason ?? null,
         },
         {
           roster,
@@ -674,6 +771,7 @@ async function runGroups(
           priorRecords,
           token: tokens[i]!,
           requestId: randomUUID(),
+          notes,
         },
       );
 

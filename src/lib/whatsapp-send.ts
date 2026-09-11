@@ -68,6 +68,21 @@ export type SendOutcome =
 const NOT_CONFIGURED = "WhatsApp API sending is switched off on this deployment.";
 
 /**
+ * The two reason columns as one value, or null when the round has none.
+ *
+ * Takes the two columns rather than a row type so that it serves a batch row, a
+ * request row and a board row alike — all three carry the same pair, for the
+ * reason given on requests.reason_en.
+ */
+function reasonOf(row: {
+  reasonEn: string | null;
+  reasonHi: string | null;
+}): { en: string; hi: string } | undefined {
+  if (!row.reasonEn && !row.reasonHi) return undefined;
+  return { en: row.reasonEn ?? "", hi: row.reasonHi ?? "" };
+}
+
+/**
  * Which template language she gets. Read here, once per send, rather than
  * carried on every board row — RequestBoardRow is built literally by a dozen
  * test fixtures, and a new required field there is a dozen edits for a value
@@ -213,6 +228,10 @@ export async function sendRoundGroup(input: {
         label: link.audienceLabel,
         fieldKeys: link.fieldKeys,
         classLabels: link.classLabels,
+        // Off the round, not off the link: every link in a round carries the
+        // same one, and buildRequestPayloads hoists it above the numbered list
+        // when a teacher holds several.
+        reason: reasonOf(detail.batch),
       },
     })),
     linkToken: group.linkToken,
@@ -299,6 +318,7 @@ export async function sendMasterLink(input: {
           label: OFFICE_AUDIENCE_LABEL,
           fieldKeys: batch.fieldKeys,
           rosterSize: master.rosterSize,
+          reason: reasonOf(batch),
         },
       },
     ],
@@ -362,6 +382,7 @@ export async function sendTeacherReminder(input: {
         kind: form.audienceKind,
         label: form.audienceLabel,
         fieldKeys: form.fieldKeys,
+        reason: reasonOf(form),
       },
       title: form.title,
       dueDate: form.dueDate,

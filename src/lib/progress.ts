@@ -34,6 +34,9 @@ export type ProgressForm = {
   title: string;
   audienceKind: string;
   audienceLabel: string;
+  /** Why this link is only part of a register. Carried into the nudge. */
+  reasonEn: string | null;
+  reasonHi: string | null;
   fieldKeys: string[];
   /** This one request's own link, for a teacher with no durable page. */
   token: string;
@@ -228,6 +231,8 @@ export function groupProgressByTeacher(
       title: row.title,
       audienceKind: row.audienceKind,
       audienceLabel: row.audienceLabel,
+      reasonEn: row.reasonEn,
+      reasonHi: row.reasonHi,
       fieldKeys: row.fieldKeys,
       token: row.token,
       kind: classifyForm(row.fieldKeys, marksKeys),

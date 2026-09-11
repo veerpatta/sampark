@@ -434,3 +434,98 @@ describe("isLanguage", () => {
     assert.ok(!isLanguage(undefined));
   });
 });
+
+/**
+ * The office's own sentence, and why it needed no re-approval.
+ *
+ * A template's text is fixed at approval, so nothing here adds a line. The
+ * reason rides in {{3}} — the hole already reserved for saying what the teacher
+ * is looking at, and the one sanitised at SUMMARY_MAX rather than PARAM_MAX, so
+ * there is room for a sentence rather than a label.
+ */
+describe("a round that says why", () => {
+  const reason = { en: "9 children: No photo", hi: "9 बच्चे: फ़ोटो बाकी है" };
+
+  it("fills the same number of holes it always did", () => {
+    // THE WHOLE POINT. A template edited in the dashboard sends the wrong
+    // number of params and AiSensy refuses it; a reason that added a hole would
+    // have meant six re-approvals.
+    for (const language of LANGUAGES) {
+      const [payload] = buildRequestPayloads({
+        teacherName: "Sunita Sharma",
+        language,
+        title: "Photo round",
+        dueDate: "2026-08-20",
+        links: [link({ audience: { kind: "class", label: "Class 8", reason } })],
+        linkToken: null,
+      });
+      assert.equal(payload!.params.length, expectedParamCount("request", language));
+      payload!.params.forEach(assertCleanParam);
+    }
+  });
+
+  it("puts it in the group's hole and leaves the title alone", () => {
+    const [payload] = buildRequestPayloads({
+      teacherName: "Sunita",
+      language: "en",
+      title: "Photo round",
+      dueDate: "2026-08-20",
+      links: [link({ audience: { kind: "class", label: "Class 8", reason } })],
+      linkToken: null,
+    });
+    // {{2}} stays the title — the teacher's screen shows it as a heading, and a
+    // paragraph folded into it would put a sentence where a name belongs.
+    assert.equal(payload!.params[1], "Photo round");
+    assert.equal(payload!.params[2], "Class 8 — 9 children: No photo");
+  });
+
+  it("says it once for a teacher holding three of the round's links", () => {
+    const [payload] = buildRequestPayloads({
+      teacherName: "Prakash",
+      language: "en",
+      title: "Photo round",
+      dueDate: "2026-08-20",
+      links: [
+        link({ requestId: "R1", audience: { kind: "class", label: "Class 6", reason } }),
+        link({ requestId: "R2", audience: { kind: "class", label: "Class 7", reason } }),
+        link({ requestId: "R3", audience: { kind: "class", label: "Class 8", reason } }),
+      ],
+      linkToken: "TEACHERPAGETOKEN",
+    });
+
+    const summary = payload!.params[2]!;
+    assert.equal(
+      summary.split("9 children: No photo").length - 1,
+      1,
+      "hoisted above the numbered list rather than repeated on each line",
+    );
+    assert.match(summary, /3 lists: 1\) Class 6 · 2\) Class 7 · 3\) Class 8/);
+    assertCleanParam(summary);
+  });
+
+  it("survives a sentence long enough to need collapsing", () => {
+    /*
+     * Meta rejects a newline, a tab or a run of four spaces outright, and caps
+     * the rendered body. The office types into a textarea, so all three are one
+     * paste away — sanitiseParam is what stands between that and a refused
+     * campaign, and this is the assertion that it is still in the path.
+     */
+    const messy = {
+      en: `These   numbers\nare not on WhatsApp.\t${"x".repeat(900)}`,
+      hi: "ठीक है",
+    };
+    const [payload] = buildRequestPayloads({
+      teacherName: "Sunita",
+      language: "en",
+      title: "Number check",
+      dueDate: "2026-08-20",
+      links: [link({ audience: { kind: "class", label: "Class 8", reason: messy } })],
+      linkToken: null,
+    });
+
+    const summary = payload!.params[2]!;
+    assertCleanParam(summary);
+    assert.ok(summary.length <= SUMMARY_MAX, "capped at what the body leaves room for");
+    assert.ok(summary.endsWith("…"), "and says it was cut rather than just stopping");
+  });
+});

@@ -4,7 +4,18 @@ import { asc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { listPickableTeachers } from "@/lib/office";
 import { canCreateRequests, currentUser } from "@/lib/auth/session";
-import { countByClass, countByHouse, countByRoute } from "@/lib/students";
+import {
+  countAudience,
+  countByClass,
+  countByHouse,
+  countByRoute,
+} from "@/lib/students";
+import {
+  audienceFromFilters,
+  describeAudienceFilters,
+  describeGaps,
+  type StudentSearchParams,
+} from "@/lib/student-filters";
 import { CLASS_LABELS } from "@/lib/classes";
 import { HOUSES } from "@/lib/houses";
 import { BUS_ROUTES } from "@/lib/routes";
@@ -21,9 +32,27 @@ export const dynamic = "force-dynamic";
  * house that covers 38 children when you meant a class is a mistake the number
  * prevents before the preview has to explain it.
  */
-export default async function BulkSendPage() {
+export default async function BulkSendPage({
+  searchParams,
+}: {
+  searchParams: Promise<StudentSearchParams>;
+}) {
   const session = await currentUser();
   if (!session || !canCreateRequests(session.role)) redirect("/");
+
+  /*
+   * THE BOARD'S OWN FILTERS, READ WITH THE BOARD'S OWN PARSER.
+   *
+   * /students links here with the query string its Export link already
+   * carries, so "Class 8, category SC, no photo" arrives intact. Parsing it
+   * with anything other than parseFilters would be a second reading of one URL
+   * — which is the drift lib/student-filters.ts exists to prevent, and the
+   * failure would be a send quietly covering MORE children than the office was
+   * looking at.
+   */
+  const params = await searchParams;
+  const carried = audienceFromFilters(params);
+  const carriedCount = carried ? await countAudience(carried) : 0;
 
   const [classCounts, houseCounts, routeCounts, teachers, fields, subjectRows] =
     await Promise.all([
@@ -92,6 +121,17 @@ export default async function BulkSendPage() {
         }))}
         templates={TEMPLATES}
         defaultPeriod={`${process.env.ACADEMIC_YEAR ?? "2026-27"}/FA1`}
+        carried={
+          carried
+            ? {
+                audience: carried,
+                count: carriedCount,
+                summary: describeAudienceFilters(carried),
+                gapReason: describeGaps(carried.gaps ?? [], carriedCount, "en"),
+                gapReasonHi: describeGaps(carried.gaps ?? [], carriedCount, "hi"),
+              }
+            : null
+        }
       />
     </div>
   );

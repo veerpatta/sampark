@@ -6,6 +6,7 @@ import { db, schema } from "../src/lib/db";
 import { generateToken } from "../src/lib/auth/token";
 import { buildSnapshots } from "../src/lib/snapshots";
 import type { ResolvedRequest } from "../src/lib/auth/token";
+import type { Student } from "../drizzle/schema";
 
 /**
  * Teardown runs as the OWNER, not as app_rw.
@@ -237,6 +238,7 @@ export async function createScenario(options?: {
       teacherName: "Test Teacher",
       fields: ordered,
       classLabels: [TEST_CLASS],
+      reason: null,
       // Read back off the same snapshots that were frozen above, so what a test
       // hands to recordSubmissions is exactly what the teacher would have seen.
       roster: students.map((student) => {
@@ -245,6 +247,7 @@ export async function createScenario(options?: {
         return {
           studentId: student.id,
           ...snapshot,
+          askNote: null,
           answered: {},
       elsewhere: {},
           notPresent: false,
@@ -292,6 +295,23 @@ export type FanOutScenario = {
  */
 export async function createFanOutScenario(options?: {
   houses?: (string | null)[];
+  /**
+   * Per-child column overrides, flattened in group order.
+   *
+   * FOR THE GAP AUDIENCES, which are the one kind that cannot be tested with a
+   * roster of identical children: "only one number" and "both numbers the
+   * same" are distinctions between two columns, so a scenario has to be able to
+   * set them one child at a time.
+   *
+   * This scenario's synthetic class labels are also what makes such a test
+   * safe. A gap audience with no class narrows to every photo-less child in the
+   * database — every other file's fixtures included, mid-delete — which is the
+   * race the per-file PREFIX above exists to kill. Scope a gap audience to
+   * `groups.map(g => g.classLabel)` and it can only ever see its own children.
+   */
+  each?: Partial<
+    Pick<Student, "phone" | "altPhone" | "photoPath" | "phoneOnWhatsapp">
+  >[];
 }): Promise<FanOutScenario> {
   const suffix = generateToken().slice(0, 6).replace(/[^A-Za-z0-9]/g, "x");
   const userId = `${PREFIX}U${suffix}`;
@@ -335,6 +355,7 @@ export async function createFanOutScenario(options?: {
         phone: position === 0 ? "9111111111" : null,
         fatherName: `Test Father ${index}${position}`,
         house: houses[index] ?? null,
+        ...(options?.each?.[index * group.studentIds.length + position] ?? {}),
       })),
     ),
   );

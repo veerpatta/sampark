@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { canApproveIntoMaster, currentUser } from "@/lib/auth/session";
+import {
+  canApproveIntoMaster,
+  canCreateRequests,
+  currentUser,
+} from "@/lib/auth/session";
 import { listFacets, listStudents, type StudentSort } from "@/lib/students";
 import { bulkEditFields, registryOptions } from "@/lib/student-edit";
 import { compareClassLabels, titleCaseName } from "@/lib/classes";
@@ -60,6 +64,12 @@ export default async function StudentsPage({
   ]);
 
   const canImport = session ? canApproveIntoMaster(session.role) : false;
+  // A DIFFERENT GATE FROM canImport, deliberately. Sending a link asks a
+  // question and changes no master data — `office` may do it, and every answer
+  // still goes through the review queue. /requests/bulk redirects on this same
+  // check, so a button offered here that the next screen refuses would be a
+  // dead end rather than a permission.
+  const canCreate = session ? canCreateRequests(session.role) : false;
   const lastPage = Math.max(1, Math.ceil(total / size));
   const exportQuery = toSearchParams(params);
 
@@ -400,12 +410,23 @@ export default async function StudentsPage({
           filtered set, so they only make sense once you have seen what the set
           is — and on a phone they were three buttons pushing the first child
           off the screen. */}
+      {/*
+        A GRID BELOW sm, A WRAPPING ROW ABOVE IT.
+
+        These were `flex-1` in a wrapping row, which worked while Export was
+        the only one that grew: one flex child takes the width. Adding a second
+        made them share it — two 108px columns on a 375px phone, each wrapping
+        its own label to three lines and standing 82px tall. The same argument
+        as the office's four buttons in 5b73b3e: a wrapping row of growing
+        buttons is a grid whose shape changes with the length of its own
+        labels, so nothing is ever twice in the same place.
+      */}
       {total > 0 || canImport ? (
-        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-border)] pt-4">
+        <div className="grid gap-2 border-t border-[var(--color-border)] pt-4 sm:flex sm:flex-wrap sm:items-center">
           {total > 0 ? (
             <a
               href={`/api/export/students.xlsx${exportQuery.size > 0 ? `?${exportQuery}` : ""}`}
-              className={`${btn()} flex-1 sm:flex-none`}
+              className={`${btn()} w-full sm:w-auto`}
             >
               Export these {total.toLocaleString("en-IN")} to Excel
             </a>
@@ -420,14 +441,33 @@ export default async function StudentsPage({
                 fast.set("photos", "0");
                 return fast;
               })()}`}
-              className="inline-flex min-h-[var(--tap-min)] items-center px-2 text-sm text-[var(--color-ink-muted)] hover:underline"
+              className="inline-flex min-h-[var(--tap-min)] items-center justify-center px-2 text-sm text-[var(--color-ink-muted)] hover:underline"
             >
               without photos
             </a>
           ) : null}
+          {/*
+            THE SAME QUERY STRING THE EXPORT LINK CARRIES, and that is the
+            whole point of it. This board is where the office works out who
+            still owes a photograph; until now the only thing it could do with
+            that answer was download it, and the send screen could only be
+            pointed at whole classes. One link, one set of filters, two verbs.
+
+            It lands on the preview and not on a send: the preview is where
+            anyone the grouping could not place gets stated in words, and
+            saving a tap is not worth skipping that.
+          */}
+          {total > 0 && canCreate ? (
+            <Link
+              href={`/requests/bulk${exportQuery.size > 0 ? `?${exportQuery}` : ""}`}
+              className={`${btn({ tone: "primary" })} w-full sm:w-auto`}
+            >
+              Ask teachers about these {total.toLocaleString("en-IN")}
+            </Link>
+          ) : null}
           {canImport ? (
             <>
-              <Link href="/students/new" className={btn({ tone: "primary" })}>
+              <Link href="/students/new" className={btn()}>
                 Add student
               </Link>
               <Link href="/students/import" className={btn()}>

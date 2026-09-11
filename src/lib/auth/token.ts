@@ -116,6 +116,15 @@ export type ResolvedRosterRow = {
   elsewhere: Record<string, string | null>;
   /** She has already said this child is not in her class. */
   notPresent: boolean;
+  /**
+   * The office's line about THIS child on THIS link, or null.
+   *
+   * An instruction, not recognition context — "the number belongs to an uncle"
+   * is a thing to do something about, where "SR 412" is only there so she knows
+   * which child she is looking at. It renders on its own line rather than as
+   * another chip in the recognition row, for that reason.
+   */
+  askNote: string | null;
 };
 
 export type ResolvedRequest = {
@@ -152,6 +161,20 @@ export type ResolvedRequest = {
    * which register a name came from; nothing else can tell her.
    */
   classLabels: string[];
+  /**
+   * Why this list is only part of her register, or null.
+   *
+   * A round narrowed to "no photo" hands Class 8's teacher a link labelled
+   * "Class 8" carrying nine of her forty-six children. Without this she opens
+   * it, finds a third of her register, and reasonably concludes the list is
+   * broken — so on a subset link this line is not decoration, it is what makes
+   * the screen true.
+   *
+   * Both halves, because the surface is bilingual and it renders through <Bi/>.
+   * Read off the request row, which resolveToken already selects whole, so it
+   * costs no query and no join.
+   */
+  reason: { en: string; hi: string } | null;
 };
 
 /**
@@ -260,6 +283,7 @@ export async function resolveToken(token: string): Promise<ResolvedRequest | nul
           answered: sent?.values ?? {},
           elsewhere: elsewhere.get(entry.studentId) ?? {},
           notPresent: sent?.notPresent ?? false,
+          askNote: entry.askNote ?? null,
         };
       })
       .sort(
@@ -274,6 +298,10 @@ export async function resolveToken(token: string): Promise<ResolvedRequest | nul
           .filter((label): label is string => Boolean(label)),
       ),
     ].sort(compareClassLabels),
+    reason:
+      row.request.reasonEn || row.request.reasonHi
+        ? { en: row.request.reasonEn ?? "", hi: row.request.reasonHi ?? "" }
+        : null,
   };
 }
 

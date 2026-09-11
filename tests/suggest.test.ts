@@ -55,6 +55,7 @@ const student = (
   answered: {},
   elsewhere: {},
   notPresent: false,
+  askNote: null,
 });
 
 const answered = (values: Record<string, string>): RowState => ({

@@ -20,6 +20,7 @@ export function student(overrides: Partial<Student> & { id: string }): Student {
     motherName: null,
     phone: null,
     altPhone: null,
+    phoneOnWhatsapp: null,
     dob: null,
     gender: null,
     category: null,

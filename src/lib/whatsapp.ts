@@ -37,6 +37,21 @@ export type MessageAudience = {
   kind: string;
   label: string;
   /**
+   * Why THESE children, when the label alone would be a lie.
+   *
+   * A round narrowed to "no photo" gives Class 8's teacher a link labelled
+   * "Class 8" carrying nine of her forty-six. Without this she opens it, finds
+   * a third of her register, and concludes the list is broken — which is worse
+   * than not having sent it at all.
+   *
+   * ONE FIELD FOR TWO SOURCES, on purpose: the generated clause ("9 children:
+   * No photo") and the office's own typed sentence land here alike, because a
+   * teacher does not care which of the two it is. Absent for an ordinary round,
+   * where it would be noise beside a label that already says everything — the
+   * same treatment `rosterSize` below gets.
+   */
+  reason?: { en: string; hi: string };
+  /**
    * The request's field keys, for a subject link.
    *
    * A subject link asks about exactly one fa_* field, and that key is what names
@@ -92,6 +107,49 @@ function spannedClasses(audience: MessageAudience): string[] {
  */
 const MAX_NAMED_CLASSES = 5;
 
+/**
+ * The group's name with its reason, on one line.
+ *
+ * An em dash and not a bracket: the reason is often a whole sentence the office
+ * typed, and "Class 8 (these numbers are not on WhatsApp — ring the father)"
+ * reads as an aside about the class rather than as the instruction it is.
+ */
+function withReason(label: string, reason: string | undefined): string {
+  const trimmed = reason?.trim();
+  return trimmed ? `${label} — ${trimmed}` : label;
+}
+
+/**
+ * The reason every link in a message agrees on, when they do.
+ *
+ * A round carries ONE reason — it says why the round exists, not why a
+ * particular class is in it — so a teacher holding three of its links would
+ * otherwise read the same sentence three times, once per numbered line. It is
+ * named once at the end instead.
+ *
+ * Hoisted only when they genuinely agree. One message can only carry links from
+ * one round today, but that is a property of the send queue rather than of this
+ * function, and a disagreement must not silently print one group's reason over
+ * another's.
+ */
+export function sharedReason(
+  audiences: MessageAudience[],
+  language: "en" | "hi",
+): string | null {
+  const values = audiences.map((audience) =>
+    (language === "hi" ? audience.reason?.hi : audience.reason?.en)?.trim() ?? "",
+  );
+  const [first] = values;
+  if (!first) return null;
+  return values.every((value) => value === first) ? first : null;
+}
+
+/** The same group with its reason removed, for a line that carries it already. */
+export function stripReason(audience: MessageAudience): MessageAudience {
+  if (!audience.reason) return audience;
+  return { ...audience, reason: undefined };
+}
+
 function describeClasses(labels: string[], word: string): string {
   return labels.length <= MAX_NAMED_CLASSES
     ? labels.join(", ")
@@ -129,6 +187,18 @@ export function formatDue(due: Date | string): string {
  * "कक्षा Maths — Prakash Bunkar".
  */
 export function describeAudienceHi(audience: MessageAudience): string {
+  return withReason(describeGroupHi(audience), audience.reason?.hi);
+}
+
+/**
+ * The group's own name, before the reason is added.
+ *
+ * Split out rather than threaded through, because both of these functions
+ * return from eight places and a reason appended at each is eight chances to
+ * forget one — and the kind that would get forgotten is whichever is added
+ * next.
+ */
+function describeGroupHi(audience: MessageAudience): string {
   if (audience.kind === "class") return `कक्षा ${audience.label}`;
   if (audience.kind === "house") {
     const house = HOUSES.find((row) => row.name === audience.label);
@@ -164,6 +234,10 @@ export function describeAudienceHi(audience: MessageAudience): string {
  * names a kind would announce the next kind added as that one, silently.
  */
 export function describeAudienceEn(audience: MessageAudience): string {
+  return withReason(describeGroupEn(audience), audience.reason?.en);
+}
+
+function describeGroupEn(audience: MessageAudience): string {
   if (audience.kind === "class") return audience.label;
   if (audience.kind === "house" || audience.kind === "route") {
     const noun = audience.kind === "house" ? "House" : "route";
@@ -440,13 +514,26 @@ export function buildRoundMessage(input: RoundMessageInput): string {
     ``,
   ];
 
+  // One reason for the whole round, said once above the list rather than on
+  // each numbered line — see sharedReason.
+  const audiences = input.links.map((link) => link.audience);
+  const reasonEn = sharedReason(audiences, "en");
+  const reasonHi = sharedReason(audiences, "hi");
+  if (reasonEn || reasonHi) {
+    if (reasonEn) lines.push(reasonEn);
+    if (reasonHi && reasonHi !== reasonEn) lines.push(reasonHi);
+    lines.push(``);
+  }
+
   // The group name carries both halves on ONE numbered line, separated by a
   // dot, rather than on two. Everywhere else the pairing is line over line;
   // here, at three links, doubling the line count is exactly the wall this
   // message shape exists to avoid.
   input.links.forEach((link, index) => {
-    const en = describeAudienceLine(link.audience);
-    const hi = describeAudienceLineHi(link.audience);
+    const audience =
+      reasonEn || reasonHi ? stripReason(link.audience) : link.audience;
+    const en = describeAudienceLine(audience);
+    const hi = describeAudienceLineHi(audience);
     lines.push(`${index + 1}) ${en}${hi === en ? "" : ` · ${hi}`}`);
     lines.push(link.url);
     lines.push(``);

@@ -62,6 +62,15 @@ export type TeacherRosterRow = {
   answered: Record<string, string | null>;
   /** She has already said this child is not in her class. */
   notPresent: boolean;
+  /**
+   * The office's line about THIS child, or null.
+   *
+   * An instruction and not recognition context, which is why it gets its own
+   * line rather than another chip in the recognition row — "the number belongs
+   * to an uncle" is something to act on, where "SR 412" is only there so she
+   * knows which child she is looking at.
+   */
+  askNote: string | null;
 };
 
 /**

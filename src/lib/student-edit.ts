@@ -75,7 +75,7 @@ export const EDIT_SECTIONS: EditSection[] = [
   {
     key: "family",
     title: "Family and contact",
-    columns: ["fatherName", "motherName", "phone", "altPhone"],
+    columns: ["fatherName", "motherName", "phone", "altPhone", "phoneOnWhatsapp"],
   },
   {
     key: "school",
@@ -175,6 +175,7 @@ const CONTROLS: Partial<Record<StudentColumn, EditField["control"]>> = {
   dob: "date",
   phone: "tel",
   altPhone: "tel",
+  phoneOnWhatsapp: "select",
   aadhaar: "tel",
   janAadhaar: "tel",
 };
@@ -250,6 +251,18 @@ function optionsFor(
       return [...BUS_ROUTES];
     case "status":
       return STATUSES;
+    /*
+     * Two values and a blank, which the form already renders as "— clear —".
+     * Clearing it is meaningful here and is not a way of saying "no": it puts
+     * the number back to never-checked, which is the state the notOnWhatsapp
+     * filter deliberately excludes.
+     *
+     * Upper case because IMPORT_COLUMNS normalises through oneOf, which upper
+     * cases, and a form that offered "Yes" while the importer stored "YES"
+     * would write two spellings of one fact into one column.
+     */
+    case "phoneOnWhatsapp":
+      return ["YES", "NO"];
     // The registry, not the importer. See the note above.
     case "gender":
     case "category":
@@ -638,7 +651,16 @@ export async function writeOfficeEdits(
  * at once. A phone number or a name is one child's, and a screen that can set
  * forty of them to the same value is a screen waiting to be misused.
  */
-export const BULK_COLUMNS = ["house", "busRoute", "section", "classLabel", "status"] as const;
+export const BULK_COLUMNS = [
+  "house",
+  "busRoute",
+  "section",
+  "classLabel",
+  "status",
+  // The whole point of the column: "these thirty-five numbers are not on
+  // WhatsApp" is a fact the office learns about a group all at once.
+  "phoneOnWhatsapp",
+] as const;
 export type BulkColumn = (typeof BULK_COLUMNS)[number];
 
 export function isBulkColumn(value: unknown): value is BulkColumn {
@@ -671,6 +693,7 @@ export function blankStudent(): Student {
     motherName: null,
     phone: null,
     altPhone: null,
+    phoneOnWhatsapp: null,
     dob: null,
     gender: null,
     category: null,

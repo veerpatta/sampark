@@ -61,6 +61,7 @@ const student = (over: Partial<TeacherRosterRow> = {}): TeacherRosterRow => ({
   answered: {},
   elsewhere: {},
   notPresent: false,
+  askNote: null,
   ...over,
 });
 

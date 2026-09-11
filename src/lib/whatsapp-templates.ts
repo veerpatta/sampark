@@ -56,6 +56,8 @@ import {
   describeAudienceLine,
   describeAudienceLineHi,
   formatDue,
+  sharedReason,
+  stripReason,
   type MessageAudience,
 } from "./whatsapp";
 
@@ -409,12 +411,25 @@ function audienceText(audience: MessageAudience, language: Language): string {
  */
 function whatToCheck(links: RequestPayloadLink[], language: Language): string {
   if (links.length === 1) return audienceText(links[0]!.audience, language);
+
+  // Every link in a round shares one reason, so it is named once at the end
+  // rather than repeated on each of three numbered lines — which for an
+  // office's typed sentence would be three copies of a paragraph.
+  const shared = sharedReason(
+    links.map((link) => link.audience),
+    language,
+  );
   const listed = links
-    .map((link, index) => `${index + 1}) ${audienceText(link.audience, language)}`)
+    .map(
+      (link, index) =>
+        `${index + 1}) ${audienceText(shared ? stripReason(link.audience) : link.audience, language)}`,
+    )
     .join(" · ");
-  return language === "hi"
-    ? `${links.length} सूचियाँ: ${listed}`
-    : `${links.length} lists: ${listed}`;
+  const head =
+    language === "hi"
+      ? `${links.length} सूचियाँ: ${listed}`
+      : `${links.length} lists: ${listed}`;
+  return shared ? `${head} — ${shared}` : head;
 }
 
 /** The "please check this" message — one, or one per link. See suffixFor. */

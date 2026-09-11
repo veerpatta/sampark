@@ -41,7 +41,12 @@ export type MissingField =
   | "gender"
   | "category"
   | "janAadhaar"
-  | "village";
+  | "village"
+  // The four below are holes of a different shape — see MISSING_COLUMNS.
+  | "altPhone"
+  | "onlyOnePhone"
+  | "samePhones"
+  | "notOnWhatsapp";
 
 export type StudentSort = "name" | "class" | "recent" | "complete" | "fullest" | "id";
 
@@ -69,19 +74,85 @@ export type StudentQuery = {
   offset?: number;
 };
 
-const MISSING_COLUMNS: Record<MissingField, AnyPgColumn> = {
-  phone: schema.students.phone,
-  photo: schema.students.photoPath,
-  aadhaar: schema.students.aadhaar,
-  dob: schema.students.dob,
-  house: schema.students.house,
-  route: schema.students.busRoute,
-  father: schema.students.fatherName,
-  mother: schema.students.motherName,
-  gender: schema.students.gender,
-  category: schema.students.category,
-  janAadhaar: schema.students.janAadhaar,
-  village: schema.students.village,
+/**
+ * What each hole IS, as SQL.
+ *
+ * This used to be `Record<MissingField, AnyPgColumn>` and `buildWhere` wrote the
+ * one predicate itself, because for twelve fields a hole was always the same
+ * thing: that column is blank. Three of the four added since are not that shape
+ * — "only one number" is a conjunction across two columns, "both the same" is a
+ * comparison between them — so the registry holds the predicate rather than the
+ * column, and the twelve original entries say `blank(...)` and mean exactly what
+ * they always did.
+ *
+ * `column` is still carried where there is one, because lib/data-health.ts and
+ * COMPLETENESS_COLUMNS index by it. The four new specs have no tracked column
+ * and simply omit it; see the note on MISSING_FIELDS in lib/student-filters.ts
+ * for why that no longer breaks the heatmap's invariant.
+ */
+type GapSpec = {
+  /** The tracked column, when this hole is one column being empty. */
+  column?: AnyPgColumn;
+  where: () => SQL;
+};
+
+/**
+ * An empty string is a hole too. Imports have produced both, and a filter that
+ * finds only the NULLs quietly under-reports the work left.
+ */
+const blank = (column: AnyPgColumn): GapSpec => ({
+  column,
+  where: () => sql`nullif(btrim(${column}::text), '') is null`,
+});
+
+const filled = (column: AnyPgColumn): SQL =>
+  sql`nullif(btrim(${column}::text), '') is not null`;
+
+const MISSING_COLUMNS: Record<MissingField, GapSpec> = {
+  phone: blank(schema.students.phone),
+  photo: blank(schema.students.photoPath),
+  aadhaar: blank(schema.students.aadhaar),
+  dob: blank(schema.students.dob),
+  house: blank(schema.students.house),
+  route: blank(schema.students.busRoute),
+  father: blank(schema.students.fatherName),
+  mother: blank(schema.students.motherName),
+  gender: blank(schema.students.gender),
+  category: blank(schema.students.category),
+  janAadhaar: blank(schema.students.janAadhaar),
+  village: blank(schema.students.village),
+
+  /** No second number at all — includes children with no number whatsoever. */
+  altPhone: blank(schema.students.altPhone),
+
+  /**
+   * A number, but no fallback. Narrower than `altPhone` on purpose: this is the
+   * "she did not pick up and there is nobody else to ring" list, and a child
+   * with no number at all belongs on the `phone` list instead.
+   */
+  onlyOnePhone: {
+    where: () =>
+      sql`${filled(schema.students.phone)} and nullif(btrim(${schema.students.altPhone}::text), '') is null`,
+  },
+
+  /**
+   * Two numbers that are the same number. The second one looks like a fallback
+   * on every screen in this app and is not one, which is the whole reason this
+   * is worth a filter rather than an eyeball.
+   */
+  samePhones: {
+    where: () =>
+      sql`${filled(schema.students.phone)} and btrim(${schema.students.phone}) = btrim(${schema.students.altPhone})`,
+  },
+
+  /**
+   * Checked, and it is not on WhatsApp. NOT "we have never checked" — those are
+   * almost every row, and sweeping them in here would bury the thirty-odd the
+   * office actually knows about.
+   */
+  notOnWhatsapp: {
+    where: () => sql`${schema.students.phoneOnWhatsapp} = 'no'`,
+  },
 };
 
 export async function listStudents(query: StudentQuery): Promise<{
@@ -208,11 +279,10 @@ export function buildWhere(query: StudentQuery): SQL | undefined {
     clauses.push(inArray(schema.students.status, statuses));
   }
 
-  // An empty string is a hole too. Imports have produced both, and a filter
-  // that finds only the NULLs quietly under-reports the work left.
+  // Each hole knows its own predicate now — see MISSING_COLUMNS.
   for (const field of query.missing ?? []) {
-    const column = MISSING_COLUMNS[field];
-    if (column) clauses.push(sql`nullif(btrim(${column}::text), '') is null`);
+    const spec = MISSING_COLUMNS[field];
+    if (spec) clauses.push(spec.where());
   }
 
   if (clauses.length === 0) return undefined;
@@ -313,7 +383,7 @@ async function missingCounts(): Promise<Map<MissingField, number>> {
       Object.fromEntries(
         fields.map((field) => [
           field,
-          sql<number>`count(*) filter (where nullif(btrim(${MISSING_COLUMNS[field]}::text), '') is null)::int`,
+          sql<number>`count(*) filter (where ${MISSING_COLUMNS[field].where()})::int`,
         ]),
       ) as Record<MissingField, SQL<number>>,
     )
@@ -348,31 +418,156 @@ export type Audience = {
   houses?: string[];
   routes?: string[];
   allActive?: boolean;
+  /**
+   * THE REST OF THE BOARD'S DIMENSIONS, and they are here because leaving them
+   * out was a hole rather than a simplification.
+   *
+   * The office can now turn a filtered board into a send, and the board filters
+   * on more than three things. "Class 8, category SC, no photo" on screen,
+   * pressed Send, used to become "Class 8, no photo" — a BIGGER set of children
+   * than the one she was looking at, with nothing on any screen to say so. A
+   * send that quietly covers more children than the office chose is the same
+   * failure planFanOut's header spends thirty lines on, pointing the other way.
+   */
+  sections?: string[];
+  genders?: string[];
+  categories?: string[];
+  villages?: string[];
+  search?: string;
+  /**
+   * Narrow to the children with these holes, driven by the SAME predicates the
+   * board filters on — so "no photo" here and "no photo" on /students cannot
+   * drift into meaning two different things.
+   *
+   * This is what turns a filtered view into a send. Before it, the office could
+   * see the forty-seven children with no photograph and then had to ask
+   * nineteen teachers about five hundred.
+   */
+  gaps?: MissingField[];
+  /**
+   * An explicit list of children, and WHEN IT IS SET IT IS THE WHOLE AUDIENCE
+   * — every dimension above is ignored. See audienceWhere for why.
+   *
+   * Two things produce one: an uploaded list, and createBatch freezing what it
+   * resolved. `from` keeps what was ticked in the second case.
+   */
+  studentIds?: string[];
+  /**
+   * What she actually ticked, when `studentIds` was frozen from it.
+   *
+   * NEVER READ WHEN RESOLVING. It exists so the round's page can still say "no
+   * photo, Classes 6 to 8" rather than "504 children", and so a later reader
+   * can tell a frozen gap round from an uploaded list.
+   */
+  from?: Omit<Audience, "studentIds" | "from">;
+  /**
+   * A line about ONE child, by student id, from an uploaded list.
+   *
+   * EXPLAINS, NEVER RESOLVES — a note for a child the audience does not cover
+   * is ignored, not an extra recipient. It lives here rather than only on
+   * BatchInput so that a Resume days later still has the notes for the groups
+   * it has yet to create; they are written onto request_students as each link
+   * is frozen.
+   */
+  notes?: Record<string, string>;
 };
 
 function isEmptyAudience(audience: Audience): boolean {
   if (audience.allActive) return false;
+  // An explicit list is an audience even when it names one child.
+  if (audience.studentIds?.length) return false;
+  // A gap NARROWS, so a gaps-only audience is a strict subset of allActive and
+  // cannot widen the blast radius — which is the rule this function is for.
+  if (audience.gaps?.length) return false;
   return (
     !audience.classes?.length &&
     !audience.houses?.length &&
-    !audience.routes?.length
+    !audience.routes?.length &&
+    !audience.sections?.length &&
+    !audience.genders?.length &&
+    !audience.categories?.length &&
+    !audience.villages?.length &&
+    !audience.search?.trim()
   );
 }
 
 function audienceWhere(audience: Audience): SQL {
-  const clauses: SQL[] = [eq(schema.students.status, "active")];
+  /*
+   * A FROZEN LIST IS THE WHOLE AUDIENCE, and nothing else narrows it.
+   *
+   * ANDing the ids back together with the gaps they came from is the
+   * nondeterminism freezing exists to remove: six photographs arrive
+   * overnight, Resume re-resolves, and the links it creates cover a smaller
+   * set than the ones it is finishing — while a class whose last photo-less
+   * child was photographed gets no link at all and the board still says
+   * nineteen groups.
+   *
+   * `status = 'active'` still applies. A child who has left the school is not
+   * somebody to ask a teacher about, whatever a stale list says.
+   */
+  if (audience.studentIds?.length) {
+    return and(
+      eq(schema.students.status, "active"),
+      inArray(schema.students.id, audience.studentIds),
+    )!;
+  }
 
-  if (audience.classes?.length) {
-    clauses.push(inArray(schema.students.classLabel, audience.classes));
-  }
-  if (audience.houses?.length) {
-    clauses.push(inArray(schema.students.house, audience.houses));
-  }
-  if (audience.routes?.length) {
-    clauses.push(inArray(schema.students.busRoute, audience.routes));
-  }
+  /*
+   * ONE PREDICATE BUILDER, NOT TWO.
+   *
+   * The board's filters and a send's audience are the same question asked by
+   * two screens, and the day they were two functions is the day the board could
+   * show one set of children and the send cover another. This module already
+   * carries that scar once — see the note at the top of lib/student-filters.ts
+   * about the export and the board disagreeing.
+   *
+   * `statuses` is forced rather than passed through: the board may legitimately
+   * be filtered to children who have left, and a send never may.
+   */
+  const where = buildWhere({
+    search: audience.search,
+    classes: audience.classes,
+    sections: audience.sections,
+    houses: audience.houses,
+    routes: audience.routes,
+    genders: audience.genders,
+    categories: audience.categories,
+    villages: audience.villages,
+    statuses: ["active"],
+    missing: audience.gaps,
+  });
 
-  return clauses.length === 1 ? clauses[0]! : and(...clauses)!;
+  return where ?? eq(schema.students.status, "active");
+}
+
+/**
+ * The most a single explicit list may name. Mirrors MAX_STUDENTS in
+ * lib/batches.ts, which otherwise only catches it after the roster is read.
+ */
+export const MAX_EXPLICIT_IDS = 3000;
+
+/**
+ * An audience that came from a browser, made safe to resolve.
+ *
+ * Every other field here has always been a plain string array, where an unknown
+ * value simply matches nothing. `gaps` is different: it indexes a registry, and
+ * a key that is not in it would put `undefined` into the clause list. Same
+ * reasoning as normaliseFieldKeys in lib/requests.ts.
+ */
+export function normaliseAudience(input: Audience): Audience {
+  const ids = input.studentIds?.length
+    ? [...new Set(input.studentIds.map((id) => id.trim()).filter(Boolean))].slice(
+        0,
+        MAX_EXPLICIT_IDS,
+      )
+    : undefined;
+
+  return {
+    ...input,
+    gaps: input.gaps?.filter((gap) => gap in MISSING_COLUMNS),
+    studentIds: ids?.length ? ids : undefined,
+    search: input.search?.trim() || undefined,
+  };
 }
 
 /**

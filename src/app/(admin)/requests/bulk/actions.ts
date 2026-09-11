@@ -51,6 +51,14 @@ export type BulkRequest = {
   skip?: string[];
   /** Save the teachers she named, so next round already knows them. */
   remember?: boolean;
+  /**
+   * Why these children, when the group label alone would be a lie.
+   *
+   * Either the office's own typed sentence or one built from the gaps she
+   * filtered on. It reaches the teacher's message and the top of her screen and
+   * changes nothing about who is asked — see requests.reason_en.
+   */
+  reason?: { en: string; hi: string } | null;
 };
 
 export type PreviewGroup = {
@@ -234,6 +242,10 @@ function toBatchInput(input: BulkRequest, createdBy: string): BatchInput {
     overrides: input.overrides,
     skip: input.skip,
     remember: input.remember,
+    reason: input.reason ?? null,
+    // The per-child lines ride inside the audience, so a Resume days later
+    // still has them for the groups it has yet to create.
+    notes: input.audience.notes,
     createdBy,
   };
 }

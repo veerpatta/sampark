@@ -201,6 +201,28 @@ export const IMPORT_COLUMNS: ColumnSpec[] = [
     normalise: phone("Mother's mobile"),
   },
   {
+    /**
+     * Whether the mobile number is reachable on WhatsApp.
+     *
+     * A CLOSED SET OF TWO IN A TEXT COLUMN, not a boolean, so that "nobody has
+     * checked" stays a third state and stays the default — there are five
+     * hundred of those and they are not the same fact as "checked, and it is
+     * not". oneOf refuses anything else with a warning rather than writing a
+     * silent null, which is what an office typing "maybe" needs to see.
+     */
+    column: "phoneOnWhatsapp",
+    label: "On WhatsApp",
+    aliases: [
+      "on whatsapp",
+      "whatsapp",
+      "number on whatsapp",
+      "whatsapp number",
+      "is whatsapp",
+      "phone_on_whatsapp",
+    ],
+    normalise: oneOf("On WhatsApp", ["YES", "NO"]),
+  },
+  {
     column: "dob",
     label: "Date of birth",
     aliases: ["dob", "date of birth", "birth date", "birthdate"],
@@ -439,17 +461,7 @@ export function planRows(
 ): ImportPlan {
   const mapped = mappedPairs(map);
 
-  const byId = new Map<string, Student>();
-  const bySr = new Map<string, Student[]>();
-
-  for (const student of existing) {
-    byId.set(student.id, student);
-    if (student.srNo) {
-      const list = bySr.get(student.srNo) ?? [];
-      list.push(student);
-      bySr.set(student.srNo, list);
-    }
-  }
+  const { byId, bySr } = indexStudents(existing);
 
   // Two rows in one file claiming the same identity is a data-entry mistake in
   // the source, not something to resolve silently.
@@ -579,29 +591,25 @@ function planRow(
   if (badClass) return error(badClass);
 
   // ---- match: ID first, then SR number, never name ----
-  let existing: Student | undefined;
-  let matchedBy: "id" | "sr_no" | null = null;
+  const match = matchByIdOrSr({ byId, bySr }, { id, srNo });
+  if (match.ambiguous) return error(match.ambiguous);
 
-  if (id) {
-    existing = byId.get(id);
-    matchedBy = existing ? "id" : null;
-    if (seenInFile.has(`id:${id}`)) {
-      warnings.push(`Student ID ${id} appears more than once in this file`);
-    }
-    seenInFile.add(`id:${id}`);
-  } else if (srNo) {
-    const candidates = bySr.get(srNo) ?? [];
-    if (candidates.length > 1) {
-      return error(
-        `SR number ${srNo} matches ${candidates.length} students — fix the source file or add a Student ID column`,
+  const existing = match.student;
+  const matchedBy = match.matchedBy;
+
+  // Two rows in one file claiming one identity is a data-entry mistake in the
+  // source. Tracked here rather than inside matchByIdOrSr, which is pure and
+  // per-row and has no business holding state across a file.
+  const seen = id ? `id:${id}` : srNo ? `sr:${srNo}` : null;
+  if (seen) {
+    if (seenInFile.has(seen)) {
+      warnings.push(
+        id
+          ? `Student ID ${id} appears more than once in this file`
+          : `SR number ${srNo} appears more than once in this file`,
       );
     }
-    existing = candidates[0];
-    matchedBy = existing ? "sr_no" : null;
-    if (seenInFile.has(`sr:${srNo}`)) {
-      warnings.push(`SR number ${srNo} appears more than once in this file`);
-    }
-    seenInFile.add(`sr:${srNo}`);
+    seenInFile.add(seen);
   }
 
   if (existing)
@@ -887,4 +895,73 @@ function chunked<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
+}
+
+/* ------------------------------------------------- matching, for both doors */
+
+/**
+ * The two indexes a match needs. Built once per file, never per row.
+ */
+export type StudentIndex = {
+  byId: Map<string, Student>;
+  bySr: Map<string, Student[]>;
+};
+
+export function indexStudents(existing: Student[]): StudentIndex {
+  const byId = new Map<string, Student>();
+  const bySr = new Map<string, Student[]>();
+
+  for (const student of existing) {
+    byId.set(student.id, student);
+    if (student.srNo) {
+      const list = bySr.get(student.srNo) ?? [];
+      list.push(student);
+      bySr.set(student.srNo, list);
+    }
+  }
+
+  return { byId, bySr };
+}
+
+/**
+ * STUDENT ID FIRST, THEN SR NUMBER, NEVER NAME. Standing rule 7.
+ *
+ * EXPORTED BECAUSE THERE ARE NOW TWO DOORS. The importer decides which record
+ * to overwrite; the ask-list decides which children a round covers. Different
+ * consequences, same question — and two children in a village school share a
+ * name more often than you would think, so the rule that answers it must have
+ * exactly one implementation. A second copy that drifted would not fail a test,
+ * it would quietly ask the wrong teacher about the wrong child.
+ *
+ * An SR number matching two records is refused rather than resolved. Picking
+ * the first is picking at random, and the office can tell them apart by adding
+ * a Student ID column.
+ */
+export function matchByIdOrSr(
+  index: StudentIndex,
+  keys: { id: string | null | undefined; srNo: string | null | undefined },
+): {
+  student?: Student;
+  matchedBy: "id" | "sr_no" | null;
+  /** The message to refuse the row with, when the SR number is not unique. */
+  ambiguous?: string;
+} {
+  if (keys.id) {
+    const student = index.byId.get(keys.id);
+    return { student, matchedBy: student ? "id" : null };
+  }
+
+  if (keys.srNo) {
+    const candidates = index.bySr.get(keys.srNo) ?? [];
+    if (candidates.length > 1) {
+      return {
+        matchedBy: null,
+        ambiguous: `SR number ${keys.srNo} matches ${candidates.length} students — fix the source file or add a Student ID column`,
+      };
+    }
+    const student = candidates[0];
+    return { student, matchedBy: student ? "sr_no" : null };
+  }
+
+  return { matchedBy: null };
 }

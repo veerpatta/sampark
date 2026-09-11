@@ -72,6 +72,14 @@ export type RequestDeps = {
   token: string;
   /** Pre-generated so an ad-hoc field can derive its period from it. */
   requestId: string;
+  /**
+   * A line about ONE child on this link — "number belongs to an uncle".
+   *
+   * A map rather than a field on the roster rows, because the roster is
+   * `Student` records read from master and a note is the office's words about
+   * this send, not a fact about the child. Empty for every ordinary round.
+   */
+  notes?: Map<string, string>;
 };
 
 export type ScopedRequestInput = {
@@ -87,6 +95,14 @@ export type ScopedRequestInput = {
   dueDate: string;
   createdBy: string;
   contactPhone?: string | null;
+  /**
+   * Why these children and not her whole register — see requests.reason_en.
+   *
+   * Carried per request rather than read off the batch because `batch_id` is ON
+   * DELETE SET NULL: a link outlives its round, and listRequests has no batch
+   * join to fall back on.
+   */
+  reason?: { en: string; hi: string } | null;
 };
 
 export class RequestValidationError extends Error {
@@ -202,6 +218,8 @@ export async function createOneRequest(
       dueDate: input.dueDate,
       contactPhone,
       createdBy: input.createdBy,
+      reasonEn: input.reason?.en ?? null,
+      reasonHi: input.reason?.hi ?? null,
     })
     .returning({ id: schema.requests.id });
 
@@ -216,6 +234,10 @@ export async function createOneRequest(
       studentId: student.id,
       rollNo: student.rollNo,
       snapshot: snapshots.get(student.id)!,
+      // Beside the snapshot, never inside it: the snapshot is the diff base
+      // every submission is compared against, and a key in there that is not a
+      // field is a key something will eventually read as one.
+      askNote: deps.notes?.get(student.id) ?? null,
     }));
 
     for (let i = 0; i < rows.length; i += 100) {
@@ -472,6 +494,16 @@ export type RequestBoardRow = {
   /** The group this link was for: a class, a house or a bus route. */
   audienceLabel: string;
   audienceKind: string;
+  /**
+   * Why this link carries part of a register — see requests.reason_en.
+   *
+   * PROJECTED HERE rather than joined from the round, because `batch_id` is ON
+   * DELETE SET NULL and because this query has no batch join and is read by
+   * five surfaces. A reminder about nine of forty-six children must say the
+   * same thing the original message did.
+   */
+  reasonEn: string | null;
+  reasonHi: string | null;
   teacher: string;
   /**
    * Her id, because the dashboard groups her rows into one reminder and a name
@@ -595,6 +627,8 @@ export async function listRequests(
       title: schema.requests.title,
       audienceLabel: schema.requests.audienceLabel,
       audienceKind: schema.requests.audienceKind,
+      reasonEn: schema.requests.reasonEn,
+      reasonHi: schema.requests.reasonHi,
       teacher: schema.teachers.name,
       teacherId: schema.teachers.id,
       dueDate: schema.requests.dueDate,
@@ -679,6 +713,8 @@ export async function listRequests(
     title: row.title,
     audienceLabel: row.audienceLabel,
     audienceKind: row.audienceKind,
+    reasonEn: row.reasonEn,
+    reasonHi: row.reasonHi,
     teacher: row.teacher,
     teacherId: row.teacherId,
     dueDate: row.dueDate,

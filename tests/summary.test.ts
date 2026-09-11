@@ -48,6 +48,7 @@ function student(
     answered: {},
     elsewhere: {},
     notPresent: false,
+    askNote: null,
   };
 }
 

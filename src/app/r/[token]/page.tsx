@@ -3,6 +3,7 @@ import { resolveToken } from "@/lib/auth/token";
 import { RequestForm } from "@/components/teacher/RequestForm";
 import { ServiceWorker } from "@/components/teacher/ServiceWorker";
 import { T } from "@/components/teacher/strings";
+import { Bi } from "@/components/teacher/Bi";
 
 /**
  * The only page a teacher ever sees.
@@ -68,6 +69,43 @@ export default async function TeacherRequestPage({
           </p>
         </div>
       </header>
+
+      {/*
+        BELOW THE BAR, NOT INSIDE IT. That header is deliberately two lines —
+        see the note above — and a reason folded into it would put the third
+        back. This is a strip in the flow, so it scrolls away once she has read
+        it, which is the right behaviour for a sentence she needs once.
+
+        It is the thing that makes a subset link true: nine names under a
+        heading that says "Class 8" reads as a broken list until something says
+        why. Warning tone rather than informational, because she is about to
+        act on a register that is not her whole one.
+      */}
+      {request.reason ? (
+        <aside
+          className="mt-3 rounded-[var(--radius-card)] border border-[var(--color-warning)] bg-[var(--color-partial-bg)] px-3.5 py-3 text-sm"
+          role="note"
+        >
+          <p className="font-medium">
+            <Bi t={T.partOfClass} />
+          </p>
+          {/* The office's own words, or a clause already built in her language
+              — not wrapped in <Bi>, which would render one language twice.
+
+              `break-words` because this is the one string on the teacher
+              surface that a person typed freely: a pasted URL or a run of
+              digits has no wrap point and would push a 320px screen sideways.
+              The same reason a token gets `break-all` on the office's side. */}
+          <p className="mt-1.5 text-[13px] leading-snug break-words opacity-90">
+            <span lang="en">{request.reason.en}</span>
+            {request.reason.hi && request.reason.hi !== request.reason.en ? (
+              <span lang="hi" className="mt-0.5 block">
+                {request.reason.hi}
+              </span>
+            ) : null}
+          </p>
+        </aside>
+      ) : null}
 
       <RequestForm
         token={token}

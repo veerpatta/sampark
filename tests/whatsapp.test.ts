@@ -833,3 +833,89 @@ describe("buildParentMessage", () => {
     assert.ok(link.startsWith("https://wa.me/919414000000?text="));
   });
 });
+
+/**
+ * Why these children, when the group's own label would be a lie.
+ *
+ * A round narrowed to "no photo" gives Class 8's teacher a link labelled
+ * "Class 8" carrying nine of her forty-six. Without a line saying why, she
+ * opens it, finds a third of her register, and concludes the list is broken —
+ * which is worse than not having sent it. So this clause is not decoration on
+ * a subset link; it is what makes the message true.
+ */
+describe("the reason on an audience", () => {
+  const reason = { en: "9 children: No photo", hi: "9 बच्चे: फ़ोटो बाकी है" };
+
+  it("changes nothing at all when there is none", () => {
+    // THE COMPATIBILITY CONTRACT, and the one that matters most: almost every
+    // round is an ordinary one, and those messages must be what they always
+    // were, byte for byte.
+    const plain = { kind: "class", label: "Class 8" };
+    assert.equal(describeAudienceEn(plain), "Class 8");
+    assert.equal(describeAudienceHi(plain), "कक्षा Class 8");
+  });
+
+  it("names it after the group, in both languages", () => {
+    assert.equal(
+      describeAudienceEn({ kind: "class", label: "Class 8", reason }),
+      "Class 8 — 9 children: No photo",
+    );
+    assert.equal(
+      describeAudienceHi({ kind: "class", label: "Class 8", reason }),
+      "कक्षा Class 8 — 9 बच्चे: फ़ोटो बाकी है",
+    );
+  });
+
+  it("reaches every kind of group, not only a class", () => {
+    // describeAudienceEn returns from eight places, which is exactly why the
+    // reason is appended by a wrapper rather than at each of them.
+    assert.match(
+      describeAudienceEn({ kind: "house", label: "Rana Sanga", reason }),
+      /Rana Sanga House — 9 children: No photo$/,
+    );
+    assert.match(
+      describeAudienceEn({ kind: "master", label: "All classes", rosterSize: 9, reason }),
+      /All classes \(9 children\) — 9 children: No photo$/,
+    );
+  });
+
+  it("appears once in a message carrying several links, not once per line", () => {
+    /*
+     * A round carries ONE reason — it says why the round exists, not why a
+     * particular class is in it — so a teacher holding three of its links would
+     * otherwise read the same sentence three times. For an office's typed
+     * paragraph that is three copies of a paragraph.
+     */
+    const link = (label: string, url: string) => ({
+      audience: { kind: "class", label, reason },
+      url,
+    });
+    const message = buildRoundMessage({
+      teacherName: "Sunita",
+      title: "Photo round",
+      dueDate: "2026-08-20",
+      links: [
+        link("Class 6", "https://x.invalid/r/a"),
+        link("Class 7", "https://x.invalid/r/b"),
+        link("Class 8", "https://x.invalid/r/c"),
+      ],
+    });
+
+    assert.equal(
+      message.split("9 children: No photo").length - 1,
+      1,
+      "the English half appears exactly once",
+    );
+    assert.equal(
+      message.split("9 बच्चे: फ़ोटो बाकी है").length - 1,
+      1,
+      "and so does the Hindi",
+    );
+  });
+
+  it("keeps Devanagari numerals out of the Hindi half", () => {
+    // Same rule every other teacher-facing string here is held to.
+    const line = describeAudienceHi({ kind: "class", label: "Class 8", reason });
+    assert.ok(!/[०-९]/.test(line));
+  });
+});

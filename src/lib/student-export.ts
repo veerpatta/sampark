@@ -61,6 +61,9 @@ export const studentExportColumns = (
   { header: "Mother's Name", width: 24, value: (s) => s.motherName },
   { header: "Mobile No", width: 14, value: (s) => s.phone },
   { header: "Alternate Mobile", width: 16, value: (s) => s.altPhone },
+  // Blank for a number nobody has checked, which is most of them. The header
+  // matches an alias in IMPORT_COLUMNS so a corrected sheet comes back in.
+  { header: "On WhatsApp", width: 12, value: (s) => s.phoneOnWhatsapp },
   { header: "Date of Birth", width: 13, value: (s) => s.dob },
   { header: "Gender", width: 9, value: (s) => s.gender },
   { header: "Category", width: 10, value: (s) => s.category },

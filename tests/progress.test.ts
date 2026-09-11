@@ -24,6 +24,8 @@ function row(over: Partial<RequestBoardRow> = {}): RequestBoardRow {
     title: "FA1 marks",
     audienceLabel: "Class 8",
     audienceKind: "class",
+    reasonEn: null,
+    reasonHi: null,
     teacher: "Sunita Sharma",
     teacherId: "T1",
     dueDate: "2026-08-20",

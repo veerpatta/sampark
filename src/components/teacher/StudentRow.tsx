@@ -233,6 +233,16 @@ export const StudentRow = memo(function StudentRow({
               fields={fields}
               showClass={showClass}
             />
+            {/* ITS OWN LINE, NOT A RECOGNITION CHIP. Everything in Recognition
+                above is there so she can tell which child this is; this is a
+                thing to do about the child, and burying an instruction in a
+                row of identifiers is how it goes unread. */}
+            {student.askNote ? (
+              <p className="mt-1.5 text-meta leading-snug break-words text-[var(--color-warning-fg)]">
+                <span className="font-medium">{T.fromTheOffice.en}:</span>{" "}
+                {student.askNote}
+              </p>
+            ) : null}
           </div>
         </div>
 

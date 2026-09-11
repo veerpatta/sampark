@@ -47,6 +47,22 @@ export const students = pgTable(
     motherName: text("mother_name"),
     phone: text("phone"),
     altPhone: text("alt_phone"),
+    /**
+     * Whether `phone` is reachable on WhatsApp: 'yes' | 'no'. NULL means nobody
+     * has checked, which is the state almost every row is in and must stay
+     * distinguishable from "checked, and it is not".
+     *
+     * TEXT RATHER THAN BOOLEAN, and for the reason `audience_kind` below is:
+     * plain text with no enum and no check constraint is what makes a third
+     * value cost nothing. A boolean would have to answer "unknown" with NULL
+     * and then has nowhere to put "the parent has a second number that is",
+     * which is the next thing the office will want.
+     *
+     * A number that is on no WhatsApp is not a hole in the child's record — it
+     * is a fact about the number we hold — so this is deliberately NOT in
+     * lib/completeness.ts and must never move a completeness bar.
+     */
+    phoneOnWhatsapp: text("phone_on_whatsapp"),
     dob: date("dob"),
     gender: text("gender"),
     category: text("category"),
@@ -406,6 +422,22 @@ export const requestBatches = pgTable("request_batches", {
   period: text("period"),
   dueDate: date("due_date").notNull(),
   recipientMode: text("recipient_mode").notNull(), // class_teacher | incharge
+  /**
+   * Why THESE children, when the group's own label would be a lie.
+   *
+   * A round narrowed to "no photo" gives Class 8's teacher a link labelled
+   * "Class 8" carrying nine of her forty-six children. Without a line saying
+   * why, she opens it, finds a third of her register, and concludes the list is
+   * broken — which is worse than not having sent it. Either the generated
+   * clause ("9 children: No photo") or the office's own typed sentence; a
+   * teacher does not care which, so it is one field.
+   *
+   * Both languages, because the teacher surface is bilingual and choosing at
+   * send time would mean re-deriving Hindi from English later. NULL for an
+   * ordinary round, which is most of them.
+   */
+  reasonEn: text("reason_en"),
+  reasonHi: text("reason_hi"),
   createdBy: text("created_by")
     .notNull()
     .references(() => users.id),
@@ -441,6 +473,17 @@ export const requests = pgTable(
     audienceKind: text("audience_kind").notNull().default("class"),
     /** How the group reads on screen and in the WhatsApp message. */
     audienceLabel: text("audience_label").notNull(),
+    /**
+     * Why these children and not her whole register. See request_batches.
+     *
+     * DENORMALISED ONTO THE LINK, and it has to be. `batch_id` above is ON
+     * DELETE SET NULL: a link outlives the round it came from, and a reason
+     * held only on the batch would vanish from a link that still opens. The
+     * same argument `field_keys` is duplicated here for, and listRequests —
+     * which five surfaces read and which has no batch join — needs it too.
+     */
+    reasonEn: text("reason_en"),
+    reasonHi: text("reason_hi"),
     /** Set when this request was one of a bulk send. NULL for a one-off. */
     batchId: uuid("batch_id").references(() => requestBatches.id, {
       onDelete: "set null",
@@ -606,6 +649,17 @@ export const requestStudents = pgTable(
       .references(() => students.id),
     rollNo: integer("roll_no"),
     snapshot: jsonb("snapshot").notNull(), // prefilled values exactly as sent
+    /**
+     * One line about THIS child on THIS link — "number belongs to an uncle",
+     * "photo is blurred". Set from the office's uploaded list; NULL for every
+     * ordinary round, which is almost all of them.
+     *
+     * A COLUMN RATHER THAN A KEY IN `snapshot`, which is the obvious home and
+     * the wrong one: `snapshot` is the diff base. Every answer the teacher
+     * sends is compared against it to decide what changed, and a key in there
+     * that is not a field is a key something will eventually read as one.
+     */
+    askNote: text("ask_note"),
   },
   (t) => [primaryKey({ columns: [t.requestId, t.studentId] })],
 );

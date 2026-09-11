@@ -301,6 +301,23 @@ export const T = {
 
   /* -------------------------------------------------- the request page */
   dueBy: (date: string) => p(`by ${date}`, `${date} तक`),
+
+  /* ------------------------------------------------- why this short list */
+  /**
+   * A LABEL, and the reason beside it is not.
+   *
+   * This file's own rule: anything she is TOLD is bilingual, anything she is
+   * reading off is not. The reason itself is either the office's own typed
+   * sentence — whatever language she wrote it in — or a clause built from the
+   * bilingual labels in lib/student-filters.ts, so it arrives already in the
+   * right language and must not be wrapped a second time.
+   */
+  partOfClass: p(
+    "This list is only part of your class.",
+    "यह सूची आपकी पूरी कक्षा की नहीं है।",
+  ),
+  /** In front of a line about one child, so she knows who is asking. */
+  fromTheOffice: p("From the office", "कार्यालय से"),
   intro: p(
     "Children with nothing on record are at the top — fill those first. Everyone else already has details; if they are right, press All are correct once. Whatever you fill goes to the school by itself, and you can fix anything afterwards.",
     "जिन बच्चों की जानकारी नहीं है, वे सबसे ऊपर हैं — पहले वही भरें। बाकी सबकी जानकारी पहले से है; ठीक हो तो एक बार में सब सही हैं दबा दें। जो आप भरती जाएँगी वह अपने आप विद्यालय पहुँचता रहेगा — कुछ भी गलत हो जाए तो बाद में ठीक कर सकती हैं।",

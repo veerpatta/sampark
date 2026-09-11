@@ -401,7 +401,7 @@ describe("the sections on the student page", () => {
     const family = EDIT_SECTIONS.find((section) => section.key === "family")!;
     assert.deepEqual(
       sectionFields(fields, family).map((field) => field.column),
-      ["fatherName", "motherName", "phone", "altPhone"],
+      ["fatherName", "motherName", "phone", "altPhone", "phoneOnWhatsapp"],
     );
     assert.deepEqual(sectionFields(fields.filter((f) => f.column === "phone"), family).map((f) => f.column), ["phone"]);
   });

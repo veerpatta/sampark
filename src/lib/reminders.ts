@@ -25,6 +25,9 @@ export type PendingForm = {
   title: string;
   audienceKind: string;
   audienceLabel: string;
+  /** Why this link is only part of a register, so the nudge says it too. */
+  reasonEn: string | null;
+  reasonHi: string | null;
   fieldKeys: string[];
   dueDate: string;
   /** This one request's own link, for a teacher with no durable page. */
@@ -122,6 +125,8 @@ export function toReminder(entry: TeacherProgress): TeacherReminder | null {
       title: form.title,
       audienceKind: form.audienceKind,
       audienceLabel: form.audienceLabel,
+      reasonEn: form.reasonEn,
+      reasonHi: form.reasonHi,
       fieldKeys: form.fieldKeys,
       dueDate: form.dueDate,
       token: form.token,
