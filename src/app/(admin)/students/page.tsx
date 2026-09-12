@@ -406,74 +406,85 @@ export default async function StudentsPage({
         </nav>
       ) : null}
 
-      {/* Below the board rather than beside the heading. These act on the whole
-          filtered set, so they only make sense once you have seen what the set
-          is — and on a phone they were three buttons pushing the first child
-          off the screen. */}
       {/*
-        A GRID BELOW sm, A WRAPPING ROW ABOVE IT.
+        THREE JOBS, NOT ONE LIST OF FIVE.
 
-        These were `flex-1` in a wrapping row, which worked while Export was
-        the only one that grew: one flex child takes the width. Adding a second
-        made them share it — two 108px columns on a 375px phone, each wrapping
-        its own label to three lines and standing 82px tall. The same argument
-        as the office's four buttons in 5b73b3e: a wrapping row of growing
-        buttons is a grid whose shape changes with the length of its own
-        labels, so nothing is ever twice in the same place.
+        Below the board rather than beside the heading, because the first two
+        act on the whole filtered set and only make sense once you have seen
+        what the set is. But they had become five equal full-width buttons
+        stacked 289px deep on a 360px phone — and two of them, Add student and
+        Import, have nothing to do with the filter at all. Read top to bottom
+        that is a wall with no shape, and the one verb the office came to this
+        screen for was fourth in it.
+
+        So: what to do with THESE children, then the file job, then the record
+        jobs paired on one row. A wrapping row again at sm, where five controls
+        side by side were never the problem.
       */}
       {total > 0 || canImport ? (
         <div className="grid gap-2 border-t border-[var(--color-border)] pt-4 sm:flex sm:flex-wrap sm:items-center">
-          {total > 0 ? (
-            <a
-              href={`/api/export/students.xlsx${exportQuery.size > 0 ? `?${exportQuery}` : ""}`}
-              className={`${btn()} w-full sm:w-auto`}
-            >
-              Export these {total.toLocaleString("en-IN")} to Excel
-            </a>
-          ) : null}
-          {/* The photographs are the slow part of that file — one blob read per
-              child — so the way to get the columns in a hurry is offered next
-              to it rather than left as an undocumented query parameter. */}
-          {total > 0 ? (
-            <a
-              href={`/api/export/students.xlsx?${(() => {
-                const fast = new URLSearchParams(exportQuery);
-                fast.set("photos", "0");
-                return fast;
-              })()}`}
-              className="inline-flex min-h-[var(--tap-min)] items-center justify-center px-2 text-sm text-[var(--color-ink-muted)] hover:underline"
-            >
-              without photos
-            </a>
-          ) : null}
           {/*
-            THE SAME QUERY STRING THE EXPORT LINK CARRIES, and that is the
-            whole point of it. This board is where the office works out who
-            still owes a photograph; until now the only thing it could do with
-            that answer was download it, and the send screen could only be
-            pointed at whole classes. One link, one set of filters, two verbs.
+            FIRST, AND PRIMARY ONLY WHEN A FILTER IS NARROWING.
 
-            It lands on the preview and not on a send: the preview is where
-            anyone the grouping could not place gets stated in words, and
-            saving a tap is not worth skipping that.
+            The same query string the Export link carries, which is the whole
+            point of it: this board is where the office works out who still
+            owes a photograph, and until now the only thing it could do with
+            that answer was download it. It lands on the preview and not on a
+            send — that is where anyone the grouping could not place is stated
+            in words, and saving a tap is not worth skipping it.
+
+            On a filtered board this is the screen's purpose and it leads. On
+            an unfiltered one it reads "Ask teachers about these 537", which is
+            a real thing to do and a rare one, so it keeps its place but not
+            its weight.
           */}
           {total > 0 && canCreate ? (
             <Link
               href={`/requests/bulk${exportQuery.size > 0 ? `?${exportQuery}` : ""}`}
-              className={`${btn({ tone: "primary" })} w-full sm:w-auto`}
+              className={`${btn(active ? { tone: "primary" } : {})} w-full sm:w-auto`}
             >
               Ask teachers about these {total.toLocaleString("en-IN")}
             </Link>
           ) : null}
+
+          {/*
+            The export and its shortcut are ONE job on one row. "without
+            photos" is a modifier on the button beside it — the photographs are
+            the slow part of that file, one blob read per child — and a
+            full-width row of its own said it was a third destination.
+          */}
+          {total > 0 ? (
+            <span className="flex items-center gap-1 sm:contents">
+              <a
+                href={`/api/export/students.xlsx${exportQuery.size > 0 ? `?${exportQuery}` : ""}`}
+                className={`${btn()} min-w-0 flex-1 sm:flex-none`}
+              >
+                Export these {total.toLocaleString("en-IN")} to Excel
+              </a>
+              <a
+                href={`/api/export/students.xlsx?${(() => {
+                  const fast = new URLSearchParams(exportQuery);
+                  fast.set("photos", "0");
+                  return fast;
+                })()}`}
+                className="inline-flex min-h-[var(--tap-min)] shrink-0 items-center px-2 text-sm text-[var(--color-ink-muted)] hover:underline"
+              >
+                without photos
+              </a>
+            </span>
+          ) : null}
+
+          {/* Neither of these is about the filtered set, so they pair off on
+              one row rather than reading as two more things to do to it. */}
           {canImport ? (
-            <>
+            <span className="grid grid-cols-2 gap-2 sm:contents">
               <Link href="/students/new" className={btn()}>
                 Add student
               </Link>
               <Link href="/students/import" className={btn()}>
                 Import
               </Link>
-            </>
+            </span>
           ) : null}
         </div>
       ) : null}

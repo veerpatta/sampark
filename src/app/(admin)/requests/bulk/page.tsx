@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
@@ -20,6 +19,7 @@ import { CLASS_LABELS } from "@/lib/classes";
 import { HOUSES } from "@/lib/houses";
 import { BUS_ROUTES } from "@/lib/routes";
 import { TEMPLATES } from "@/lib/templates";
+import { PageHeader } from "@/components/admin/PageHeader";
 import { BulkSend } from "./BulkSend";
 
 export const metadata = { title: "Send to many — Sampark" };
@@ -77,23 +77,22 @@ export default async function BulkSendPage({
 
   return (
     <div className="space-y-8">
-      <header>
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-display font-semibold">
-            Send to many
-          </h1>
-          <Link
-            href="/requests"
-            className="text-sm text-[var(--color-brand-600)] hover:underline"
-          >
-            back to the board
-          </Link>
-        </div>
-        <p className="mt-1 max-w-prose text-[13px] text-[var(--color-ink-muted)]">
-          One question, asked of several groups at once. Each teacher still gets
-          her own link with only her own children on it.
-        </p>
-      </header>
+      {/*
+        THE TITLE MOVES INTO THE APP BAR ON A PHONE, like every other index
+        screen here. This page was writing its own header, so "Send to many"
+        was said twice above the fold — once in the bar and once at display
+        size — and the sentence under it ran to three lines. Ninety-seven
+        pixels of a 740px screen, spent before the office reaches the first
+        thing it has to choose. The outline is intact: the h1 is `sr-only`
+        below md, not absent.
+
+        "back to the board" goes too: the app bar's own Back arrow already
+        points there, and two ways back is one more thing to read.
+      */}
+      <PageHeader
+        title="Send to many"
+        subtitle="One question, asked of several groups at once. Each teacher still gets her own link with only her own children on it."
+      />
 
       <BulkSend
         classes={CLASS_LABELS.map((label) => ({

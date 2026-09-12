@@ -8,7 +8,7 @@ import type { Audience } from "@/lib/students";
 import { AddQuestion } from "@/components/admin/AddQuestion";
 import { ThumbBar } from "@/components/admin/ThumbBar";
 import { Card } from "@/components/admin/Card";
-import { btn } from "@/components/ui/controls";
+import { btn, FOCUS } from "@/components/ui/controls";
 import { SUBJECTS } from "@/lib/subjects";
 import { isoDayFrom } from "@/lib/today";
 import { preview, send, type BulkRequest } from "./actions";
@@ -281,37 +281,60 @@ export function BulkSend({
           none of those. Drawing only the three it can would quietly widen the
           send — which is the failure the whole hop was built to avoid.
         */}
+        {/*
+          ONE ROW, NOT FOUR. This was 207px of a 740px phone — a title line, a
+          summary line, a full-width 48px button and a three-line paragraph —
+          sitting between the office and the first thing it has to choose.
+
+          The count is the fact worth the weight, so it keeps the type size and
+          the summary joins it on the same line. Dropping the filter is a
+          SECONDARY action and had been drawn as the most prominent control on
+          the card: it is a text button now, still 44px to hit, but it no
+          longer competes with the work.
+        */}
         {filter ? (
-          <div className="mb-4 rounded-[var(--radius-control)] border border-[var(--color-brand-600)] bg-[var(--color-brand-50)] p-3.5">
-            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-              <div className="min-w-0">
+          <div className="mb-4 rounded-[var(--radius-control)] border border-[var(--color-brand-600)] bg-[var(--color-brand-50)] px-3.5 py-2.5">
+            <div className="flex items-start justify-between gap-2">
+              {/* TWO LINES, NOT ONE WRAPPED ONE. Joined with a dot they broke
+                  mid-phrase at 360px — "…from the board · No" / "photo" — which
+                  reads as one sentence that got cut rather than as a count and
+                  the filter that produced it. */}
+              <div className="min-w-0 py-1">
                 <p className="text-sm font-medium">
                   {filter.count.toLocaleString("en-IN")}{" "}
                   {filter.count === 1 ? "child" : "children"} from the board
                 </p>
-                <p className="mt-0.5 text-[13px] break-words text-[var(--color-ink-muted)]">
-                  {filter.summary}
-                </p>
+                {filter.summary ? (
+                  <p className="mt-0.5 break-words text-[13px] text-[var(--color-ink-muted)]">
+                    {filter.summary}
+                  </p>
+                ) : null}
               </div>
-              {/* Full width below sm — see the note on the send button. */}
               <button
                 type="button"
                 onClick={() => {
                   setKeepCarried(false);
                   invalidate();
                 }}
-                className={`${btn({ tone: "quiet" })} w-full sm:w-auto`}
+                className={`-mr-2 flex min-h-[var(--tap-min)] shrink-0 items-center px-2 text-[13px] font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline ${FOCUS}`}
               >
-                Drop this filter
+                Drop
               </button>
             </div>
             {filter.gapReason ? (
-              <p className="mt-2.5 border-t border-[var(--color-border)] pt-2.5 text-[13px] break-words text-[var(--color-ink-muted)]">
-                Each teacher&rsquo;s message will say{" "}
+              /* The trailing clause is the reasoning, and it is true on every
+                 screen — but a phone is not where anyone reads why. It comes
+                 back at sm, which is the rule pointer-only copy already
+                 follows on the office's own screens. */
+              <p className="mt-1 break-words text-[13px] leading-snug text-[var(--color-ink-muted)]">
+                Teachers will be told{" "}
                 <span className="font-medium text-[var(--color-ink)]">
                   &ldquo;{filter.gapReason}&rdquo;
-                </span>{" "}
-                so a part-register does not read as a broken list.
+                </span>
+                <span className="hidden sm:inline">
+                  {" "}
+                  — so a part-register does not read as a broken list.
+                </span>
               </p>
             ) : null}
           </div>
@@ -1019,26 +1042,38 @@ function AskListPanel({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 rounded-[var(--radius-control)] border border-[var(--color-brand-600)] bg-[var(--color-brand-50)] p-3.5">
-        <div className="min-w-0">
-          <p className="text-sm font-medium">
-            {matched.toLocaleString("en-IN")}{" "}
-            {matched === 1 ? "child" : "children"} from your sheet
-          </p>
-          <p className="mt-0.5 text-[13px] break-words text-[var(--color-ink-muted)]">
-            {list.classLabels.length === 1
-              ? list.classLabels[0]
-              : `across ${list.classLabels.length} classes`}
-            {list.message ? ` · “${list.message}”` : ""}
-          </p>
+      {/* Same shape as the carried-filter banner above, and for the same
+          reason: replacing the sheet is an undo, and it had been drawn as the
+          most prominent control on the card. */}
+      <div className="rounded-[var(--radius-control)] border border-[var(--color-brand-600)] bg-[var(--color-brand-50)] px-3.5 py-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 py-1">
+            <p className="text-sm font-medium">
+              {matched.toLocaleString("en-IN")}{" "}
+              {matched === 1 ? "child" : "children"} from your sheet
+            </p>
+            <p className="mt-0.5 break-words text-[13px] text-[var(--color-ink-muted)]">
+              {list.classLabels.length === 1
+                ? list.classLabels[0]
+                : `across ${list.classLabels.length} classes`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClear}
+            className={`-mr-2 flex min-h-[var(--tap-min)] shrink-0 items-center px-2 text-[13px] font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline ${FOCUS}`}
+          >
+            Replace
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onClear}
-          className={`${btn({ tone: "quiet" })} w-full sm:w-auto`}
-        >
-          Use a different sheet
-        </button>
+        {list.message ? (
+          <p className="mt-1 break-words text-[13px] leading-snug text-[var(--color-ink-muted)]">
+            Teachers will be told{" "}
+            <span className="font-medium text-[var(--color-ink)]">
+              &ldquo;{list.message}&rdquo;
+            </span>
+          </p>
+        ) : null}
       </div>
 
       {list.unmatched.length > 0 ? (
@@ -1048,31 +1083,60 @@ function AskListPanel({
             {list.unmatched.length === 1 ? "row was" : "rows were"} not matched
             and will not be asked about
           </p>
-          {/* One card per row, not a run of bare lines: each carries a row
-              number the office can act on in Excel. */}
-          <ul className="mt-2.5 space-y-1.5">
-            {list.unmatched.slice(0, 12).map((miss) => (
-              <li
-                key={miss.rowNumber}
-                className="rounded-[var(--radius-control)] bg-[var(--color-surface)] px-3 py-2 text-[13px]"
-              >
-                <span className="font-mono text-xs text-[var(--color-ink-muted)]">
-                  Row {miss.rowNumber}
-                </span>
-                {miss.name ? <span className="ml-2">{miss.name}</span> : null}
-                <span className="mt-0.5 block break-words text-[var(--color-ink-muted)]">
-                  {miss.reason}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {list.unmatched.length > 12 ? (
-            <p className="mt-2 text-label text-[var(--color-ink-muted)]">
-              and {list.unmatched.length - 12} more.
-            </p>
+          {/*
+            FOUR, THEN A DISCLOSURE — and every row number still reachable.
+
+            One card per row rather than a run of bare lines, because each
+            carries the row number the office types into Excel to fix it. But
+            five of them is 310px on a 360px phone and the cap was twelve,
+            which is 750px: a whole screen of failures burying the form they
+            are attached to. The count above is the fact that decides whether
+            to go on; the rows are the detail, and detail on a phone belongs
+            behind a summary — the same argument the bus-route chips make.
+          */}
+          <MissList rows={list.unmatched.slice(0, 4)} />
+          {list.unmatched.length > 4 ? (
+            <details className="mt-1.5">
+              <summary className={`flex min-h-[var(--tap-min)] cursor-pointer list-none items-center text-[13px] font-medium text-[var(--color-brand-600)] ${FOCUS}`}>
+                Show the other {list.unmatched.length - 4} ▾
+              </summary>
+              <MissList rows={list.unmatched.slice(4)} />
+            </details>
           ) : null}
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** The rows a sheet named that could not be honoured, one card each. */
+function MissList({
+  rows,
+}: {
+  rows: {
+    rowNumber: number;
+    id: string | null;
+    srNo: string | null;
+    name: string | null;
+    reason: string;
+  }[];
+}) {
+  return (
+    <ul className="mt-2.5 space-y-1.5">
+      {rows.map((miss) => (
+        <li
+          key={miss.rowNumber}
+          className="rounded-[var(--radius-control)] bg-[var(--color-surface)] px-3 py-2 text-[13px]"
+        >
+          <span className="font-mono text-xs text-[var(--color-ink-muted)]">
+            Row {miss.rowNumber}
+          </span>
+          {miss.name ? <span className="ml-2">{miss.name}</span> : null}
+          <span className="mt-0.5 block break-words text-[var(--color-ink-muted)]">
+            {miss.reason}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
