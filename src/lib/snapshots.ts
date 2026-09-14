@@ -1,4 +1,5 @@
 import { readStudentColumn } from "./student-columns";
+import { hasUsablePhoto } from "./photo-health";
 import { isCompletePhone, normalisePhone } from "./phone";
 import type { FieldDef, Student } from "../../drizzle/schema";
 
@@ -69,9 +70,26 @@ export function buildSnapshots(
     for (const field of fields) {
       // readStudentColumn, not a raw lookup: target_column is a database name
       // and a Drizzle row is keyed by property name. See student-columns.ts.
-      values[field.key] = field.targetColumn
+      const held = field.targetColumn
         ? readStudentColumn(student, field.targetColumn)
         : (priorRecords.get(recordKey(student.id, field.key)) ?? null);
+
+      // A PHOTOGRAPH THAT WILL NOT OPEN IS FROZEN AS NOTHING HELD.
+      //
+      // The snapshot is what her phone shows her as already on record, so a
+      // pathname naming an upload that was cut off would put a broken square in
+      // front of the teacher and, worse, tell her this child is done. She is
+      // one of the two people in the building who can fix it — she is standing
+      // in front of the child — so the row opens empty and asks her for a
+      // photograph, exactly as it would for a child who never had one.
+      //
+      // Frozen like every other value here: what the office knew when the link
+      // was sent. If the file is found and restored afterwards, this link still
+      // asks, and her answer is reviewed like any other. See lib/photo-health.ts.
+      values[field.key] =
+        field.targetColumn === "photo_path" && !hasUsablePhoto(student)
+          ? null
+          : held;
     }
 
     snapshots.set(student.id, {

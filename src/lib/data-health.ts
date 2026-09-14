@@ -2,7 +2,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import { compareClassLabels } from "./classes";
 import { COMPLETENESS_COLUMNS } from "./completeness";
-import type { MissingField } from "./students";
+import { filledSql, type MissingField } from "./students";
 import { isoDayFrom, todayISO } from "./today";
 
 /**
@@ -36,10 +36,15 @@ export type HealthRow = {
  * left is not a hole anyone is going to fill.
  */
 export async function healthByClass(): Promise<HealthRow[]> {
+  // filledSql, not a predicate written out here. Eleven of the twelve columns
+  // are filled when they are not blank; `photo_path` is filled when it names
+  // bytes somebody can actually open, and a heatmap that disagreed with the
+  // board's "No photo" chip would send the office chasing a class it had
+  // already finished. One rule, in lib/students.ts.
   const counts = Object.fromEntries(
     COMPLETENESS_COLUMNS.map((column) => [
       column,
-      sql<number>`count(*) filter (where nullif(btrim(${sql.identifier(column)}::text), '') is not null)::int`,
+      sql<number>`count(*) filter (where ${filledSql(column)})::int`,
     ]),
   ) as Record<CompletenessColumn, ReturnType<typeof sql<number>>>;
 

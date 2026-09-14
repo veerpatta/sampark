@@ -1,5 +1,11 @@
-import { get } from "@vercel/blob";
+import { getBlob } from "./blob-read";
 import { thumbPathname } from "./photos";
+import {
+  fullPathname,
+  hasUsablePhoto,
+  inspectPhotoBytes,
+  type PhotoDefect,
+} from "./photo-health";
 import type { Student } from "../../drizzle/schema";
 
 /**
@@ -47,7 +53,11 @@ import type { Student } from "../../drizzle/schema";
 const FETCH_CONCURRENCY = 16;
 
 export async function fetchPhotos(students: Student[]): Promise<Map<string, Buffer>> {
-  const wanted = students.filter((student) => student.photoPath);
+  // A photograph already known not to open is not fetched at all. It would cost
+  // a billable blob operation to learn what the row already says, and the
+  // workbook prints "no photo" for that child either way — see
+  // lib/student-export.ts, which reads the same predicate.
+  const wanted = students.filter(hasUsablePhoto);
   const photos = new Map<string, Buffer>();
   if (wanted.length === 0) return photos;
 
@@ -77,10 +87,96 @@ export async function fetchPhotos(students: Student[]): Promise<Map<string, Buff
  */
 async function readPhoto(pathname: string): Promise<Buffer | null> {
   for (const candidate of [pathname, thumbPathname(pathname)]) {
-    const blob = await get(candidate, { access: "private" }).catch(() => null);
-    if (blob?.statusCode === 200) {
-      return Buffer.from(await new Response(blob.stream).arrayBuffer());
-    }
+    const { bytes } = await readBlob(candidate);
+    if (bytes) return bytes;
   }
   return null;
+}
+
+/**
+ * One blob, and a verdict on it.
+ *
+ * THE VERDICT IS THE POINT, and it is why this is not just a fetch. Every
+ * reader before this treated "the store answered" as "there is a photograph",
+ * and those are different things: an upload that lost signal halfway leaves a
+ * blob that downloads perfectly and is half a face. inspectPhotoBytes is what
+ * tells them apart — see lib/photo-health.ts, where it lives so that nothing
+ * server-shaped has to be imported to run it.
+ *
+ * getBlob resolves to null for a blob that is not there and THROWS for a store
+ * that would not answer, and the two are worth distinguishing: the first is a
+ * child to photograph again, the second is very probably this app's own
+ * credentials or the Hobby plan's blob limit, and marking five hundred children
+ * for re-photographing over a bad token would be a disaster of its own. The
+ * sweep in scripts/verify-photos.ts stops on a run of them for that reason.
+ */
+export async function readBlob(
+  pathname: string,
+): Promise<{ bytes: Buffer | null; defect: PhotoDefect | null }> {
+  let blob;
+  try {
+    blob = await getBlob(pathname);
+  } catch {
+    return { bytes: null, defect: "unreadable" };
+  }
+  if (!blob) return { bytes: null, defect: "missing" };
+  if (blob.statusCode !== 200) return { bytes: null, defect: "unreadable" };
+
+  let bytes: Buffer;
+  try {
+    bytes = Buffer.from(await new Response(blob.stream).arrayBuffer());
+  } catch {
+    // The store answered and then the body did not arrive. Not the child's
+    // photograph's fault, so it is 'unreadable' rather than 'missing' and the
+    // sweep will ask again next time.
+    return { bytes: null, defect: "unreadable" };
+  }
+
+  const defect = inspectPhotoBytes(bytes);
+  return { bytes: defect === "not-an-image" ? null : bytes, defect };
+}
+
+/**
+ * Is the photograph this pathname names whole, and what can be shown meanwhile?
+ *
+ * THE PHOTOGRAPH IS THE FULL IMAGE, ALWAYS. A thumbnail is derived, optional,
+ * and documented everywhere in this app as best-effort — so a missing one is
+ * not a child to photograph again, it is a fallback to the full image. The
+ * reverse is not true: if the full image is gone, the school does not hold a
+ * printable photograph of that child any more, and a surviving 96px square is
+ * not one either. So the verdict follows the full image and the bytes follow
+ * whatever can actually be drawn.
+ *
+ * ONE BLOB READ ON THE PATH THAT WORKS, which is nearly all of them. A board
+ * row asks for a thumbnail, and if the thumbnail opens cleanly that is the end
+ * of it — reading the full image as well, on every face of a hundred-row board,
+ * would double the transfer this app is careful about everywhere else. A good
+ * thumbnail is taken as evidence enough; the thorough pass is the sweep in
+ * scripts/verify-photos.ts, which is allowed to be slow because it runs once.
+ *
+ * The second read only happens when what was asked for will not open, and then
+ * it is worth it twice over: it is what tells a MISSING THUMBNAIL apart from a
+ * missing photograph. The office's board asks for thumbnails, so before this a
+ * child whose 96px variant had not arrived drew a broken square for ever while
+ * a perfectly good photograph sat in the store behind it.
+ */
+export async function readPhotoFor(
+  wanted: string,
+): Promise<{ bytes: Buffer | null; defect: PhotoDefect | null }> {
+  const full = fullPathname(wanted);
+
+  const first = await readBlob(wanted);
+  if (first.bytes && first.defect === null) return { bytes: first.bytes, defect: null };
+
+  if (wanted !== full) {
+    // A thumbnail is best-effort by construction and always has been. Its
+    // absence is a fallback, never a verdict — the verdict is the full image's.
+    const whole = await readBlob(full);
+    return { bytes: whole.bytes ?? first.bytes, defect: whole.defect };
+  }
+
+  // The photograph itself is damaged or gone. The thumbnail is still worth
+  // showing while the office decides what to do about the mark this leaves.
+  const thumb = await readBlob(thumbPathname(full));
+  return { bytes: first.bytes ?? thumb.bytes, defect: first.defect ?? "unreadable" };
 }

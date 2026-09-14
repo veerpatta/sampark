@@ -108,9 +108,58 @@ const blank = (column: AnyPgColumn): GapSpec => ({
 const filled = (column: AnyPgColumn): SQL =>
   sql`nullif(btrim(${column}::text), '') is not null`;
 
+/**
+ * A photograph that can actually be shown, as SQL.
+ *
+ * THE ONE PLACE THE RULE IS WRITTEN. A pathname is not a photograph: an upload
+ * cut off mid-send and a blob that has gone missing both leave `photo_path`
+ * full and nothing behind it to look at. Those children used to count as
+ * photographed in every total on every screen and appear in no work list
+ * anywhere, because "No photo" meant "the column is empty" and theirs was not.
+ *
+ * `is distinct from` rather than `<>`: photo_broken_path is NULL for almost
+ * every row, and NULL <> 'students/S1001/…' is NULL, which would quietly drop
+ * every healthy child out of every count that reads this.
+ *
+ * See lib/photo-health.ts for the same rule in TypeScript, and the column's own
+ * comment in drizzle/schema.ts for why a mark keyed to the pathname needs no
+ * clean-up when a replacement photo arrives.
+ */
+export const usablePhotoSql = (): SQL =>
+  sql`${filled(schema.students.photoPath)} and ${schema.students.photoBrokenPath} is distinct from ${schema.students.photoPath}`;
+
+/**
+ * Is this tracked column filled, by database column name?
+ *
+ * Exported because THREE counts have to agree and used to be written out three
+ * times: the completeness sort below, the heatmap in lib/data-health.ts, and
+ * the daily snapshot behind it. A photo that will not open has to be a hole in
+ * all three or the office reads one number on the board, a different one on the
+ * heatmap, and a third on the trend line.
+ */
+export function filledSql(column: string): SQL {
+  return column === "photo_path"
+    ? usablePhotoSql()
+    : sql`nullif(btrim(${sql.identifier(column)}::text), '') is not null`;
+}
+
 const MISSING_COLUMNS: Record<MissingField, GapSpec> = {
   phone: blank(schema.students.phone),
-  photo: blank(schema.students.photoPath),
+
+  /**
+   * NO PHOTOGRAPH, OR ONE NOBODY CAN OPEN — and the second half is the fix.
+   *
+   * A half-sent upload leaves a pathname naming bytes that are not there, and
+   * for as long as this read `blank(photoPath)` those children were invisible:
+   * counted as photographed, drawn as a broken square, and in no list the
+   * office could act on. They belong here, which is also what puts them back
+   * into a gap round — audienceWhere resolves `gaps: ['photo']` through this
+   * very predicate, so the next photo round asks the teacher for them again.
+   */
+  photo: {
+    column: schema.students.photoPath,
+    where: () => sql`not (${usablePhotoSql()})`,
+  },
   aadhaar: blank(schema.students.aadhaar),
   dob: blank(schema.students.dob),
   house: blank(schema.students.house),
@@ -225,8 +274,10 @@ function orderFor(sort: StudentSort = "name"): SQL[] {
 function completenessExpr(): SQL {
   return sql.join(
     COMPLETENESS_COLUMNS.map(
-      (column) =>
-        sql`(case when nullif(btrim(${sql.identifier(column)}::text), '') is null then 0 else 1 end)`,
+      // filledSql, not a predicate written out here: a photo that will not open
+      // is not a field this school holds, and the bar drawn next to this sort
+      // agrees because lib/completeness.ts asks the same question of the row.
+      (column) => sql`(case when ${filledSql(column)} then 1 else 0 end)`,
     ),
     sql` + `,
   );
@@ -666,7 +717,22 @@ export async function countByClass(): Promise<Map<string, number>> {
 export async function listSharingPhone(
   studentId: string,
 ): Promise<
-  Pick<Student, "id" | "name" | "classLabel" | "rollNo" | "phone" | "altPhone" | "status" | "photoPath">[]
+  Pick<
+    Student,
+    | "id"
+    | "name"
+    | "classLabel"
+    | "rollNo"
+    | "phone"
+    | "altPhone"
+    | "status"
+    | "photoPath"
+    // Carried so the row can ask usablePhotoPath whether that photograph opens.
+    // Without it the sibling list is the one place in the console that would
+    // still draw a broken square. See lib/photo-health.ts.
+    | "photoBrokenPath"
+    | "photoBrokenReason"
+  >[]
 > {
   /*
    * BY ID, WITH THE CHILD'S OWN NUMBERS LOOKED UP IN SQL, so this can run
@@ -688,6 +754,8 @@ export async function listSharingPhone(
       altPhone: schema.students.altPhone,
       status: schema.students.status,
       photoPath: schema.students.photoPath,
+      photoBrokenPath: schema.students.photoBrokenPath,
+      photoBrokenReason: schema.students.photoBrokenReason,
     })
     .from(schema.students)
     .where(

@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
-import { get, put } from "@vercel/blob";
+import { put } from "@vercel/blob";
 import { resolveToken } from "@/lib/auth/token";
 import {
-  isJpeg,
   isPhotoPathname,
   MAX_PHOTO_BYTES,
   photoBelongsTo,
   photoPathname,
   thumbPathname,
 } from "@/lib/photos";
+import { inspectPhotoBytes } from "@/lib/photo-health";
+import { readPhotoFor } from "@/lib/photo-store";
 import { guard } from "../guard";
 
 /**
@@ -77,9 +78,25 @@ export async function POST(
   }
 
   const bytes = Buffer.from(await file.arrayBuffer());
-  // `file.type` is whatever the client said. The bytes are the evidence.
-  if (!isJpeg(bytes)) {
-    return NextResponse.json({ error: "Not a photo." }, { status: 415 });
+  // `file.type` is whatever the client said. The bytes are the evidence, read
+  // to the END of the file rather than only at the SOI marker in front of it.
+  //
+  // THIS IS THE ONE THAT MATTERS ON A VILLAGE CONNECTION. A photograph sent
+  // over 2G that loses signal halfway arrives here as a valid JPEG header with
+  // nothing behind it, and storing it would hand back a pathname that travels
+  // through review into the child's record as a finished photograph. Refusing
+  // leaves the row unanswered and the queue holding her photo — which is
+  // exactly what photo-queue.ts is for, and she retries when the signal comes
+  // back without knowing anything went wrong.
+  const defect = inspectPhotoBytes(bytes);
+  if (defect) {
+    return NextResponse.json(
+      {
+        error:
+          defect === "truncated" ? "That upload was cut off." : "Not a photo.",
+      },
+      { status: 415 },
+    );
   }
 
   const pathname = photoPathname(studentId);
@@ -101,7 +118,10 @@ export async function POST(
   // full image — so a thumbnail that fails to arrive must not lose the photo.
   if (thumb instanceof File && thumb.size > 0 && thumb.size <= MAX_PHOTO_BYTES) {
     const thumbBytes = Buffer.from(await thumb.arrayBuffer());
-    if (isJpeg(thumbBytes)) {
+    // The same whole-file check as the photograph. A half-arrived thumbnail is
+    // worse than an absent one: every reader falls back to the full image when
+    // it is missing, and draws the broken half when it is there.
+    if (!inspectPhotoBytes(thumbBytes)) {
       await put(thumbPathname(pathname), thumbBytes, {
         access: "private",
         contentType: "image/jpeg",
@@ -147,10 +167,20 @@ export async function GET(
   );
   if (!owner) return notFound();
 
-  const blob = await get(pathname, { access: "private" }).catch(() => null);
-  if (!blob || blob.statusCode !== 200) return notFound();
+  // Falls back between the full image and its thumbnail, which is what makes a
+  // missing 96px variant a slightly slower row rather than a broken square on
+  // her phone. STILL WRITES NOTHING — this route's whole invariant, stated at
+  // the top of the file, and the office's proxy is where a photograph that will
+  // not open gets written down. A teacher is not the right person to be told
+  // that the store lost a file, and her link is not the right credential to
+  // change a record with.
+  const { bytes } = await readPhotoFor(pathname);
+  if (!bytes) return notFound();
 
-  return new Response(blob.stream, {
+  // `new Uint8Array(bytes)` because a Node Buffer is not in the DOM's BodyInit
+  // union, even though it is a Uint8Array at runtime. No copy of the bytes:
+  // this is a view over the same memory.
+  return new Response(new Uint8Array(bytes), {
     headers: {
       "content-type": "image/jpeg",
       "x-content-type-options": "nosniff",

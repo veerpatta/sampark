@@ -1,5 +1,6 @@
 import { getTableColumns } from "drizzle-orm";
 import { schema } from "./db";
+import { hasUsablePhoto } from "./photo-health";
 import { isoDay } from "./today";
 import type { ExportColumn } from "./excel";
 import type { Student } from "../../drizzle/schema";
@@ -26,13 +27,22 @@ import type { Student } from "../../drizzle/schema";
 /**
  * Students columns this file does not carry as text, and why.
  *
- * The photograph is the only entry, and it IS in the workbook — drawn into the
- * cell as a picture. What is left out is its blob pathname, which is an
- * internal identifier: unreadable to a person, meaningless to PSP, and not
- * something to paste into a spreadsheet that gets emailed.
+ * The photograph IS in the workbook — drawn into the cell as a picture. What is
+ * left out is its blob pathname, which is an internal identifier: unreadable to
+ * a person, meaningless to PSP, and not something to paste into a spreadsheet
+ * that gets emailed.
+ *
+ * The three photo_broken_* columns are the app's own note that a file will not
+ * open, not anything the school collected or could correct in Excel. The office
+ * still learns the fact, in the form she can act on: the Photo cell says "no
+ * photo", exactly as it does for a child who never had one, so the work list
+ * she prints is complete. See lib/photo-health.ts.
  */
 export const DELIBERATELY_ABSENT: Partial<Record<keyof Student, string>> = {
   photoPath: "drawn into the Photo column as the picture itself",
+  photoBrokenPath: "internal: the Photo column already says 'no photo'",
+  photoBrokenReason: "internal: the Photo column already says 'no photo'",
+  photoBrokenAt: "internal: the Photo column already says 'no photo'",
 };
 
 /** Every students column, as it is spelled in the database. */
@@ -107,7 +117,12 @@ export const studentExportColumns = (
     // narrower column would crop it against the next one rather than shrink it.
     header: "Photo",
     width: 15,
-    value: (s) => (s.photoPath ? "" : "no photo"),
+    // hasUsablePhoto, not `s.photoPath`: a pathname whose bytes will not open
+    // is not a photograph, fetchPhotos does not even try to draw one, and a
+    // blank cell where a face should be is the one thing this column must never
+    // produce. The office prints this to find out who is left. See
+    // lib/photo-health.ts.
+    value: (s) => (hasUsablePhoto(s) ? "" : "no photo"),
     image: (s) => photos.get(s.id) ?? null,
   },
   /*

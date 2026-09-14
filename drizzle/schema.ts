@@ -91,6 +91,33 @@ export const students = pgTable(
      * server, so both read proxies can re-check who is asking. See lib/photos.ts.
      */
     photoPath: text("photo_path"),
+    /**
+     * THE PHOTOGRAPH NAMED ABOVE CANNOT BE LOOKED AT.
+     *
+     * A pathname in `photo_path` used to be the whole of the question "does
+     * this school hold a photograph of this child". It is not. An upload can be
+     * cut off halfway over a village connection, a blob can go missing, and
+     * what is left is a row that counts as photographed on every screen in this
+     * app and draws as a broken square on all of them. Nobody ever chases those
+     * children, because no filter can see them: the office's "No photo" list is
+     * exactly the children whose column is empty, and theirs is not.
+     *
+     * KEYED BY THE PATHNAME, NOT BY A BOOLEAN, and that is the whole design. A
+     * retake mints a NEW pathname and never overwrites — see lib/photos.ts — so
+     * the moment a good photograph is attached this column stops matching
+     * `photo_path` and the child is simply well again, with no clean-up step for
+     * the four places that write a photo to forget. A stale value here is inert
+     * by construction rather than by discipline.
+     *
+     * The predicate every reader uses is therefore `photo_broken_path =
+     * photo_path`, written once in lib/photo-health.ts and never spelled out at
+     * a call site.
+     */
+    photoBrokenPath: text("photo_broken_path"),
+    /** Which way it is broken: missing | unreadable | not-an-image | truncated. */
+    photoBrokenReason: text("photo_broken_reason"),
+    /** When that was last established. The office reads it as "checked on". */
+    photoBrokenAt: timestamp("photo_broken_at", { withTimezone: true }),
     status: text("status").notNull().default("active"), // active | left | tc_issued
     source: text("source").default("psp"),
     createdAt: timestamp("created_at", { withTimezone: true })

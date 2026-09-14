@@ -8,6 +8,7 @@ import { listFacets, listStudents, type StudentSort } from "@/lib/students";
 import { bulkEditFields, registryOptions } from "@/lib/student-edit";
 import { compareClassLabels, titleCaseName } from "@/lib/classes";
 import { completeness } from "@/lib/completeness";
+import { usablePhotoPath } from "@/lib/photo-health";
 import {
   MISSING_FIELDS,
   MISSING_LABELS,
@@ -143,7 +144,12 @@ export default async function StudentsPage({
       hideOnCard: true,
       cell: (student) => (
         <StudentPhoto
-          pathname={student.photoPath}
+          /* usablePhotoPath, not photoPath. A pathname whose bytes are gone
+             draws a broken square in a column of five hundred faces and tells
+             the office nothing; the em dash this falls back to is the same
+             thing it already shows for a child with no photograph, which is
+             what this child now is. See lib/photo-health.ts. */
+          pathname={usablePhotoPath(student)}
           name={titleCaseName(student.name)}
         />
       ),
@@ -256,7 +262,7 @@ export default async function StudentsPage({
       card={(student) => (
         <div className="flex items-center gap-3">
           <Avatar
-            pathname={student.photoPath}
+            pathname={usablePhotoPath(student)}
             name={titleCaseName(student.name)}
           />
           <span className="min-w-0 flex-1">

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { get } from "@vercel/blob";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import {
@@ -9,6 +8,7 @@ import {
   UnauthorizedError,
 } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
+import { getBlob } from "@/lib/blob-read";
 import { isDocumentKind, isDocumentPathname } from "@/lib/documents";
 import { addDocument, findLiveDocument, removeDocument } from "@/lib/document-store";
 
@@ -39,7 +39,11 @@ export async function GET(request: Request) {
   const row = await findLiveDocument(pathname);
   if (!row) return notFound();
 
-  const blob = await get(pathname, { access: "private" }).catch(() => null);
+  // getBlob, not get: a document belonging to one of the nine children whose
+  // admission number carries a slash lives at an encoded pathname that `get`
+  // cannot resolve on its own. It uploaded fine and it is in the store; this is
+  // what reads it back. See lib/blob-read.ts.
+  const blob = await getBlob(pathname).catch(() => null);
   if (!blob || blob.statusCode !== 200) return notFound();
 
   const ext = pathname.slice(pathname.lastIndexOf(".") + 1);

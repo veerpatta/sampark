@@ -1,3 +1,4 @@
+import { hasUsablePhoto } from "./photo-health";
 import type { Student } from "../../drizzle/schema";
 
 /**
@@ -63,6 +64,13 @@ export type Completeness = { filled: number; total: number; percent: number };
 
 export function completeness(student: Student): Completeness {
   const filled = TRACKED_FIELDS.filter((field) => {
+    // ELEVEN OF THE TWELVE ARE "IS THERE ANYTHING IN THE COLUMN". The twelfth
+    // is not: a photo_path naming an upload that was cut off mid-send is a
+    // filled column and no photograph, and counting it here told the office a
+    // record was complete while the child's face was a broken square on the
+    // same screen. See lib/photo-health.ts; the SQL half of this score asks the
+    // identical question in lib/students.ts.
+    if (field === "photoPath") return hasUsablePhoto(student);
     const value = student[field];
     return value !== null && value !== undefined && String(value).trim() !== "";
   }).length;

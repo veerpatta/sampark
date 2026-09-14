@@ -21,6 +21,7 @@
     "db:create-user": "tsx scripts/create-user.ts",
     "subjects:import": "tsx scripts/import-timetable-subjects.ts",
     "icons": "tsx scripts/make-icons.ts",
+    "photos:verify": "tsx scripts/verify-photos.ts",
     "db:migrate:branch": "tsx scripts/migrate-branch.ts",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:ui": "tsx scripts/smoke-ui.ts",

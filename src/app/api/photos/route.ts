@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { get, put } from "@vercel/blob";
+import { put } from "@vercel/blob";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import {
@@ -10,12 +10,14 @@ import {
 } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
 import {
-  isJpeg,
   isPhotoPathname,
   MAX_PHOTO_BYTES,
   photoPathname,
   thumbPathname,
 } from "@/lib/photos";
+import { fullPathname, inspectPhotoBytes } from "@/lib/photo-health";
+import { recordPhotoDefect } from "@/lib/photo-marks";
+import { readPhotoFor } from "@/lib/photo-store";
 import { dbNameFor, logKeyFor, writeOfficeEdit } from "@/lib/student-edit";
 
 /**
@@ -44,10 +46,34 @@ export async function GET(request: Request) {
   // a pathname is a path. See isPhotoPathname for what it refuses.
   if (!isPhotoPathname(pathname)) return notFound();
 
-  const blob = await get(pathname, { access: "private" }).catch(() => null);
-  if (!blob || blob.statusCode !== 200) return notFound();
+  /**
+   * THE ONE PLACE THAT FINDS OUT, IN THE ORDINARY RUN OF WORK.
+   *
+   * This route is asked for a face by every row of every board the office
+   * opens, which makes it the app's own eye on the blob store — and until now
+   * everything it saw, it threw away. A photograph that would not open returned
+   * a 404, the browser drew a broken square, the child went on counting as
+   * photographed in every total, and nobody could find them again.
+   *
+   * So a failure is written down: the child stops counting as photographed,
+   * appears in "No photo", and the next gap round asks a teacher for a new one.
+   * See lib/photo-health.ts for the whole shape of this.
+   *
+   * NOTHING IS WRITTEN WHEN THE PHOTOGRAPH IS FINE — no timestamp, no "checked
+   * on" — because a hundred faces on a board would be a hundred writes to a
+   * serverless database for a fact nobody reads. Taking a mark BACK is the
+   * sweep's job for the same reason: once a child is marked, this route is
+   * never asked for that photograph again, so it is the one place that cannot
+   * see it recover. See scripts/verify-photos.ts.
+   */
+  const { bytes, defect } = await readPhotoFor(pathname);
+  if (defect) await recordPhotoDefect(fullPathname(pathname), defect);
+  if (!bytes) return notFound();
 
-  return new Response(blob.stream, {
+  // `new Uint8Array(bytes)` because a Node Buffer is not in the DOM's BodyInit
+  // union, even though it is a Uint8Array at runtime. No copy of the bytes:
+  // this is a view over the same memory.
+  return new Response(new Uint8Array(bytes), {
     headers: {
       "content-type": "image/jpeg",
       "x-content-type-options": "nosniff",
@@ -149,9 +175,23 @@ export async function POST(request: Request) {
   }
 
   const bytes = Buffer.from(await file.arrayBuffer());
-  // `file.type` is whatever the browser said. The bytes are the evidence.
-  if (!isJpeg(bytes)) {
-    return NextResponse.json({ error: "Not a photo." }, { status: 415 });
+  // `file.type` is whatever the browser said. The bytes are the evidence — and
+  // the evidence is now read to the END of the file, not only the three-byte
+  // marker at the front. A JPEG whose end-of-image marker never arrived is a
+  // photograph that was cut off in transit, and storing one is how a child ends
+  // up counting as photographed while their face is half a grey rectangle. The
+  // cheapest place to refuse it is here, before it is a row in the database.
+  const defect = inspectPhotoBytes(bytes);
+  if (defect) {
+    return NextResponse.json(
+      {
+        error:
+          defect === "truncated"
+            ? "That upload was cut off. Try again."
+            : "Not a photo.",
+      },
+      { status: 415 },
+    );
   }
 
   const pathname = photoPathname(studentId);
@@ -173,7 +213,10 @@ export async function POST(request: Request) {
   const thumb = form.get("thumb");
   if (thumb instanceof File && thumb.size > 0 && thumb.size <= MAX_PHOTO_BYTES) {
     const thumbBytes = Buffer.from(await thumb.arrayBuffer());
-    if (isJpeg(thumbBytes)) {
+    // The same whole-file check. A half-arrived thumbnail is worse than none:
+    // the readers fall back to the full image when it is absent, and draw the
+    // broken half when it is there.
+    if (!inspectPhotoBytes(thumbBytes)) {
       await put(thumbPathname(pathname), thumbBytes, {
         access: "private",
         contentType: "image/jpeg",

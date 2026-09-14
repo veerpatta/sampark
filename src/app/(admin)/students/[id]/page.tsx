@@ -22,6 +22,12 @@ import {
 import { loadTimelineParts, mergeTimeline } from "@/lib/student-timeline";
 import { listSharingPhone } from "@/lib/students";
 import { completeness, TRACKED_FIELDS, TRACKED_LABELS } from "@/lib/completeness";
+import {
+  hasUsablePhoto,
+  photoDefect,
+  usablePhotoPath,
+  PHOTO_DEFECT_LABELS,
+} from "@/lib/photo-health";
 import { pivotStudentMarks } from "@/lib/marks";
 import { FA_MARKS_KIND } from "@/lib/subjects";
 import { buildParentMessage, buildWhatsAppLink } from "@/lib/whatsapp";
@@ -121,6 +127,8 @@ export default async function StudentDetailPage({
   const canEdit = canApproveIntoMaster(session.role);
   const fields = editFields(student as Student, options);
   const name = titleCaseName(student.name);
+  /** null when the photo is fine, and null when there is no photo at all. */
+  const brokenPhoto = photoDefect(student);
 
   const pendingByColumn = new Map<string, string>();
   for (const row of waiting) {
@@ -184,11 +192,26 @@ export default async function StudentDetailPage({
 
       <header className="flex items-start gap-3.5">
         <div>
-          <Avatar pathname={student.photoPath} name={name} size="page" />
+          <Avatar pathname={usablePhotoPath(student)} name={name} size="page" />
           {canEdit ? (
             <div className="no-print">
-              <PhotoEditor studentId={student.id} hasPhoto={Boolean(student.photoPath)} />
+              {/* hasUsablePhoto, not Boolean(photoPath): the button says
+                  "Replace photo" or "Add photo", and offering to replace a
+                  photograph that cannot be opened is offering to replace
+                  something the office cannot see. */}
+              <PhotoEditor studentId={student.id} hasPhoto={hasUsablePhoto(student)} />
             </div>
+          ) : null}
+          {/* THE ONE SCREEN THAT SAYS WHY.
+              Everywhere else a broken photograph is simply an absent one —
+              initials on the board, "no photo" in the export, a child back on
+              the work list. That is right for a count and wrong for the page
+              somebody opens to ask "where did this child's picture go". This is
+              the answer, in the office's own words. */}
+          {brokenPhoto ? (
+            <p className="mt-1.5 max-w-[9rem] text-xs leading-snug text-[var(--color-danger)]">
+              {PHOTO_DEFECT_LABELS[brokenPhoto]}. Take a new one.
+            </p>
           ) : null}
         </div>
         <div className="min-w-0 flex-1">
@@ -331,7 +354,7 @@ export default async function StudentDetailPage({
                     href={`/students/${encodeURIComponent(row.id)}`}
                     className="flex items-center gap-3 rounded-[var(--radius-control)] hover:bg-[var(--color-surface-muted)]"
                   >
-                    <Avatar pathname={row.photoPath} name={titleCaseName(row.name)} />
+                    <Avatar pathname={usablePhotoPath(row)} name={titleCaseName(row.name)} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{titleCaseName(row.name)}</span>
                       <span className="block text-xs text-[var(--color-ink-muted)]">
