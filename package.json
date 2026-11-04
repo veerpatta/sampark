@@ -28,32 +28,31 @@
     "test:session": "tsx scripts/test-session.ts"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.1",
+    "@neondatabase/serverless": "^1.2.0",
     "@phosphor-icons/react": "^2.1.10",
-    "@vercel/blob": "^2.7.0",
-    "bcryptjs": "^3.0.2",
-    "drizzle-orm": "^0.44.5",
+    "@vercel/blob": "^2.8.2",
+    "bcryptjs": "^3.0.3",
+    "drizzle-orm": "^0.45.4",
     "exceljs": "^4.4.0",
-    "next": "15.5.22",
+    "next": "16.4.5",
     "next-auth": "^5.0.0-beta.29",
-    "papaparse": "^5.5.3",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "zod": "^4.1.5"
+    "papaparse": "^5.7.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/papaparse": "^5.3.16",
+    "@types/node": "^26",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "dotenv": "^17.2.2",
-    "drizzle-kit": "^0.31.4",
-    "eslint": "^9",
-    "eslint-config-next": "15.5.22",
+    "dotenv": "^18.0.9",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^10",
+    "eslint-config-next": "16.4.5",
     "tailwindcss": "^4",
-    "tsx": "^4.20.5",
-    "typescript": "^5"
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
   }
 }
