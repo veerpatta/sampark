@@ -87,7 +87,6 @@ npm run db:seed         # field registry, precedence sources, teachers (idempote
 npm run db:create-user  # create or reset an admin console account
 npm run db:studio       # browse the data
 npm run subjects:import # who teaches what, from the timetable
-npm run icons           # regenerate the PWA icons from public/icon.svg
 ```
 
 There is also `npm run db:push`. **Prefer `db:generate` + `db:migrate`.** `push`
@@ -302,7 +301,6 @@ scripts/
   smoke.ts              a whole photo round over HTTP — see above
   smoke-ui.ts           every signed-in screen + a marks round + the proxies
   test-session.ts       mints a session cookie, so no password has to exist
-  make-icons.ts         PWA icons, rasterised from icon.svg
   backup.ps1            verified weekly pg_dump
 tests/                  node:test, run with `npm test` — see above
 src/
