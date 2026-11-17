@@ -24,7 +24,11 @@
     "db:migrate:branch": "tsx scripts/migrate-branch.ts",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:ui": "tsx scripts/smoke-ui.ts",
-    "test:session": "tsx scripts/test-session.ts"
+    "test:session": "tsx scripts/test-session.ts",
+    "cf:build": "node scripts/cf-build.mjs",
+    "cf:preview": "node scripts/cf-build.mjs && opennextjs-cloudflare preview",
+    "cf:deploy": "node scripts/cf-build.mjs && opennextjs-cloudflare deploy",
+    "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
@@ -41,6 +45,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.17",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^26",
     "@types/papaparse": "^5.5.2",
@@ -52,6 +57,7 @@
     "eslint-config-next": "16.4.5",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "wrangler": "^4.157.0"
   }
 }

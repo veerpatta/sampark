@@ -14,5 +14,15 @@ export default defineConfig([
       "react-hooks/set-state-in-effect": "warn",
     },
   },
-  globalIgnores(["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts"]),
+  globalIgnores([
+    "node_modules/**",
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    // Cloudflare (OpenNext) build output and the generated env types.
+    ".open-next/**",
+    ".wrangler/**",
+    "cloudflare-env.d.ts",
+  ]),
 ]);

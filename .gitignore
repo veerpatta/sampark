@@ -43,3 +43,8 @@ next-env.d.ts
 
 # real student data - PII, never commit
 /private/
+
+# Cloudflare (OpenNext)
+.open-next
+.wrangler
+.dev.vars*

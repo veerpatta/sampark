@@ -8,7 +8,7 @@ import {
   UnauthorizedError,
 } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
-import { getBlob } from "@/lib/blob-read";
+import { getBlob } from "@/lib/blob-store";
 import { isDocumentKind, isDocumentPathname } from "@/lib/documents";
 import { addDocument, findLiveDocument, removeDocument } from "@/lib/document-store";
 
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
   // getBlob, not get: a document belonging to one of the nine children whose
   // admission number carries a slash lives at an encoded pathname that `get`
   // cannot resolve on its own. It uploaded fine and it is in the store; this is
-  // what reads it back. See lib/blob-read.ts.
+  // what reads it back. See lib/blob-store.ts.
   const blob = await getBlob(pathname).catch(() => null);
   if (!blob || blob.statusCode !== 200) return notFound();
 

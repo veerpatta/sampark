@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { put } from "@vercel/blob";
+import { putBlob } from "@/lib/blob-store";
 import { resolveToken } from "@/lib/auth/token";
 import {
   isPhotoPathname,
@@ -102,14 +102,11 @@ export async function POST(
   const pathname = photoPathname(studentId);
   const thumb = form.get("thumb");
 
-  await put(pathname, bytes, {
-    access: "private",
-    contentType: "image/jpeg",
+  await putBlob(pathname, bytes, {
     // We mint our own randomness, and a fixed regex has to be able to validate
     // what comes back. allowOverwrite stays off: a collision should throw, not
     // quietly replace a photograph.
-    addRandomSuffix: false,
-    allowOverwrite: false,
+    contentType: "image/jpeg",
     cacheControlMaxAge: CACHE_SECONDS,
   });
 
@@ -122,11 +119,8 @@ export async function POST(
     // worse than an absent one: every reader falls back to the full image when
     // it is missing, and draws the broken half when it is there.
     if (!inspectPhotoBytes(thumbBytes)) {
-      await put(thumbPathname(pathname), thumbBytes, {
-        access: "private",
+      await putBlob(thumbPathname(pathname), thumbBytes, {
         contentType: "image/jpeg",
-        addRandomSuffix: false,
-        allowOverwrite: false,
         cacheControlMaxAge: CACHE_SECONDS,
       });
     }

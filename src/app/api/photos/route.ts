@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { put } from "@vercel/blob";
+import { putBlob } from "@/lib/blob-store";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import {
@@ -196,14 +196,11 @@ export async function POST(request: Request) {
 
   const pathname = photoPathname(studentId);
 
-  await put(pathname, bytes, {
-    access: "private",
-    contentType: "image/jpeg",
+  await putBlob(pathname, bytes, {
     // Our own randomness, and a fixed regex has to validate what comes back.
     // allowOverwrite stays off: a collision should throw, never quietly replace
     // a photograph.
-    addRandomSuffix: false,
-    allowOverwrite: false,
+    contentType: "image/jpeg",
     cacheControlMaxAge: CACHE_SECONDS,
   });
 
@@ -217,11 +214,8 @@ export async function POST(request: Request) {
     // the readers fall back to the full image when it is absent, and draw the
     // broken half when it is there.
     if (!inspectPhotoBytes(thumbBytes)) {
-      await put(thumbPathname(pathname), thumbBytes, {
-        access: "private",
+      await putBlob(thumbPathname(pathname), thumbBytes, {
         contentType: "image/jpeg",
-        addRandomSuffix: false,
-        allowOverwrite: false,
         cacheControlMaxAge: CACHE_SECONDS,
       });
     }

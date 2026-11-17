@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
-import { del, put } from "@vercel/blob";
+import { deleteBlob, putBlob } from "./blob-store";
 import { db, schema } from "./db";
 import {
   documentPathname,
@@ -136,11 +136,8 @@ export async function addDocument(input: {
 
   const pathname = documentPathname(input.studentId, sniffed.ext);
 
-  await put(pathname, Buffer.from(input.bytes), {
-    access: "private",
+  await putBlob(pathname, input.bytes, {
     contentType: sniffed.contentType,
-    addRandomSuffix: false,
-    allowOverwrite: false,
     cacheControlMaxAge: 31_536_000,
   });
 
@@ -184,7 +181,7 @@ export async function removeDocument(
   if (!row) return { removed: false, studentId: null };
 
   // Housekeeping, not correctness: the row already says the document is gone.
-  await del(row.pathname).catch(() => undefined);
+  await deleteBlob(row.pathname).catch(() => undefined);
 
   return { removed: true, studentId: row.studentId };
 }

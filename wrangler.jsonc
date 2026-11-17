@@ -1,0 +1,43 @@
+// Cloudflare Workers config (OpenNext). `npm run cf:deploy` builds .open-next/ and uploads it.
+// Secrets (DATABASE_URL, AUTH_SECRET, AUTH_URL, CRON_SECRET, AISENSY_API_KEY, ...) are set
+// with `wrangler secret put <NAME>` or synced from the VPPS vault — never written here.
+// CRONS_ENABLED stays unset until Vercel's cron is retired (see custom-worker.ts).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sampark",
+  // custom-worker.ts wraps .open-next/worker.js and adds the scheduled() handler.
+  "main": "custom-worker.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "sampark"
+    }
+  ],
+  // Photos and documents of students. Private: read only through the app's proxy routes.
+  // Keys are the same pathnames the database holds (students.photo_path,
+  // student_documents.pathname). See src/lib/blob-store.ts.
+  //
+  // COMMENTED OUT UNTIL R2 IS ENABLED ON THE ACCOUNT. `wrangler r2 bucket create
+  // sampark-files` fails with "Please enable R2 through the Cloudflare Dashboard
+  // [code: 10042]", and a deploy that binds a bucket which does not exist fails.
+  // Once R2 is enabled: create the bucket, uncomment this, redeploy. Until then
+  // blob-store.ts finds no FILES binding and falls back to Vercel Blob.
+  // "r2_buckets": [
+  //   {
+  //     "binding": "FILES",
+  //     "bucket_name": "sampark-files"
+  //   }
+  // ],
+  // The daily completeness snapshot (vercel.json has the same schedule). Does nothing
+  // unless CRONS_ENABLED is "true".
+  "triggers": { "crons": ["0 1 * * *"] },
+  // Run the Worker close to the Neon database (Singapore) instead of next to each visitor.
+  "placement": { "mode": "smart" },
+  "observability": { "enabled": true }
+}

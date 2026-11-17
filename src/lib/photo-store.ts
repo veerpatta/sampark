@@ -1,4 +1,4 @@
-import { getBlob } from "./blob-read";
+import { getBlob } from "./blob-store";
 import { thumbPathname } from "./photos";
 import {
   fullPathname,
